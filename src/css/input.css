@@ -1,0 +1,87 @@
+/* Base field layout
+.field {
+  display: block;
+  position: relative;
+  margin: 16px 0;
+  width: 100%;
+  max-width: 560px;
+}
+
+.stylish-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--input-bg, #fff);
+  border: 1px solid var(--input-border, #d1d5db);
+  border-radius: var(--input-radius, 10px);
+  padding: 14px 14px;
+  padding-top: 20px;
+  font-size: 15px;
+  outline: none;
+  color: var(--text-color, #0f172a);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.field-label {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  font-size: 13px;
+  color: var(--label-color, #6b7280);
+  pointer-events: none;
+  transition: 0.2s ease;
+}
+
+.stylish-input:focus + .field-label,
+.stylish-input:not(:placeholder-shown) + .field-label {
+  transform: translateY(-10px) scale(0.88);
+  color: var(--input-focus, #4f46e5);
+  top: 6px;
+}
+
+.icon-field {
+  position: relative;
+}
+
+.icon-field .stylish-input {
+  padding-left: 46px;
+}
+
+.icon-field .icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: var(--label-color, #6b7280);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1em;
+  width: 1em;
+}
+
+.icon-field .field-label {
+  left: 46px;
+}
+
+.icon-field:hover .icon,
+.icon-field .stylish-input:focus ~ .icon {
+  color: var(--input-focus, #4f46e5);
+}
+
+.helper, .error-text {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--helper-color, #6b7280);
+} */
+
+.cus-inpt {
+    width: 100%;
+    border: 1px solid #bebdbd;
+    padding: 10px;
+    border-radius: 4px;
+    outline-color: #0d6efd;
+    font-size: 14px;
+}
