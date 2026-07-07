@@ -43,6 +43,7 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
 
   useEffect(() => {
     fetchDropdowns();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDropdowns = async () => {

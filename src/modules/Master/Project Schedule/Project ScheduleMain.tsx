@@ -132,15 +132,42 @@ const formatDateToDDMMYYYY = (val: unknown): string => {
   return "-";
 };
 
+const formatDurationString = (hours: number): string => {
+  if (!hours || hours === 0) return "0 hrs";
+  const totalMins = Math.round(hours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0) return `${h} hr${h !== 1 ? "s" : ""} ${m > 0 ? `${m} min${m !== 1 ? "s" : ""}` : ""}`.trim();
+  return `${m} min${m !== 1 ? "s" : ""}`;
+};
+
+const calcDurationHours = (startTime: unknown, endTime: unknown): number => {
+  const st = extractTime(startTime, "00:00");
+  const et = extractTime(endTime, "00:00");
+  if (!st || !et || (st === "00:00" && et === "00:00")) return 0;
+  const [sh, sm] = st.split(":").map(Number);
+  const [eh, em] = et.split(":").map(Number);
+  if ([sh, sm, eh, em].some(isNaN)) return 0;
+  let diffMins = (eh * 60 + em) - (sh * 60 + sm);
+  if (diffMins < 0) diffMins += 24 * 60;
+  return Math.round((diffMins / 60) * 100) / 100;
+};
+
+interface ProjectSchedulesMainPageProps {
+  loading?: boolean;
+  loadingOn?: () => void;
+  loadingOff?: () => void;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
-const ProjectSchedulesMainPage: React.FC = () => {
+const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loadingOn, loadingOff }) => {
   const [schedules,        setSchedules]        = useState<ProjectScheduleDisplay[]>([]);
   const [searchTerm,       setSearchTerm]        = useState("");
   const [scheduleObj,      setScheduleObj]       = useState<projectscheduleCreateInput>(emptyprojectschedule);
   const [selectedId,       setSelectedId]        = useState<number | null>(null);
   const [dialogType,       setDialogType]        = useState<"create" | "edit" | "view" | "delete" | null>(null);
   const [error,            setError]             = useState<string | null>(null);
-  const [loading,          setLoading]           = useState(false);
+  const [,          setLoading]           = useState(false);
 
   const [assignTaskOpen,                setAssignTaskOpen]                = useState(false);
   const [assignTaskLoading,             setAssignTaskLoading]             = useState(false);
@@ -204,37 +231,14 @@ const ProjectSchedulesMainPage: React.FC = () => {
   const fetchSchedulesList = async () => {
     try {
       setLoading(true);
-      const result = await getprojectschedule(1, 20, "Sch_Id", "DESC");
+      // Fetch 100000 rows so the frontend DataTable can properly paginate all your data client-side
+      const result = await getprojectschedule(1, 100000, "Sch_Id", "DESC", undefined, loadingOn, loadingOff);
       const schedulesData = result.data as ProjectScheduleDisplay[];
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const empRes = await fetchLink<any>({ address: "masters/projectScheduleEmp/list/", method: "GET" });
-        if (empRes?.success) {
-          let empData = empRes.data;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (empData && (empData as any).data) empData = (empData as any).data;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          else if (empData && (empData as any).items) empData = (empData as any).items;
-          
-          if (Array.isArray(empData)) {
-            const counts: Record<number, Set<number>> = {};
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            empData.forEach((item: any) => {
-              const schId = Number(item.Sch_Id || item.schId);
-              const empId = Number(item.Emp_Id || item.empId);
-              if (schId && empId && !isNaN(schId) && !isNaN(empId)) {
-                if (!counts[schId]) counts[schId] = new Set();
-                counts[schId].add(empId);
-              }
-            });
-            schedulesData.forEach(s => {
-              s.empCount = counts[s.schId] ? counts[s.schId].size : 0;
-            });
-          }
-        }
+        // empCount is now natively returned by the getprojectschedule API, so we don't need to fetch the massive projectScheduleEmp/list payload!
       } catch (e) {
-        console.error("Failed to fetch emp counts", e);
+        console.error("Failed to process emp counts", e);
       }
 
       try {
@@ -524,7 +528,6 @@ const ProjectSchedulesMainPage: React.FC = () => {
   return (
     <>
       {error && <Alert severity="error" sx={{ mb: 2, fontSize: "0.75rem", py: 0.5 }}>{error}</Alert>}
-      {loading && <Alert severity="info" sx={{ mb: 2, fontSize: "0.75rem", py: 0.5 }}>Loading project schedules...</Alert>}
 
       <Box sx={{ width: "100%", overflowX: "auto" }}>
       <DataTable
@@ -646,8 +649,22 @@ const ProjectSchedulesMainPage: React.FC = () => {
           {
             isVisible: 1, ColumnHeader: "Duration", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
-              const r = row as unknown as projectscheduleData;
-              return <span>{r.taskSchDuration || 0} hrs</span>;
+              const r = row as unknown as ProjectScheduleDisplay;
+              let startT = r.schEstStartTime;
+              let endT = r.schEstEndTime;
+              if (r.taskDates && r.taskDates.length > 0) {
+                const latest = [...r.taskDates].sort((a, b) => {
+                  const toMs = (v: string) => {
+                    const ymd = toYMD(v);
+                    return ymd ? new Date(ymd + "T00:00:00").getTime() : 0;
+                  };
+                  return toMs(b.taskWorkDate) - toMs(a.taskWorkDate);
+                })[0];
+                startT = latest.taskStartTime || startT;
+                endT = latest.taskEndTime || endT;
+              }
+              const calculatedHours = calcDurationHours(startT, endT);
+              return <span>{formatDurationString(calculatedHours)}</span>;
             },
           },
           {

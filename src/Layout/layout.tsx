@@ -15,7 +15,7 @@ interface AppLayoutProps {
   loadingOff: () => void;
 }
 
-const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
+const AppLayout: React.FC<AppLayoutProps> = ({ children, loadingOn, loadingOff }) => {
   const { navDetails, setCurrentPage } = useAuth();
   const location = useLocation();
   const theme = useTheme();
@@ -55,6 +55,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <LayoutHeader
         onToggleTodayPlan={toggleTodayPlan}
         todayPlanOpen={isTodayPlanOpen}
+        loadingOn={loadingOn}
+        loadingOff={loadingOff}
       />
 
       {/* BODY ROW — alignItems:"stretch" is the key fix so sidebar fills height */}
@@ -103,7 +105,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   onToggle={toggleTodayPlan}
                   height="100%"
                 >
-                  <Box sx={{ 
+                  <Box 
+                    id="today-plan-inner"
+                    sx={{ 
+                    position: "relative",
                     height: "100%", 
                     overflowY: "auto",
                     "&::-webkit-scrollbar": { 
@@ -126,7 +131,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             height="100%"
           >
             <Box
+              id="today-plan-inner"
               sx={{
+                position: "relative",
                 height: "100%",
                 overflowY: "auto",
                 overflowX: "hidden",
@@ -168,7 +175,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             }}
           >
             <CardContent
+              id="main-card-inner"
               sx={{
+                position: "relative",
                 flex: 1,
                 p: { xs: 1, sm: 1.5, md: 2, lg: 2.5 },
                 overflowY: "auto",

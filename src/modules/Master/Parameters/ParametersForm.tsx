@@ -3,11 +3,10 @@ import {
   TextField, 
   FormControl, 
   InputLabel, 
-  Select, 
-  MenuItem, 
   type SelectChangeEvent 
 } from "@mui/material";
 import AppDialog from "../../../Components/appDialog";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import type { 
   parameterCreateInput, 
   datatypeDropdown 
@@ -90,24 +89,20 @@ export const ParameterDialog: React.FC<ParameterDialogProps> = ({
         
         <FormControl fullWidth margin="dense" disabled={isLoading}>
           <InputLabel id="datatype-label">Data Type</InputLabel>
-          <Select
+          <SearchableSelect
             labelId="datatype-label"
             label="Data Type"
             value={selectValue}
-            onChange={handleDatatypeChange}
-          >
-            <MenuItem value="">
-              Select Data Type
-            </MenuItem>
-            {validDatatypes.map((datatype) => (
-              <MenuItem 
-                key={datatype.Para_Data_Type_Id} 
-                value={datatype.Para_Data_Type_Id!.toString()}
-              >
-                {datatype.Para_Display_Name || `Data Type ${datatype.Para_Data_Type_Id}`}
-              </MenuItem>
-            ))}
-          </Select>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onChange={handleDatatypeChange as any}
+            searchPlaceholder="Search data type..."
+            allOptionLabel="Select Data Type"
+            allOptionValue=""
+            options={validDatatypes.map((datatype) => ({
+              value: datatype.Para_Data_Type_Id!.toString(),
+              label: datatype.Para_Display_Name || `Data Type ${datatype.Para_Data_Type_Id}`
+            }))}
+          />
         </FormControl>
       </AppDialog>
     );

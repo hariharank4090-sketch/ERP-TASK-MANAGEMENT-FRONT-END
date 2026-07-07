@@ -16,8 +16,6 @@ import {
   Stack,
   Button,
   FormControl,
-  Select,
-  MenuItem,
   type SelectChangeEvent,
   Chip,
   Tooltip,
@@ -27,7 +25,8 @@ import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import TodayIcon from "@mui/icons-material/Today";
 import { toast } from "react-toastify";
-
+import SearchableSelect from "../../Components/SearchableSelect";
+import LoadingScreen from "../../Components/loadingScreen";
 import {
   getEnrichedTodayPlan,
   getEmployeeDropdown,
@@ -158,27 +157,34 @@ const fetchWorkStatuses = async (
   if (tasks.length === 0) return new Set();
 
   try {
-    const empIds = [...new Set(tasks.map(t => t.Emp_Id).filter(id => id != null))];
+    // Extract the valid employee IDs from tasks to filter our single API response
+    const validEmpIds = [...new Set(tasks.map(t => t.Emp_Id).filter(id => id != null))];
     const hasWorkKeysSet = new Set<string>();
 
-    for (const empId of empIds) {
-      const workMasterResponse = await getWorkMaster({ empId }, undefined, undefined);
+    // Fetch ALL work data in ONE request instead of N parallel requests to fix the massive waterfall delay!
+    const todayStr = getCurrentDateFormatted();
+    const singleResponse = await getWorkMaster({ fromDate: todayStr, toDate: todayStr }, undefined, undefined);
+    
+    const results = [singleResponse];
 
+    results.forEach(workMasterResponse => {
       if (workMasterResponse.success && workMasterResponse.data.length > 0) {
         workMasterResponse.data.forEach((work: any) => {
-          const workDate = getDateOnly(work.Work_Dt);
-          const taskKey = `${work.Task_Id}_${work.Emp_Id}`;
-          const dateKey = `${taskKey}_${workDate}`;
+          if (validEmpIds.includes(work.Emp_Id)) {
+            const workDate = getDateOnly(work.Work_Dt);
+            const taskKey = `${work.Task_Id}_${work.Emp_Id}`;
+            const dateKey = `${taskKey}_${workDate}`;
 
-          if (work.Work_Status === "Completed" ||
-            work.Work_Status === "Pending" ||
-            work.Work_Status === "In Progress" ||
-            work.Tot_Minutes > 0) {
-            hasWorkKeysSet.add(dateKey);
+            if (work.Work_Status === "Completed" ||
+              work.Work_Status === "Pending" ||
+              work.Work_Status === "In Progress" ||
+              work.Tot_Minutes > 0) {
+              hasWorkKeysSet.add(dateKey);
+            }
           }
         });
       }
-    }
+    });
 
     return hasWorkKeysSet;
   } catch (err) {
@@ -332,10 +338,11 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
         else setLoading(true);
         if (isMounted.current) setError(null);
 
+        const todayStr = getCurrentDateFormatted();
         const [empRes, todayRes, workRes] = await Promise.all([
           getEmployeeDropdown(companyId ?? undefined),
-          getEnrichedTodayPlan({}, companyId),
-          getEnrichedWorkMaster({}),
+          getEnrichedTodayPlan({ from_Task_Assign_dt: todayStr, to_Task_Assign_dt: todayStr }, companyId),
+          getEnrichedWorkMaster({ fromDate: todayStr, toDate: todayStr }),
         ]);
 
         if (!isMounted.current) return;
@@ -542,36 +549,15 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
 
   const todayDateForDisplay = useMemo(() => getCurrentDateFormatted(), []);
 
-  if (isSwitchingCompany) {
-    return (
-      <Box width="100%">
-        <Paper sx={{ borderRadius: 2, boxShadow: 3, p: 3 }}>
-          <Box display="flex" justifyContent="center" alignItems="center" flexDirection="column" gap={2}>
-            <CircularProgress size={40} />
-            <Typography variant="body2" color="textSecondary">Switching company…</Typography>
-          </Box>
-        </Paper>
-      </Box>
-    );
-  }
-
-  if (loading) {
-    return (
-      <Box width="100%">
-        <Paper sx={{ borderRadius: 2, boxShadow: 3, p: 3 }}>
-          <Box display="flex" justifyContent="center" alignItems="center" flexDirection="column" gap={2}>
-            <CircularProgress size={40} />
-            <Typography variant="body2" color="textSecondary">
-              Loading tasks for {currentCompany?.companyName || "company"}…
-            </Typography>
-          </Box>
-        </Paper>
-      </Box>
-    );
-  }
+  // The LoadingScreen now handles its own 3-spin minimum display natively!
 
   return (
-    <Box width="100%">
+    <Box width="100%" id="today-plan-inner">
+      <LoadingScreen 
+        loading={loading || isSwitchingCompany} 
+        message={isSwitchingCompany ? "Switching company…" : `Loading tasks for ${currentCompany?.companyName || "company"}…`} 
+        targetId="today-plan-inner" 
+      />
       <Paper sx={{ borderRadius: 2, boxShadow: 3 }}>
         <Box
           sx={{
@@ -609,25 +595,25 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
             </Stack>
 
             <FormControl size="small" sx={{ minWidth: 160 }}>
-              <Select
+              <SearchableSelect
                 value={selectedEmployee}
                 onChange={handleEmployeeChange}
                 displayEmpty
                 disabled={refreshing}
                 sx={{ backgroundColor: "#fff", borderRadius: 1, fontSize: "0.85rem", height: 40 }}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected) return "All Employees";
                   const emp = employees.find((e) => String(e.Emp_Id) === selected);
                   return emp?.Emp_Name || selected;
                 }}
-              >
-                <MenuItem value="">All Employees</MenuItem>
-                {employees.map((emp: Employee) => (
-                  <MenuItem key={emp.Emp_Id} value={emp.Emp_Id.toString()}>
-                    {emp.Emp_Name}
-                  </MenuItem>
-                ))}
-              </Select>
+                searchPlaceholder="Search employee..."
+                allOptionLabel="All Employees"
+                allOptionValue=""
+                options={employees.map((emp: Employee) => ({
+                  value: emp.Emp_Id.toString(),
+                  label: emp.Emp_Name
+                }))}
+              />
             </FormControl>
 
             <Tooltip title="Refresh Data">

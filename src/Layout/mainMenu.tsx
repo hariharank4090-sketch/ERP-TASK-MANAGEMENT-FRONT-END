@@ -20,7 +20,6 @@ import { flattenTree } from "../utils/menuManagement";
 import type { PageProps } from "../routes/indexRouter";
 import { Menu as MenuIcon, Close as CloseIcon } from "@mui/icons-material";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import LoadingScreen from "../Components/loadingScreen";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -218,7 +217,7 @@ interface MainMenuProps extends PageProps {
     onToggleTodayPlan?: () => void;
 }
 
-const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPlan }) => {
+const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPlan, loadingOn, loadingOff }) => {
     const { navDetails } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -228,16 +227,13 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
     const isTablet = useMediaQuery(theme.breakpoints.between("sm", "md"));
 
     const [drawerOpen, setDrawerOpen] = useState(false);
-    const [isNavigating, setIsNavigating] = useState(false);
 
     const handleNavigation = (path: string) => {
-        setIsNavigating(true);
-        setTimeout(() => {
-            navigate(path);
-            // Force a full page reload to ensure fresh data is fetched
-            window.location.reload();
-            setIsNavigating(false);
-        }, 500);
+        if (loadingOn) loadingOn();
+        navigate(path);
+        setDrawerOpen(false); // Close drawer on mobile navigation
+        // loadingOff immediately lets the LoadingScreen's 3300ms minimum duration take over
+        if (loadingOff) setTimeout(() => loadingOff(), 50);
     };
 
     // Flatten the entire tree then filter menuType === 2 (main menu nodes).
@@ -284,7 +280,6 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
                         onNavigate={handleNavigation}
                         onToggleTodayPlan={onToggleTodayPlan}
                     />
-                    <LoadingScreen loading={isNavigating} message="Loading..." />
                 </>
             );
         }
@@ -325,7 +320,6 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
                     currentPath={currentPath}
                     onNavigate={handleNavigation}
                 />
-                <LoadingScreen loading={isNavigating} message="Loading..." />
             </HeaderWrapper>
         );
     }
@@ -344,7 +338,6 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
                     </MenuButton>
                 ))}
             </MenuPill>
-            <LoadingScreen loading={isNavigating} message="Loading..." />
         </HeaderWrapper>
     );
 };

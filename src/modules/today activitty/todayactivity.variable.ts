@@ -19,10 +19,11 @@ export type WorkMasterData = {
     Update_By: null | string;
     Update_Date: null | string;
     Process_Id: null | string;
+   
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     parameters: any[];
     Emp_Name?: string;
-    // ✅ New fields for Schedule Start and End Dates
+    
     Sch_Start_Date: string | null;
     Sch_End_Date: string | null;
 };

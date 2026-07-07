@@ -153,15 +153,18 @@ export interface TodayPlanQueryParams {
     sortOrder?: 'ASC' | 'DESC';
     fromDate?: string;
     toDate?: string;
+    from_Task_Assign_dt?: string;
+    to_Task_Assign_dt?: string;
     empId?: number;
 }
 
-// Work Master Query Parameters - removed fromDate/toDate
 export interface WorkMasterQueryParams {
     search?: string;
     empId?: number;
     taskId?: number;
     schId?: number;
+    fromDate?: string;
+    toDate?: string;
     workStatus?: string;
     sortBy?: string;
     sortOrder?: string;

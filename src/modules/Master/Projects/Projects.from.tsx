@@ -3,8 +3,6 @@ import {
   TextField,
   FormControl,
   InputLabel,
-  Select,
-  MenuItem,
   type SelectChangeEvent,
   CircularProgress,
   Box,
@@ -18,6 +16,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs, { Dayjs } from "dayjs";
 
 import AppDialog from "../../../Components/appDialog";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 import type {
   projectCreateInput,
@@ -204,18 +203,19 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
 
               <FormControl fullWidth required>
                 <InputLabel>Project Head *</InputLabel>
-                <Select
+                <SearchableSelect
                   value={currentProjectObj.Project_Head ?? ""}
-                  onChange={handleProjectHeadChange}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onChange={handleProjectHeadChange as any}
                   label="Project Head *"
-                >
-                  <MenuItem value="">Select Project Head</MenuItem>
-                  {projectHeadOptions.map((h) => (
-                    <MenuItem key={h.value} value={h.value}>
-                      {h.label}
-                    </MenuItem>
-                  ))}
-                </Select>
+                  searchPlaceholder="Search project head..."
+                  allOptionLabel="Select Project Head"
+                  allOptionValue=""
+                  options={projectHeadOptions.map((h) => ({
+                    value: h.value,
+                    label: h.label
+                  }))}
+                />
               </FormControl>
 
               <DatePicker
@@ -250,14 +250,17 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
 
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
-                <Select
+                <SearchableSelect
                   value={currentProjectObj.Project_Status}
-                  onChange={handleStatusChange}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onChange={handleStatusChange as any}
                   label="Status"
-                >
-                  <MenuItem value={1}>Active</MenuItem>
-                  <MenuItem value={0}>Inactive</MenuItem>
-                </Select>
+                  searchPlaceholder="Search status..."
+                  options={[
+                    { value: 1, label: "Active" },
+                    { value: 0, label: "Inactive" }
+                  ]}
+                />
               </FormControl>
             </Box>
           </LocalizationProvider>

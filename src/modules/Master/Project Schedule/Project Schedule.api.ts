@@ -98,22 +98,13 @@ export const getprojectschedule = async (
       if (filters.dateTo) url += `&dateTo=${filters.dateTo}`;
     }
 
-    // Fire both requests in parallel
-    const [res, empRes] = await Promise.all([
-      fetchLink<BasicApiResponse>({
-        address: url,
-        method: "GET",
-        loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
-        loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
-      }),
-      fetchLink<BasicApiResponse>({
-        address: "masters/projectScheduleEmp/list/",
-        method: "GET"
-      }).catch(e => {
-        console.error("Failed to fetch employee assignments for counts", e);
-        return null;
-      })
-    ]);
+    // Fire the main request
+    const res = await fetchLink<BasicApiResponse>({
+      address: url,
+      method: "GET",
+      loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+      loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+    });
 
     if (res && res.success) {
 
@@ -123,32 +114,16 @@ export const getprojectschedule = async (
       if (res.data && typeof res.data === 'object') {
 
         if ('data' in res.data && Array.isArray((res.data as any).data)) {
-
           responseData = (res.data as any).data;
-
           totalPages = (res.data as any).totalPages || 1;
         } else if (Array.isArray(res.data)) {
           responseData = res.data;
+          totalPages = (res as any).totalPages || 1;
         }
       }
 
-      // Build employee count map
-      const empCountMap: Record<number, Set<number>> = {};
-      if (empRes && empRes.success) {
-        let allEmpAssignments: any[] = [];
-        if (Array.isArray(empRes.data)) allEmpAssignments = empRes.data;
-        else if (empRes.data && Array.isArray((empRes.data as any).data)) allEmpAssignments = (empRes.data as any).data;
-        else if (empRes.data && Array.isArray((empRes.data as any).items)) allEmpAssignments = (empRes.data as any).items;
-
-        allEmpAssignments.forEach(item => {
-          const schId = Number(item.Sch_Id || item.schId);
-          const empId = Number(item.Emp_Id || item.empId);
-          if (schId && empId && !isNaN(schId) && !isNaN(empId)) {
-            if (!empCountMap[schId]) empCountMap[schId] = new Set();
-            empCountMap[schId].add(empId);
-          }
-        });
-      }
+      // The empCount is now natively returned by the backend in the projectSchedule query.
+      // We no longer need to calculate it client-side.
 
       // Get task type mapping
       const taskTypeMap = await getTaskTypeMap();
@@ -192,7 +167,7 @@ export const getprojectschedule = async (
           projectName: item.projectName || item.Project_Name,
           Project_Id: item.Project_Id || item.Project_Id,
           schType: item.schType || item.Sch_Type || null,
-          empCount: empCountMap[currentSchId]?.size || item.empCount || item.Emp_Count || item.EmployeeCount || item.Employee_Count || item.employeeCount || item.employee_count || item.assignedEmployees || 0,
+          empCount: item.empCount || item.Emp_Count || item.EmployeeCount || item.Employee_Count || item.employeeCount || item.employee_count || item.assignedEmployees || 0,
 
           taskDates: (item.taskDates || item.Task_Dates || item.task_dates || [])?.map((td: any) => {
             if (typeof td === "string" || td instanceof Date) {

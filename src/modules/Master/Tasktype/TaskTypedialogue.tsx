@@ -3,12 +3,12 @@ import {
   TextField, 
   FormControl, 
   InputLabel, 
-  Select, 
-  MenuItem, 
+ 
   type SelectChangeEvent,
   Alert
 } from "@mui/material";
 import AppDialog from "../../../Components/appDialog";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import type { 
   tasktypeCreateInput, 
   ProjectDropdown 
@@ -118,23 +118,21 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
         
         <FormControl fullWidth margin="dense" disabled={isLoading || validProjects.length === 0 || disableProjectSelect}>
           <InputLabel id="project-label" required>Project</InputLabel>
-          <Select
+          <SearchableSelect
             labelId="project-label"
             label="Project *"
             value={selectProjectValue}
             onChange={handleProjectChange}
             required
             error={!taskTypeObj.Project_Id}
-          >
-            <MenuItem value="">
-              <em>Select Project</em>
-            </MenuItem>
-            {validProjects.map((project) => (
-              <MenuItem key={project.Project_Id} value={project.Project_Id!.toString()}>
-                {project.Project_Name}
-              </MenuItem>
-            ))}
-          </Select>
+            searchPlaceholder="Search project..."
+            allOptionLabel="Select Project"
+            allOptionValue=""
+            options={validProjects.map((project) => ({
+              value: project.Project_Id!.toString(),
+              label: project.Project_Name
+            }))}
+          />
         </FormControl>
         
         <TextField
@@ -159,18 +157,18 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
 
         <FormControl fullWidth margin="dense" disabled={isLoading}>
           <InputLabel id="status-label">Status</InputLabel>
-          <Select
+          <SearchableSelect
             labelId="status-label"
             label="Status"
             value={selectStatusValue}
-            onChange={handleStatusChange}
-          >
-            {statusOptions.map((option) => (
-              <MenuItem key={option.value} value={option.value}>
-                {option.label}
-              </MenuItem>
-            ))}
-          </Select>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onChange={handleStatusChange as any}
+            searchPlaceholder="Search status..."
+            options={statusOptions.map((option) => ({
+              value: option.value,
+              label: option.label
+            }))}
+          />
         </FormControl>
       </AppDialog>
     );

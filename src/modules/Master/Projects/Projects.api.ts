@@ -11,7 +11,7 @@ import type {
 
 const projectAPI = "masters/project/";
 const companyAPI = "masters/dropdowns/company";
-const projectheadAPI = "masters/dropdowns/projectheads";
+const projectheadAPI = "masters/employees";
 
 // Get all projects
 export const getProjectMaster = async (
@@ -113,13 +113,13 @@ export const getProjectHeadDropdown = async (
     });
 
     if (res && res.success) {
-      const projectheadData = res.data as unknown as Array<{ UserId: number; label: string }>;
+      const projectheadData = res.data as unknown as Array<{ Emp_Id: number; Emp_Name: string }>;
       
       if (projectheadData && Array.isArray(projectheadData)) {
-        // Transform UserId to value for consistent dropdown handling
+        // Transform Emp_Id to value for consistent dropdown handling
         const transformedData = projectheadData.map(item => ({
-          value: item.UserId,
-          label: item.label
+          value: item.Emp_Id,
+          label: item.Emp_Name
         }));
         console.log("Project Head Dropdown Data:", transformedData); // Debug log
         return transformedData;

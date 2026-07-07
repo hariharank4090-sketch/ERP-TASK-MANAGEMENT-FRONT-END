@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
 import {
   AppBar,
@@ -29,6 +30,8 @@ interface LayoutHeaderProps {
   onToggleTodayPlan?: () => void;
   todayPlanOpen?: boolean;
   viewMore?: boolean;
+  loadingOn?: () => void;
+  loadingOff?: () => void;
 }
 
 interface UserDetails {
@@ -40,6 +43,8 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
   onToggleTodayPlan,
   todayPlanOpen = false,
   viewMore = false,
+  loadingOn,
+  loadingOff,
 }) => {
   const { currentPage, navDetails, logout } = useAuth();
   const navigate = useNavigate();
@@ -130,7 +135,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
           {!viewMore && (
             <>
               {isMobile ? (
-                <MainMenuList loading={false} loadingOn={() => {}} loadingOff={() => {}} mobileLeftMode={true} onToggleTodayPlan={onToggleTodayPlan} />
+                <MainMenuList mobileLeftMode={true} onToggleTodayPlan={onToggleTodayPlan} loading={false} loadingOn={loadingOn!} loadingOff={loadingOff!} />
               ) : (
                 <IconButton
                   size="small"
@@ -165,7 +170,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
 
         {/* CENTER – Menu */}
         <CenterSection>
-          <MainMenuList loading={false} loadingOn={() => {}} loadingOff={() => {}} />
+          <MainMenuList loading={false} loadingOn={loadingOn!} loadingOff={loadingOff!} />
           {currentPage?.title && !isMobile && (
             <Typography
               sx={{

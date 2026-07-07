@@ -4,8 +4,7 @@ import {
   Box,
   Typography,
   FormControl,
-  Select,
-  MenuItem,
+  
   Paper,
   Alert,
   Chip,
@@ -31,6 +30,7 @@ import { Refresh, ClearAll, Search as SearchIcon, Download as DownloadIcon } fro
 import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../auth/authContext";
+import SearchableSelect from "../../Components/SearchableSelect";
 
 import type { PageProps } from "../../routes/indexRouter";
 import { 
@@ -41,7 +41,9 @@ import {
   fetchTaskTypesByProject,
   getProjectScheduleEmpWithStaffNames,
   getWorkMasterData,
-  getAllTasks
+  getAllTasks,
+  getCachedScheduleEmpData,
+  getCachedWorkMasterData
 } from "./ExecutionReports.api";
 import type { projectData, TaskWithSchedule, TaskDropdown, UserDropdown, TaskTypeDropdown } from "./variables";
 
@@ -160,87 +162,36 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [mappedEmpIds, setMappedEmpIds] = useState<Set<string>>(new Set());
   const [isLoadingUserProjects, setIsLoadingUserProjects] = useState(false);
 
-  // ─── Fetch all projects ─────────────────────────────────────────────────────
-  const fetchProjects = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      if (loadingOn) loadingOn();
-      const data = await getProjectMaster(loadingOn, loadingOff);
-      setProjects(data);
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching projects:", err);
-      setError("Failed to load projects");
-      toast.error("Failed to load projects");
-    } finally {
-      setIsLoading(false);
-      if (loadingOff) loadingOff();
-    }
-  }, [loadingOn, loadingOff]);
+  // ─── Initial master data loading ────────────────────────────────────────────
+  const loadMasterData = useCallback(async () => {
+    setIsLoading(true);
+    setIsLoadingTaskTypes(true);
+    setIsLoadingProjectTasks(true);
+    setIsLoadingUsers(true);
 
-  // ─── Fetch all tasks with schedule data ─────────────────────────────────────
-  const fetchAllTasks = useCallback(async () => {
     try {
-      setIsLoading(true);
-      if (loadingOn) loadingOn();
-      const data = await getTasksWithStaff(loadingOn, loadingOff);
-      setAllTasks(data);
+      const [projData, taskData, ttData, pTaskData, usersData] = await Promise.all([
+        getProjectMaster(),
+        getTasksWithStaff(),
+        fetchTaskTypesByProject(null),
+        fetchTasksByProject(null),
+        getAllEmployees()
+      ]);
+      setProjects(projData);
+      setAllTasks(taskData);
       setFilteredTasks([]); // Don't show data until search is clicked
+      setProjectTaskTypes(ttData);
+      setProjectTasks(pTaskData);
+      setUserOptions(usersData);
       setError(null);
     } catch (err) {
-      console.error("Error fetching tasks:", err);
-      setError("Failed to load tasks");
-      toast.error("Failed to load tasks");
+      console.error("Error loading master data:", err);
+      setError("Failed to load initial data");
+      toast.error("Failed to load data");
     } finally {
       setIsLoading(false);
-      if (loadingOff) loadingOff();
-    }
-  }, [loadingOn, loadingOff]);
-
-  // ─── Fetch task types for selected project (for dropdown) ───────────────────
-  const loadProjectTaskTypes = useCallback(async (projectId: number | null) => {
-    
-    try {
-      setIsLoadingTaskTypes(true);
-      const taskTypes = await fetchTaskTypesByProject(projectId, loadingOn, loadingOff);
-      setProjectTaskTypes(taskTypes);
-    } catch (err) {
-      console.error("Error loading task types:", err);
-      setProjectTaskTypes([]);
-      toast.error("Failed to load task types for selected project");
-    } finally {
       setIsLoadingTaskTypes(false);
-    }
-  }, [loadingOn, loadingOff]);
-
-  // ─── Fetch tasks for selected project (for dropdown) ────────────────────────
-  const loadProjectTasks = useCallback(async (projectId: number | null) => {
-    
-    try {
-      setIsLoadingProjectTasks(true);
-      const tasks = await fetchTasksByProject(projectId, loadingOn, loadingOff);
-      setProjectTasks(tasks);
-    } catch (err) {
-      console.error("Error loading project tasks:", err);
-      setProjectTasks([]);
-      toast.error("Failed to load tasks for selected project");
-    } finally {
       setIsLoadingProjectTasks(false);
-    }
-  }, [loadingOn, loadingOff]);
-
-  // ─── Fetch users for dropdown (All users or task/project-specific) ──────────
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const loadUsers = useCallback(async (_projectId: number | null, _taskId: number | null) => {
-    try {
-      setIsLoadingUsers(true);
-      // Always load all employees so the user dropdown always displays all data
-      const users = await getAllEmployees(loadingOn, loadingOff);
-      setUserOptions(users);
-    } catch (err) {
-      console.error("Error loading users:", err);
-      setUserOptions([]);
-    } finally {
       setIsLoadingUsers(false);
     }
   }, [loadingOn, loadingOff]);
@@ -253,9 +204,9 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     setPage(0);
     setHasSearched(false);
     
-    loadProjectTaskTypes(projectId);
-    loadProjectTasks(projectId);
-    loadUsers(projectId, null);
+    // loadProjectTaskTypes(projectId);
+    // loadProjectTasks(projectId);
+    // loadUsers(projectId, null);
   };
 
   // ─── Handle task type selection change ──────────────────────────────────────
@@ -264,7 +215,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     setSelectedTaskId(null);
     setPage(0);
     setHasSearched(false);
-    loadUsers(selectedProjectId, null);
+    // loadUsers(selectedProjectId, null);
   };
 
   // ─── Handle task selection change ───────────────────────────────────────────
@@ -272,7 +223,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     setSelectedTaskId(taskId);
     setPage(0);
     setHasSearched(false);
-    loadUsers(selectedProjectId, taskId);
+    // loadUsers(selectedProjectId, taskId);
   };
 
   // ─── Handle user selection change ───────────────────────────────────────────
@@ -388,26 +339,22 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     setSelectedWorkStatus("");
     setSearchTerm("");
     setPage(0);
-    loadProjectTaskTypes(null);
-    loadProjectTasks(null);
-    loadUsers(null, null);
+    // loadProjectTaskTypes(null);
+    // loadProjectTasks(null);
+    // loadUsers(null, null);
     setFilteredTasks([]); // Clear table data on reset
     setHasSearched(false);
     toast.info("All filters cleared");
   };
 
   const handleRefresh = () => {
-    fetchProjects();
-    fetchAllTasks();
+    loadMasterData();
     setSelectedProjectId(null);
     setSelectedTaskTypeId(null);
     setSelectedTaskId(null);
     setSelectedUserId(null);
     setSelectedWorkStatus("");
     setSearchTerm("");
-    loadProjectTaskTypes(null);
-    loadProjectTasks(null);
-    loadUsers(null, null);
     setHasSearched(false);
     toast.info("Data refreshed");
   };
@@ -485,12 +432,8 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
 
   // ─── Initial data loading ───────────────────────────────────────────────────
   useEffect(() => {
-    fetchProjects();
-    fetchAllTasks();
-    loadProjectTaskTypes(null);
-    loadProjectTasks(null);
-    loadUsers(null, null);
-  }, [fetchProjects, fetchAllTasks, loadProjectTaskTypes, loadProjectTasks, loadUsers]);
+    loadMasterData();
+  }, [loadMasterData]);
 
   // ─── Auto-select user on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -804,7 +747,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     if (currentPageTasks.length === 0) {
       return (
         <TableBody>
-          {selectedProjectId ? (
+          {selectedProjectId && !selectedWorkStatus ? (
             <TableRow hover sx={{ "&:hover": { bgcolor: "#fafafa" } }}>
               <TableCell>1</TableCell>
               <TableCell>
@@ -1059,6 +1002,28 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         }
       }
     });
+
+    // Also scan the full cached data to ensure we don't miss unscheduled projects assigned to the user
+    if (canSeeAllUsers && selectedUserId) {
+      const scheduleEmpData = getCachedScheduleEmpData();
+      scheduleEmpData.forEach(item => {
+        if (item.Emp_Id === selectedUserId) {
+          if (item.Project_Id) allowedProjectIds.add(Number(item.Project_Id));
+          if (item.Task_Id) allowedTaskIds.add(Number(item.Task_Id));
+          if (item.Task_Type_Id) allowedTaskTypeIds.add(Number(item.Task_Type_Id));
+          if (item.Schedule_Task_Type_Id) allowedTaskTypeIds.add(Number(item.Schedule_Task_Type_Id));
+        }
+      });
+      
+      const workMasterData = getCachedWorkMasterData();
+      workMasterData.forEach(item => {
+        if (item.Emp_Id === selectedUserId) {
+          if (item.Project_Id) allowedProjectIds.add(Number(item.Project_Id));
+          if (item.Task_Id) allowedTaskIds.add(Number(item.Task_Id));
+          if (item.Task_Type_Id) allowedTaskTypeIds.add(Number(item.Task_Type_Id));
+        }
+      });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1119,7 +1084,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               Select Project
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, "& .MuiOutlinedInput-notchedOutline": { padding: 0 } } : {}}
                 displayEmpty
                 value={selectedProjectId ? selectedProjectId.toString() : "all"}
@@ -1127,30 +1092,32 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   const value = e.target.value;
                   handleProjectChange(value === "all" || value === "" ? null : Number(value));
                 }}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected || selected === "") return <em>Select Project</em>;
                   if (selected === "all") return "All Projects";
                   const projectItem = projects.find((p) => p.Project_Id.toString() === selected);
                   return projectItem?.Project_Name || selected;
                 }}
-              >
-                <MenuItem value="" disabled><em>Select Project</em></MenuItem>
-                <MenuItem value="all">All Projects</MenuItem>
-                {projects
+                searchPlaceholder="Search Project..."
+                allOptionLabel="All Projects"
+                allOptionValue="all"
+                options={projects
                   .filter(project => {
                     const pId = Number(project.Project_Id);
                     if (!canSeeAllUsers) {
                       if (isLoadingUserProjects || userAssignedProjectIds === null) return false;
                       return userAssignedProjectIds.has(pId);
                     }
+                    if (selectedUserId || selectedTaskId || selectedTaskTypeId) {
+                      return allowedProjectIds.has(pId);
+                    }
                     return true;
                   })
-                  .map((project) => (
-                  <MenuItem key={project.Project_Id} value={project.Project_Id.toString()}>
-                    {project.Project_Name}
-                  </MenuItem>
-                ))}
-              </Select>
+                  .map((project) => ({
+                  value: project.Project_Id.toString(),
+                  label: project.Project_Name
+                }))}
+              />
             </FormControl>
           </Grid>
 
@@ -1160,7 +1127,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               Task Type
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
                 displayEmpty
                 value={selectedTaskTypeId ? selectedTaskTypeId.toString() : "all"}
@@ -1169,29 +1136,32 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   handleTaskTypeChange(value === "all" || value === "" ? null : Number(value));
                 }}
                 disabled={isLoadingTaskTypes}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected || selected === "") return <em>Select Task Type</em>;
                   if (selected === "all") return "All Task Types";
                   const typeItem = projectTaskTypes.find((t) => t.Task_Type_Id.toString() === selected);
                   return typeItem?.Task_Type || selected;
                 }}
-              >
-                <MenuItem value="" disabled><em>Select Task Type</em></MenuItem>
-                <MenuItem value="all">All Task Types</MenuItem>
-                {projectTaskTypes
+                searchPlaceholder="Search Task Type..."
+                allOptionLabel="All Task Types"
+                allOptionValue="all"
+                options={projectTaskTypes
+                  .filter(type => !selectedProjectId || type.Project_Id === selectedProjectId)
                   .filter(type => {
                     if (!canSeeAllUsers) {
                       if (isLoadingUserProjects || userAssignedTaskTypeIds === null) return false;
                       return userAssignedTaskTypeIds.has(Number(type.Task_Type_Id));
                     }
+                    if (selectedUserId || selectedTaskId) {
+                      return allowedTaskTypeIds.has(Number(type.Task_Type_Id));
+                    }
                     return true;
                   })
-                  .map((type) => (
-                  <MenuItem key={type.Task_Type_Id} value={type.Task_Type_Id.toString()}>
-                    {type.Task_Type}
-                  </MenuItem>
-                ))}
-              </Select>
+                  .map((type) => ({
+                  value: type.Task_Type_Id.toString(),
+                  label: type.Task_Type
+                }))}
+              />
               {isLoadingTaskTypes && (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
                   <CircularProgress size={12} />
@@ -1209,7 +1179,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               Task
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
                 displayEmpty
                 value={selectedTaskId ? selectedTaskId.toString() : "all"}
@@ -1218,30 +1188,33 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   handleTaskChange(value === "all" || value === "" ? null : Number(value));
                 }}
                 disabled={isLoadingProjectTasks}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected || selected === "") return <em>Select Task</em>;
                   if (selected === "all") return "All Tasks";
                   const taskItem = projectTasks.find((t) => t.Task_Id.toString() === selected);
                   return taskItem?.Task_Name || selected;
                 }}
-              >
-                <MenuItem value="" disabled><em>Select Task</em></MenuItem>
-                <MenuItem value="all">All Tasks</MenuItem>
-                {projectTasks
+                searchPlaceholder="Search Task..."
+                allOptionLabel="All Tasks"
+                allOptionValue="all"
+                options={projectTasks
+                  .filter((task) => !selectedProjectId || task.Project_Id === selectedProjectId)
                   .filter((task) => !selectedTaskTypeId || task.Task_Type_Id === selectedTaskTypeId)
                   .filter((task) => {
                     if (!canSeeAllUsers) {
                       if (isLoadingUserProjects || userAssignedTaskIds === null) return false;
                       return userAssignedTaskIds.has(Number(task.Task_Id));
                     }
+                    if (selectedUserId || selectedTaskTypeId) {
+                      return allowedTaskIds.has(Number(task.Task_Id));
+                    }
                     return true;
                   })
-                  .map((task) => (
-                  <MenuItem key={task.Task_Id} value={task.Task_Id.toString()}>
-                    {task.Task_Name}
-                  </MenuItem>
-                ))}
-              </Select>
+                  .map((task) => ({
+                  value: task.Task_Id.toString(),
+                  label: task.Task_Name
+                }))}
+              />
               {isLoadingProjectTasks && (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
                   <CircularProgress size={12} />
@@ -1259,7 +1232,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               User
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
                 displayEmpty
                 value={selectedUserId?.toString() || ""}
@@ -1267,7 +1240,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   const value = e.target.value;
                   handleUserChange(value ? Number(value) : null);
                 }}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected || selected === "") {
                     return canSeeAllUsers ? "All Users" : <em>Select User</em>;
                   }
@@ -1275,11 +1248,10 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   const userItem = userOptions.find((u) => u.User_Id.toString() === selected);
                   return userItem?.User_Name || selected;
                 }}
-              >
-                {canSeeAllUsers && (
-                  <MenuItem value="">All Users</MenuItem>
-                )}
-                {userOptions
+                searchPlaceholder="Search User..."
+                allOptionLabel={canSeeAllUsers ? "All Users" : undefined}
+                allOptionValue=""
+                options={userOptions
                   .filter((u) => {
                     if (!canSeeAllUsers) {
                       return mappedEmpIds.has(String(u.User_Id));
@@ -1289,12 +1261,11 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                     }
                     return true;
                   })
-                  .map((u) => (
-                  <MenuItem key={u.User_Id} value={u.User_Id.toString()}>
-                    {u.User_Name}
-                  </MenuItem>
-                ))}
-              </Select>
+                  .map((u) => ({
+                  value: u.User_Id.toString(),
+                  label: u.User_Name
+                }))}
+              />
               {isLoadingUsers && (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
                   <CircularProgress size={12} />
@@ -1312,20 +1283,22 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               Work Status
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
                 displayEmpty
                 value={selectedWorkStatus}
                 onChange={(e: SelectChangeEvent<string>) => {
                   handleWorkStatusChange(e.target.value);
                 }}
-              >
-                {workStatusOptions.map((status) => (
-                  <MenuItem key={status || "all"} value={status}>
-                    {status || "All Statuses"}
-                  </MenuItem>
-                ))}
-              </Select>
+                renderValue={(selected: any) => selected || "All Statuses"}
+                searchPlaceholder="Search Status..."
+                allOptionLabel="All Statuses"
+                allOptionValue=""
+                options={workStatusOptions.map((status) => ({
+                  value: status,
+                  label: status || "All Statuses"
+                }))}
+              />
             </FormControl>
           </Grid>
 

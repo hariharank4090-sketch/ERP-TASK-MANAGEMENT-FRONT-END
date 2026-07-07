@@ -19,8 +19,6 @@ import {
   IconButton,
   FormControl,
   InputLabel,
-  Select,
-  MenuItem,
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import SearchIcon from "@mui/icons-material/Search";
@@ -29,6 +27,7 @@ import Grid from "@mui/material/Grid";
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
 import SelectUserCard from "../../../Components/SelectUserCard";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 const TASK_DETAIL_API = "masters/projectScheduleEmp/";
 const EMPLOYEE_API = "masters/employees/";
@@ -726,19 +725,21 @@ const AssignTask: React.FC<PageProps> = ({
 
         <FormControl fullWidth sx={{ mb: 2 }} size="small">
           <InputLabel>Involvement Status</InputLabel>
-          <Select
+          <SearchableSelect
             name="Invovled_Stat"
             value={formData.Invovled_Stat}
             onChange={(e) =>
               handleSelectChange(e as SelectChangeEvent, "Invovled_Stat")
             }
             label="Involvement Status"
-          >
-            <MenuItem value="1">Active</MenuItem>
-            <MenuItem value="0">Inactive</MenuItem>
-            <MenuItem value="2">Pending</MenuItem>
-            <MenuItem value="3">Completed</MenuItem>
-          </Select>
+            searchPlaceholder="Search status..."
+            options={[
+              { value: "1", label: "Active" },
+              { value: "0", label: "Inactive" },
+              { value: "2", label: "Pending" },
+              { value: "3", label: "Completed" }
+            ]}
+          />
         </FormControl>
 
         <Divider sx={{ my: 2 }} />

@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select,
-    MenuItem, InputLabel, FormControl, FormControlLabel, Switch, IconButton, Table, TableBody, TableCell,
+    Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
+    InputLabel, FormControl, FormControlLabel, Switch, IconButton, Table, TableBody, TableCell,
     TableContainer, TableHead, TableRow, Paper, Stack, Typography, Snackbar, Alert
 } from "@mui/material";
+import SearchableSelect from "../../Components/SearchableSelect";
 import { Add, Edit } from '@mui/icons-material';
 import type { MenuRow, MenuPayload, MenuFormState, MenuFormDialogProps, ToastState } from "./types";
 import { getAppMenuData } from "./api";
@@ -93,23 +94,23 @@ function MenuFormDialog({ open, onClose, initial, allMenus, onSubmit }: MenuForm
                 <Stack spacing={2} mt={1}>
                     <FormControl fullWidth>
                         <InputLabel id="parent-select-label">Parent</InputLabel>
-                        <Select
+                        <SearchableSelect
                             labelId="parent-select-label"
                             label="Parent"
                             value={form.parentId ?? ""}
                             onChange={(e: any) =>
                                 handleChange("parentId", e.target.value === "" ? null : Number(e.target.value))
                             }
-                        >
-                            <MenuItem value="">
-                                <em>— Root —</em>
-                            </MenuItem>
-                            {options.map((r) => (
-                                <MenuItem key={r.menuId} value={r.menuId} disabled={blockedParentIds.has(r.menuId)}>
-                                    <span style={{ paddingLeft: (r as any).depth * 12 }}>{(r as any).fullPath}</span>
-                                </MenuItem>
-                            ))}
-                        </Select>
+                            options={options.map((r) => ({
+                                value: r.menuId,
+                                label: `${" ".repeat((r as any).depth * 2)}${(r as any).fullPath}`,
+                                searchText: (r as any).fullPath,
+                                disabled: blockedParentIds.has(r.menuId)
+                            }))}
+                            allOptionLabel={<em>— Root —</em>}
+                            allOptionValue=""
+                            searchPlaceholder="Search parent..."
+                        />
                     </FormControl>
 
                     <TextField
@@ -132,17 +133,19 @@ function MenuFormDialog({ open, onClose, initial, allMenus, onSubmit }: MenuForm
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                         <FormControl fullWidth>
                             <InputLabel id="menu-type-label">Menu Type</InputLabel>
-                            <Select
+                            <SearchableSelect
                                 labelId="menu-type-label"
                                 label="Menu Type"
                                 value={form.menuType}
                                 onChange={(e: any) => handleChange("menuType", Number(e.target.value))}
-                            >
-                                <MenuItem value={0}>Page</MenuItem>
-                                <MenuItem value={1}>Group/Section</MenuItem>
-                                <MenuItem value={2}>Action</MenuItem>
-                                <MenuItem value={3}>External</MenuItem>
-                            </Select>
+                                options={[
+                                    { value: 0, label: "Page" },
+                                    { value: 1, label: "Group/Section" },
+                                    { value: 2, label: "Action" },
+                                    { value: 3, label: "External" }
+                                ]}
+                                searchPlaceholder="Search menu type..."
+                            />
                         </FormControl>
                         <TextField
                             label="Sort Order"

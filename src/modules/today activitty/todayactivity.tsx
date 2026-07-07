@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import {
   Box,
@@ -220,6 +221,7 @@ const WorkAbstract = () => {
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedTask, setSelectedTask] = useState<string>("");
+  const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [fromDate, setFromDate] = useState<string>(getTodayDate());
   const [toDate, setToDate] = useState<string>(getTodayDate());
 
@@ -251,7 +253,7 @@ const WorkAbstract = () => {
 
   // edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState<boolean>(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const [selectedRowData, setSelectedRowData] = useState<any>(null);
 
   // Check if current user can see "All Users" option (UserTypeId === 1 or UserTypeId === 0)
@@ -275,7 +277,15 @@ const WorkAbstract = () => {
 
         // Auto-select first user and auto-load data
         if (usersData && usersData.length > 0) {
-          const defaultUser = canSeeAllUsers ? "all" : String(usersData[0].Emp_Id);
+          let defaultUser = "all";
+          if (!canSeeAllUsers) {
+            const loggedInEmp = usersData.find(u => 
+              String(u.Emp_Id) === String(user?.Global_User_ID) || 
+              String(u.Emp_Id) === String(user?.Local_User_ID) ||
+              (user?.Name && u.Emp_Name?.toLowerCase() === user.Name.toLowerCase())
+            );
+            defaultUser = loggedInEmp ? String(loggedInEmp.Emp_Id) : String(usersData[0].Emp_Id);
+          }
           setSelectedUser(defaultUser);
           setIsFilterLoaded(true);
           
@@ -300,6 +310,9 @@ const WorkAbstract = () => {
               enriched = enriched.filter((row: any) =>
                 isInDateRange(row.Work_Dt, params.fromDate, params.toDate)
               );
+              if (defaultUser !== "all") {
+                enriched = enriched.filter((row: any) => String(row.Emp_Id) === defaultUser);
+              }
               setWorkData(enriched);
               setIsSearchPerformed(true);
             }
@@ -318,6 +331,7 @@ const WorkAbstract = () => {
       }
     };
     loadMasterData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Filter projects based on selected user and date range ──────────────────
@@ -489,6 +503,17 @@ const WorkAbstract = () => {
           isInDateRange(row.Work_Dt, fromDate, toDate)
         );
 
+        if (selectedUser !== "all") {
+          enriched = enriched.filter((row) => String(row.Emp_Id) === selectedUser);
+        }
+
+        if (selectedStatus) {
+          enriched = enriched.filter((row) => {
+            const status = row.Work_Status || "Pending";
+            return status.toLowerCase() === selectedStatus.toLowerCase();
+          });
+        }
+
         setWorkData(enriched);
 
         if (!enriched.length) {
@@ -507,12 +532,23 @@ const WorkAbstract = () => {
 
   // ── Reset ────────────────────────────────────────────────────────────────
   const handleResetFilters = () => {
-    const defaultUser = allUsers && allUsers.length > 0 
-      ? (canSeeAllUsers ? "all" : String(allUsers[0].Emp_Id)) 
-      : "";
+    let defaultUser = "";
+    if (allUsers && allUsers.length > 0) {
+      if (canSeeAllUsers) {
+        defaultUser = "all";
+      } else {
+        const loggedInEmp = allUsers.find(u => 
+          String(u.Emp_Id) === String(user?.Global_User_ID) || 
+          String(u.Emp_Id) === String(user?.Local_User_ID) ||
+          (user?.Name && u.Emp_Name?.toLowerCase() === user.Name.toLowerCase())
+        );
+        defaultUser = loggedInEmp ? String(loggedInEmp.Emp_Id) : String(allUsers[0].Emp_Id);
+      }
+    }
     setSelectedUser(defaultUser);
     setSelectedProject("");
     setSelectedTask("");
+    setSelectedStatus("");
     setFromDate(getTodayDate());
     setToDate(getTodayDate());
     setWorkData([]);
@@ -821,11 +857,13 @@ const WorkAbstract = () => {
                 {canSeeAllUsers && (
                   <MenuItem value="all">All Users</MenuItem>
                 )}
-                {allUsers.map((u) => (
-                  <MenuItem key={u.Emp_Id} value={String(u.Emp_Id)}>
-                    {u.Emp_Name}
-                  </MenuItem>
-                ))}
+                {allUsers
+                  .filter((u) => canSeeAllUsers || String(u.Emp_Id) === selectedUser)
+                  .map((u) => (
+                    <MenuItem key={u.Emp_Id} value={String(u.Emp_Id)}>
+                      {u.Emp_Name}
+                    </MenuItem>
+                  ))}
               </Select>
               {loadingUsers && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
             </FormControl>
@@ -922,6 +960,32 @@ const WorkAbstract = () => {
                   No tasks found for this project
                 </Typography>
               )}
+            </FormControl>
+          </Grid>
+
+          {/* Status Dropdown */}
+          <Grid size={{ xs: 4, sm: 6, md: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
+              Status
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                displayEmpty
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                disabled={!isFilterLoaded || loading || !selectedUser}
+                renderValue={(selected) => {
+                  if (!selected) return "All Status";
+                  if (selected === "In Progress") return "In Process";
+                  return selected;
+                }}
+                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, height: "24px" } : {}}
+              >
+                <MenuItem value="">All Status</MenuItem>
+                <MenuItem value="Completed">Completed</MenuItem>
+                <MenuItem value="In Progress">In Process</MenuItem>
+                <MenuItem value="Pending">Pending</MenuItem>
+              </Select>
             </FormControl>
           </Grid>
 

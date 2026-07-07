@@ -20,11 +20,12 @@ import "react-toastify/dist/ReactToastify.css";
 function App() {
     const { token, setNavDetails, currentCompany, isSwitchingCompany } = useAuth();
 
-    const [loading, setLoading] = useState<boolean>(false);
+    const [loadingCount, setLoadingCount] = useState<number>(0);
     const [menuData, setMenuData] = useState<MenuRow[]>([]);
 
-    const loadingOn  = useCallback(() => setLoading(true),  []);
-    const loadingOff = useCallback(() => setLoading(false), []);
+    const loadingOn  = useCallback(() => setLoadingCount(c => c + 1), []);
+    const loadingOff = useCallback(() => setLoadingCount(c => Math.max(0, c - 1)), []);
+    const loading = loadingCount > 0;
 
     // ─── fetchMenuData ────────────────────────────────────────────────────────
     // ✅ FIX: not included in the useEffect dep array below to avoid infinite loops;
@@ -81,6 +82,7 @@ function App() {
                 message={isSwitchingCompany ? "Switching company…" : "Processing the request"}
                 tone="light"
                 logo={<span style={{ fontWeight: 700 }}>ERP</span>}
+                targetId="main-card-inner"
             />
 
             {/*

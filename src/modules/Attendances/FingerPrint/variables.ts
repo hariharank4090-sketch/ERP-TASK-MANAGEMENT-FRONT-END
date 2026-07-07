@@ -69,6 +69,7 @@ export interface EmployeeOption {
     EmpId: string;
     EmpName: string;
     fingerPrintEmpId: string;
+    Department?: string;
 }
 
 export interface DeviceOption {

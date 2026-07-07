@@ -16,7 +16,7 @@ import {
 } from "../utils/menuManagement";
 import LoadingScreen from "../Components/loadingScreen";
 
-export const MenuGroupPage: React.ComponentType<PageProps> = () => {
+export const MenuGroupPage: React.ComponentType<PageProps> = ({ loadingOn, loadingOff }) => {
   const { navDetails } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,7 +26,6 @@ export const MenuGroupPage: React.ComponentType<PageProps> = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isTablet = useMediaQuery(theme.breakpoints.between("sm", "md"));
   const isLargeDesktop = useMediaQuery(theme.breakpoints.up("xl"));
-  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     if (navDetails && navDetails.length > 0) {
@@ -129,13 +128,9 @@ export const MenuGroupPage: React.ComponentType<PageProps> = () => {
   const handleMenuClick = (menu: MenuTreeNode) => {
     const path = resolveMenuPath(menu);
     if (path && path !== "") {
-      setIsNavigating(true);
-      setTimeout(() => {
-        navigate(path);
-        // Force a full page reload to ensure fresh data is fetched
-        window.location.reload();
-        setIsNavigating(false);
-      }, 500);
+      if (loadingOn) loadingOn();
+      navigate(path);
+      if (loadingOff) setTimeout(() => loadingOff(), 50);
     } else {
       console.error(`Invalid path for menu: ${menu.title}`, menu);
     }
@@ -280,14 +275,13 @@ export const MenuGroupPage: React.ComponentType<PageProps> = () => {
         alignItems="center"
         minHeight="400px"
       >
-        <LoadingScreen loading={true} message="Loading..." />
+        <LoadingScreen loading={true} message="Loading..." targetId="main-card-inner" />
       </Box>
     );
   }
 
   return (
     <Box>
-      <LoadingScreen loading={isNavigating} message="Loading..." />
       {/* Menu Grid */}
       {menusToDisplay.length > 0 && (
         <Box sx={{ mt: { xs: 2, sm: 3, md: 4 } }}>

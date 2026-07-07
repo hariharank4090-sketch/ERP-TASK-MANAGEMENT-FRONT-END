@@ -8,6 +8,7 @@ type SoftUILoaderProps = {
     tone?: "light" | "dark";
     logo?: React.ReactNode;
     zIndex?: number;
+    targetId?: string;
 };
 
 const EVENTS_TO_BLOCK: (keyof WindowEventMap)[] = [
@@ -35,8 +36,24 @@ export function LoadingScreen({
     tone = "light",
     logo,
     zIndex = 99999,
+    targetId,
 }: SoftUILoaderProps) {
     const overlayRef = useRef<HTMLDivElement | null>(null);
+    const [targetElement, setTargetElement] = React.useState<HTMLElement | null>(null);
+
+    React.useEffect(() => {
+        if (typeof document !== "undefined") {
+            const findAndSetTarget = () => {
+                const el = targetId ? document.getElementById(targetId) : null;
+                setTargetElement(el || document.body);
+            };
+            findAndSetTarget();
+            
+            // Re-check after a brief delay to catch DOM updates (like login -> dashboard transitions)
+            const timer = setTimeout(findAndSetTarget, 50);
+            return () => clearTimeout(timer);
+        }
+    }, [targetId, loading]);
 
     const theme = useMemo(() => {
         if (tone === "dark") {
@@ -61,8 +78,35 @@ export function LoadingScreen({
         };
     }, [tone]);
 
+    const [internalLoading, setInternalLoading] = React.useState(loading);
+    const startTimeRef = React.useRef<number | null>(null);
+
     useEffect(() => {
-        if (!loading || typeof window === "undefined" || typeof document === "undefined") return;
+        if (loading) {
+            setInternalLoading(true);
+            startTimeRef.current = Date.now();
+        } else {
+            if (startTimeRef.current) {
+                const elapsed = Date.now() - startTimeRef.current;
+                const minTime = 2200; // Exact 2 spins at 1.1s each
+                if (elapsed < minTime) {
+                    const timer = setTimeout(() => {
+                        setInternalLoading(false);
+                        startTimeRef.current = null;
+                    }, minTime - elapsed);
+                    return () => clearTimeout(timer);
+                } else {
+                    setInternalLoading(false);
+                    startTimeRef.current = null;
+                }
+            } else {
+                setInternalLoading(false);
+            }
+        }
+    }, [loading]);
+
+    useEffect(() => {
+        if (!internalLoading || typeof window === "undefined" || typeof document === "undefined") return;
 
         const block = (e: Event) => {
             e.preventDefault();
@@ -75,15 +119,9 @@ export function LoadingScreen({
             return false;
         };
 
-        EVENTS_TO_BLOCK.forEach((t) =>
-            window.addEventListener(t, block, { capture: true, passive: false })
-        );
-
+        const isTargeted = !!targetId;
         const prevHtmlOverflow = document.documentElement.style.overflow;
         const prevBodyOverflow = document.body.style.overflow;
-        document.documentElement.style.overflow = "hidden";
-        document.body.style.overflow = "hidden";
-        document.body.setAttribute("aria-busy", "true");
 
         const focusTrap = () => {
             const el = overlayRef.current;
@@ -92,24 +130,36 @@ export function LoadingScreen({
                 (el as HTMLDivElement).focus();
             }
         };
-        window.addEventListener("focusin", focusTrap, { capture: true });
+
+        if (!isTargeted) {
+            EVENTS_TO_BLOCK.forEach((t) =>
+                window.addEventListener(t, block, { capture: true, passive: false })
+            );
+            document.documentElement.style.overflow = "hidden";
+            document.body.style.overflow = "hidden";
+            document.body.setAttribute("aria-busy", "true");
+            window.addEventListener("focusin", focusTrap, { capture: true });
+        }
 
         overlayRef.current?.focus();
 
         return () => {
-            EVENTS_TO_BLOCK.forEach((t) =>
+            if (!isTargeted) {
+                EVENTS_TO_BLOCK.forEach((t) =>
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    window.removeEventListener(t, block, { capture: true } as any)
+                );
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                window.removeEventListener(t, block, { capture: true } as any)
-            );
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            window.removeEventListener("focusin", focusTrap, { capture: true } as any);
-            document.documentElement.style.overflow = prevHtmlOverflow;
-            document.body.style.overflow = prevBodyOverflow;
-            document.body.removeAttribute("aria-busy");
+                window.removeEventListener("focusin", focusTrap, { capture: true } as any);
+                document.documentElement.style.overflow = prevHtmlOverflow;
+                document.body.style.overflow = prevBodyOverflow;
+                document.body.removeAttribute("aria-busy");
+            }
         };
-    }, [loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [internalLoading]);
 
-    if (!loading) return null;
+    if (!internalLoading) return null;
 
     const overlay = (
         <div
@@ -120,7 +170,7 @@ export function LoadingScreen({
             aria-live="assertive"
             aria-label={typeof message === "string" ? message : "Loading"}
             style={{
-                position: "fixed",
+                position: targetId ? "absolute" : "fixed",
                 inset: 0,
                 zIndex,
                 display: "grid",
@@ -188,15 +238,21 @@ export function LoadingScreen({
                   animation: sui-orbit 1.1s linear infinite;
                   will-change: transform;
                 }
-                .sui-msg {
-                  margin-top: 4px;
-                  font-size: 15px; line-height: 1.35;
-                  color: ${theme.text}; text-align: center;
+                .sui-overlay {
+                  position: ${targetId ? "absolute" : "fixed"};
+                  top: 0; left: 0; width: 100%; height: 100%;
+                  display: flex; justify-content: center; align-items: center;
                   letter-spacing: .2px;
                 }
                 .sui-sub {
                   font-size: 12px; color: ${theme.subtext}; text-align:center;
                   animation: sui-pulse 1.6s ease-in-out infinite;
+                }
+                .sui-msg {
+                  margin-top: 4px;
+                  font-size: 15px; line-height: 1.35;
+                  color: ${theme.text}; text-align: center;
+                  letter-spacing: .2px;
                 }
                 .sui-progress-wrap {
                   width: 100%;
@@ -263,7 +319,7 @@ export function LoadingScreen({
         </div>
     );
 
-    return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
+    return targetElement ? createPortal(overlay, targetElement) : overlay;
 }
 
 export default LoadingScreen;

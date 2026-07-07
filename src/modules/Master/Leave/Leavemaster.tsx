@@ -22,7 +22,7 @@ import {
   Cancel,
   Pending,
 } from "@mui/icons-material";
-import Select from "react-select";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import { toast } from "react-toastify";
 
 import { MyContext } from "../../../Components/context/contextProvider";
@@ -93,17 +93,6 @@ const formatDate = (date: string | null | undefined): string => {
 
 // ─── Custom Select Styles ─────────────────────────────────────────────────────
 
-const customSelectStyles = {
-  control: (base: any, state: any) => ({
-    ...base,
-    minHeight: "38px",
-    borderRadius: "8px",
-    borderColor: state.isFocused ? "#c99f65" : "#d1d5db",
-    boxShadow: state.isFocused ? "0 0 0 1px #c99f65" : "none",
-    "&:hover": { borderColor: "#c99f65" },
-  }),
-  menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
-};
 
 // ─── Status Chip ──────────────────────────────────────────────────────────────
 
@@ -174,8 +163,12 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [isHomeDropdownDisabled, setIsHomeDropdownDisabled] = useState(false);
 
   // ── APPROVE TAB — Filter State ────────────────────────────────────────────
-  const [approveFromDate, setApproveFromDate] = useState<string>("");
-  const [approveToDate, setApproveToDate] = useState<string>("");
+  const [approveFromDate, setApproveFromDate] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
+  const [approveToDate, setApproveToDate] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
   const [approveSelectedEmployee, setApproveSelectedEmployee] = useState<{
     value: number | string;
     label: string;
@@ -694,14 +687,16 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
             <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
               Employee
             </Typography>
-            <Select
-              value={homeSelectedEmployee}
-              onChange={(e) => e && setHomeSelectedEmployee(e)}
+            <SearchableSelect
+              value={homeSelectedEmployee?.value ?? 0}
+              onChange={(e) => {
+                const selectedVal = e.target.value;
+                const opt = [{ value: 0, label: "ALL" }, ...employees].find(o => String(o.value) === String(selectedVal));
+                if (opt) setHomeSelectedEmployee(opt as any);
+              }}
               options={[{ value: 0, label: "ALL" }, ...employees]}
-              isSearchable
-              isDisabled={isHomeDropdownDisabled || isLoading}
-              styles={customSelectStyles}
-              menuPortalTarget={document.body}
+              disabled={isHomeDropdownDisabled || isLoading}
+              searchPlaceholder="Search employee..."
             />
           </Box>
 
@@ -750,14 +745,16 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
             <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
               Employee
             </Typography>
-            <Select
-              value={approveSelectedEmployee}
-              onChange={(e) => e && setApproveSelectedEmployee(e)}
+            <SearchableSelect
+              value={approveSelectedEmployee?.value ?? 0}
+              onChange={(e) => {
+                const selectedVal = e.target.value;
+                const opt = [{ value: 0, label: "ALL" }, ...allEmployees].find(o => String(o.value) === String(selectedVal));
+                if (opt) setApproveSelectedEmployee(opt as any);
+              }}
               options={[{ value: 0, label: "ALL" }, ...allEmployees]}
-              isSearchable
-              isDisabled={isLoading}
-              styles={customSelectStyles}
-              menuPortalTarget={document.body}
+              disabled={isLoading}
+              searchPlaceholder="Search employee..."
             />
           </Box>
 

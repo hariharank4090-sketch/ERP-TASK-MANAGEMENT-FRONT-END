@@ -12,11 +12,8 @@ import {
   Typography,
   Paper,
   IconButton,
-  MenuItem,
-  CircularProgress,
   Chip,
   OutlinedInput,
-  Select,
   FormControl,
   InputLabel,
   Checkbox,
@@ -27,6 +24,7 @@ import Grid from "@mui/material/Grid";
 import CloseIcon from "@mui/icons-material/Close";
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 const WORK_API = "masters/workMaster";
 const TASK_PARAM_API = "masters/taskParameterDetails";
@@ -608,12 +606,12 @@ const TodayTaskDialog: React.FC<Props> = ({
                 Employee(s) <span style={{ color: "red" }}>*</span>
               </Typography>
               <InputLabel>Select Employees</InputLabel>
-              <Select
+              <SearchableSelect
                 multiple
                 value={selectedEmployees}
-                onChange={handleEmployeeChange}
+                onChange={handleEmployeeChange as any}
                 input={<OutlinedInput label="Select Employees" />}
-                renderValue={(selected) => (
+                renderValue={(selected: any) => (
                   <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
                     {(selected as number[]).map((value) => (
                       <Chip
@@ -621,28 +619,27 @@ const TodayTaskDialog: React.FC<Props> = ({
                         label={getEmployeeName(value)}
                         size="small"
                         onDelete={() => handleRemoveEmployee(value)}
+                        onMouseDown={(e) => e.stopPropagation()}
                       />
                     ))}
                   </Box>
                 )}
                 disabled={loadingEmployees}
-              >
-                {loadingEmployees ? (
-                  <MenuItem disabled>
-                    <CircularProgress size={20} /> Loading...
-                  </MenuItem>
-                ) : (
-                  employees.map((employee) => (
-                    <MenuItem key={employee.Emp_Id} value={employee.Emp_Id}>
+                searchPlaceholder="Search employees..."
+                options={employees.map((employee) => ({
+                  value: employee.Emp_Id,
+                  label: (
+                    <>
                       <Checkbox checked={selectedEmployees.indexOf(employee.Emp_Id) > -1} />
                       <ListItemText
                         primary={employee.Emp_Name}
                         secondary={employee.Emp_Code}
                       />
-                    </MenuItem>
-                  ))
-                )}
-              </Select>
+                    </>
+                  ),
+                  searchText: `${employee.Emp_Name} ${employee.Emp_Code}`
+                }))}
+              />
               {validationErrors.Emp_Id && (
                 <Typography variant="caption" color="error">
                   {validationErrors.Emp_Id}
@@ -685,16 +682,18 @@ const TodayTaskDialog: React.FC<Props> = ({
 
           <Grid size={{ xs: 12 }}>
             <Typography fontWeight={600} gutterBottom>Work Status</Typography>
-            <TextField
-              select
-              fullWidth
-              value={formData.Work_Status}
-              onChange={(e) => handleInputChange("Work_Status", e.target.value)}
-            >
-              <MenuItem value="Pending">Pending</MenuItem>
-              <MenuItem value="In Progress">In Progress</MenuItem>
-              <MenuItem value="Completed">Completed</MenuItem>
-            </TextField>
+            <FormControl fullWidth>
+              <SearchableSelect
+                value={formData.Work_Status}
+                onChange={(e) => handleInputChange("Work_Status", e.target.value)}
+                searchPlaceholder="Search status..."
+                options={[
+                  { value: "Pending", label: "Pending" },
+                  { value: "In Progress", label: "In Progress" },
+                  { value: "Completed", label: "Completed" }
+                ]}
+              />
+            </FormControl>
           </Grid>
 
           {taskParameters.map((param) => (

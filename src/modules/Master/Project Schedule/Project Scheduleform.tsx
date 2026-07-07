@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
   Box,
-  MenuItem,
+ 
   FormControl,
   InputLabel,
-  Select,
+ 
   FormControlLabel,
   Checkbox,
   Typography,
@@ -35,6 +35,7 @@ import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 
 import AppDialog from "../../../Components/appDialog";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 import type {
   projectscheduleCreateInput,
@@ -149,6 +150,15 @@ const calcDurationHours = (startTime: string, endTime: string): number => {
   let diffMins = (eh * 60 + em) - (sh * 60 + sm);
   if (diffMins < 0) diffMins += 24 * 60;
   return Math.round((diffMins / 60) * 100) / 100;
+};
+
+const formatDurationString = (hours: number): string => {
+  if (hours === 0) return "0 hrs";
+  const totalMins = Math.round(hours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0) return `${h} hr${h !== 1 ? "s" : ""} ${m > 0 ? `${m} min${m !== 1 ? "s" : ""}` : ""}`.trim();
+  return `${m} min${m !== 1 ? "s" : ""}`;
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -942,7 +952,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
           <Box sx={{ flex: 1 }}>
             <Typography variant="caption" color="text.secondary">Duration</Typography>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              {computedDurationHours} hr{computedDurationHours !== 1 ? "s" : ""}
+              {formatDurationString(computedDurationHours)}
             </Typography>
           </Box>
         )}
@@ -987,7 +997,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
               fontSize: 14,
             }}
           >
-            {computedDurationHours} hr{computedDurationHours !== 1 ? "s" : ""}
+            {formatDurationString(computedDurationHours)}
           </Typography>
         </Box>
       </Box>
@@ -1050,90 +1060,92 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
           {/* ── 1. Project ── */}
           <FormControl fullWidth size="small" required>
             <InputLabel>Project</InputLabel>
-            <Select
+            <SearchableSelect
               name="Project_Id" 
               value={scheduleObj?.Project_Id || 0}
-              onChange={handleSelectChange} 
+              onChange={handleSelectChange as any} 
               label="Project"
               disabled={isFormDisabled || disableTaskSelection}
-            >
-              <MenuItem value={0}><em>Select Project</em></MenuItem>
-              {projectOptions.map((p) => (
-                <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-              ))}
-            </Select>
+              searchPlaceholder="Search project..."
+              allOptionLabel="Select Project"
+              allOptionValue={0}
+              options={projectOptions.map((p) => ({
+                value: p.value,
+                label: p.label
+              }))}
+            />
           </FormControl>
 
           {/* ── 2. Task Type (depends on Project) ── */}
           <FormControl fullWidth size="small" required>
             <InputLabel>Task Type</InputLabel>
-            <Select
+            <SearchableSelect
               name="Task_Type_Id" 
               value={scheduleObj?.Task_Type_Id || 0}
-              onChange={handleSelectChange} 
+              onChange={handleSelectChange as any} 
               label="Task Type"
               disabled={isFormDisabled || !scheduleObj?.Project_Id || disableTaskSelection}
-            >
-              <MenuItem value={0}>
-                <em>
-                  {!scheduleObj?.Project_Id
-                    ? "Select a project first"
-                    : taskTypeOptions.filter((tt) => tt.Project_Id === scheduleObj?.Project_Id || tt.Task_Type_Id === scheduleObj?.Task_Type_Id).length === 0 && scheduleObj?.Project_Id
-                    ? "No task types available"
-                    : "Select Task Type"}
-                </em>
-              </MenuItem>
-              {taskTypeOptions
+              searchPlaceholder="Search task type..."
+              allOptionLabel={
+                !scheduleObj?.Project_Id
+                  ? "Select a project first"
+                  : taskTypeOptions.filter((tt) => tt.Project_Id === scheduleObj?.Project_Id || tt.Task_Type_Id === scheduleObj?.Task_Type_Id).length === 0 && scheduleObj?.Project_Id
+                  ? "No task types available"
+                  : "Select Task Type"
+              }
+              allOptionValue={0}
+              options={taskTypeOptions
                 .filter((tt) => tt.Project_Id === scheduleObj?.Project_Id || tt.Task_Type_Id === scheduleObj?.Task_Type_Id)
-                .map((tt) => (
-                <MenuItem key={tt.Task_Type_Id} value={tt.Task_Type_Id}>
-                  {tt.Task_Type}
-                </MenuItem>
-              ))}
-            </Select>
+                .map((tt) => ({
+                  value: tt.Task_Type_Id,
+                  label: tt.Task_Type
+              }))}
+            />
           </FormControl>
 
           {/* ── 3. Task (depends on Task Type) ── */}
           <FormControl fullWidth size="small" required>
             <InputLabel>Task</InputLabel>
-            <Select
+            <SearchableSelect
               name="Task_Id" 
               value={scheduleObj?.Task_Id || 0}
-              onChange={handleSelectChange} 
+              onChange={handleSelectChange as any} 
               label="Task"
               disabled={isFormDisabled || !scheduleObj?.Task_Type_Id || disableTaskSelection}
-            >
-              <MenuItem value={0}>
-                <em>
-                  {!scheduleObj?.Task_Type_Id
-                    ? "Select a task type first"
-                    : taskOptions.length === 0 && scheduleObj?.Task_Type_Id
-                    ? "No tasks available"
-                    : "Select Task"}
-                </em>
-              </MenuItem>
-              {taskOptions
+              searchPlaceholder="Search task..."
+              allOptionLabel={
+                !scheduleObj?.Task_Type_Id
+                  ? "Select a task type first"
+                  : taskOptions.length === 0 && scheduleObj?.Task_Type_Id
+                  ? "No tasks available"
+                  : "Select Task"
+              }
+              allOptionValue={0}
+              options={taskOptions
                 .filter(t => !t.Task_Type_Id || !scheduleObj?.Task_Type_Id || t.Task_Type_Id === scheduleObj?.Task_Type_Id)
-                .map((t) => (
-                <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
-              ))}
-            </Select>
+                .map((t) => ({
+                  value: t.value,
+                  label: t.label
+              }))}
+            />
           </FormControl>
 
           {/* ── 4. Status ── */}
           <FormControl fullWidth size="small" required>
             <InputLabel>Status</InputLabel>
-            <Select
+            <SearchableSelect
               name="Sch_Status"
               value={scheduleObj?.Sch_Status || 1}
-              onChange={handleSelectChange}
+              onChange={handleSelectChange as any}
               label="Status"
               disabled={isFormDisabled}
-            >
-              <MenuItem value={1}>Inprocess</MenuItem>
-              <MenuItem value={2}>Pending</MenuItem>
-              <MenuItem value={3}>Completed</MenuItem>
-            </Select>
+              searchPlaceholder="Search status..."
+              options={[
+                { value: 1, label: "Inprocess" },
+                { value: 2, label: "Pending" },
+                { value: 3, label: "Completed" }
+              ]}
+            />
           </FormControl>
 
           {/* Duration header - User manually selects One-Time or Repetitive */}
@@ -1436,7 +1448,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                   Timer Duration (auto-calculated from Start → End Time)
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 700, color: "#7a5c1e" }}>
-                  {computedDurationHours} hour{computedDurationHours !== 1 ? "s" : ""}
+                  {formatDurationString(computedDurationHours)}
                 </Typography>
                 <Typography variant="caption" sx={{ color: "#a07840" }}>
                   {formatTimeDisplay(localUI.startTime)} → {formatTimeDisplay(localUI.endTime)}
@@ -1448,8 +1460,8 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                 </Typography>
               </Box>
               <TextField
-                label="Duration (hrs)"
-                value={computedDurationHours}
+                label="Duration"
+                value={formatDurationString(computedDurationHours)}
                 size="small"
                 InputProps={{ readOnly: true }}
                 inputProps={{ style: { textAlign: "center", fontWeight: 700, color: "#7a5c1e" } }}

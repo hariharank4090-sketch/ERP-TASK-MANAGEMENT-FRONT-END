@@ -751,6 +751,7 @@ const ProjectTaskComparison = () => {
 
       return showDate && showProject && showEmployee;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combinedRows, viewFilter, projectFilter, employeeFilter]);
 
   const stats = useMemo(() => {

@@ -43,7 +43,6 @@ import {
 import { toast } from "react-toastify";
 
 import DataTable from "../../../Components/dataTable";
-import { fetchLink } from "../../../Components/customFetch";
 import { ProjectScheduleDialog } from "../Project Schedule/Project Scheduleform";
 import AssignTask from "../Assigntask.form/AssignTask.form";
 import { TaskDialog } from "./Taskform";
@@ -57,6 +56,7 @@ import {
   getParameterDropdown,
   getTaskSchedules,
   getAllTaskGroups,
+  getTaskParameterDetailsByTaskId,
 } from "./Task.api";
 import {
   getprojectschedule,
@@ -202,6 +202,27 @@ const getLatestTaskDate = (taskDates: any[]): any | null => {
     };
     return toMs(b.taskWorkDate) - toMs(a.taskWorkDate);
   })[0];
+};
+
+const formatDurationString = (hours: number): string => {
+  if (!hours || hours === 0) return "0 hrs";
+  const totalMins = Math.round(hours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0) return `${h} hr${h !== 1 ? "s" : ""} ${m > 0 ? `${m} min${m !== 1 ? "s" : ""}` : ""}`.trim();
+  return `${m} min${m !== 1 ? "s" : ""}`;
+};
+
+const calcDurationHours = (startTime: unknown, endTime: unknown): number => {
+  const st = extractTime(startTime, "00:00");
+  const et = extractTime(endTime, "00:00");
+  if (!st || !et || (st === "00:00" && et === "00:00")) return 0;
+  const [sh, sm] = st.split(":").map(Number);
+  const [eh, em] = et.split(":").map(Number);
+  if ([sh, sm, eh, em].some(isNaN)) return 0;
+  let diffMins = (eh * 60 + em) - (sh * 60 + sm);
+  if (diffMins < 0) diffMins += 24 * 60;
+  return Math.round((diffMins / 60) * 100) / 100;
 };
 
 // ─── Local Types ──────────────────────────────────────────────────────────────
@@ -372,7 +393,16 @@ const ScheduleCard: React.FC<{
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center", pt: 0.5 }}>
           <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
             <Typography variant="caption" color="text.secondary">Duration:</Typography>
-            <Chip label={`${sch.taskSchDuration || 0} hrs`} size="small" variant="outlined" />
+            <Chip 
+              label={formatDurationString(
+                calcDurationHours(
+                  latestTaskDate ? latestTaskDate.taskStartTime || sch.schEstStartTime : sch.schEstStartTime,
+                  latestTaskDate ? latestTaskDate.taskEndTime || sch.schEstEndTime : sch.schEstEndTime
+                )
+              )} 
+              size="small" 
+              variant="outlined" 
+            />
           </Box>
           <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
             <Typography variant="caption" color="text.secondary">Plan:</Typography>
@@ -485,29 +515,13 @@ const ExpandedSchedulesComponent: React.FC<{
 
       const empCounts: Record<number, number> = {};
       try {
-        const empRes = await fetchLink<any>({ address: "masters/projectScheduleEmp/list/", method: "GET" });
-        if (empRes?.success) {
-          let empData = empRes.data;
-          if (empData && (empData as any).data) empData = (empData as any).data;
-          else if (empData && (empData as any).items) empData = (empData as any).items;
-
-          if (Array.isArray(empData)) {
-            const counts: Record<number, Set<number>> = {};
-            empData.forEach((item: any) => {
-              const schId = Number(item.Sch_Id || item.schId);
-              const empId = Number(item.Emp_Id || item.empId);
-              if (schId && empId && !isNaN(schId) && !isNaN(empId)) {
-                if (!counts[schId]) counts[schId] = new Set();
-                counts[schId].add(empId);
-              }
-            });
-            Object.keys(counts).forEach(k => {
-              empCounts[Number(k)] = counts[Number(k)].size;
-            });
+        projectSchedules.forEach((ps: any) => {
+          if (ps.schId) {
+            empCounts[ps.schId] = ps.empCount || 0;
           }
-        }
+        });
       } catch (e) {
-        console.error("Failed to fetch emp counts", e);
+        console.error("Failed to process emp counts", e);
       }
 
       setSchedules(
@@ -867,7 +881,14 @@ const ExpandedSchedulesComponent: React.FC<{
                       )}
                     </TableCell>
 
-                    <TableCell align="center" sx={tdStyle}>{sch.taskSchDuration || 0} hrs</TableCell>
+                    <TableCell align="center" sx={tdStyle}>
+                      {formatDurationString(
+                        calcDurationHours(
+                          latestTaskDate ? latestTaskDate.taskStartTime || sch.schEstStartTime : sch.schEstStartTime,
+                          latestTaskDate ? latestTaskDate.taskEndTime || sch.schEstEndTime : sch.schEstEndTime
+                        )
+                      )}
+                    </TableCell>
                     <TableCell align="center" sx={tdStyle}>{getStatusChip(sch.schStatus)}</TableCell>
                     <TableCell align="center" sx={tdStyle}>{sch.taskSchTimerBased === 1 ? "Yes" : "No"}</TableCell>
                     <TableCell align="center" sx={tdStyle}>
@@ -1093,11 +1114,30 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     setTaskDialogOpen(true);
   }, []);
 
-  const handleEditTask = useCallback((task: TaskDisplay) => {
+  const handleEditTask = useCallback(async (task: TaskDisplay) => {
     setSelectedTask(task);
-    setTaskObj({ Task_Name: task.Task_Name || "", Task_Desc: task.Task_Desc || null, Task_Type_Id: task.Task_Type_Id, Project_Id: task.Project_Id, Paramet_Ids: task.Paramet_Ids || [], Paramet_Data_Types: task.Paramet_Data_Types || [], Para_Display_Names: task.Para_Display_Names || [], Created_By: 1 });
+    
+    let parametIds = task.Paramet_Ids || [];
+    let parametDataTypes = task.Paramet_Data_Types || [];
+    let paraDisplayNames = task.Para_Display_Names || [];
+
+    try {
+      if (loadingOn) loadingOn();
+      const params = await getTaskParameterDetailsByTaskId(task.Task_Id);
+      if (params && params.length > 0) {
+        parametIds = params.map((p: any) => Number(p.Param_Id));
+        parametDataTypes = params.map((p: any) => p.Paramet_Data_Type);
+        paraDisplayNames = params.map((p: any) => p.Para_Display_Name);
+      }
+    } catch (err) {
+      console.error("Error fetching task parameters", err);
+    } finally {
+      if (loadingOff) loadingOff();
+    }
+
+    setTaskObj({ Task_Name: task.Task_Name || "", Task_Desc: task.Task_Desc || null, Task_Type_Id: task.Task_Type_Id, Project_Id: task.Project_Id, Paramet_Ids: parametIds, Paramet_Data_Types: parametDataTypes, Para_Display_Names: paraDisplayNames, Created_By: 1 });
     setTaskDialogType("edit"); setTaskDialogOpen(true);
-  }, []);
+  }, [loadingOn, loadingOff]);
 
   const handleDeleteTask = useCallback((task: TaskDisplay) => {
     setSelectedTask(task); setTaskDialogType("delete"); setTaskDialogOpen(true);

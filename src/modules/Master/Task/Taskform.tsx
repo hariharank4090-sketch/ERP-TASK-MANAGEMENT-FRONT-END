@@ -3,13 +3,13 @@ import {
   TextField,
   FormControl,
   InputLabel,
-  Select,
-  MenuItem,
+  
+  
   type SelectChangeEvent,
   Chip,
   Box,
   Typography,
-  OutlinedInput,
+  
   Checkbox,
   ListItemText,
 } from "@mui/material";
@@ -25,6 +25,7 @@ import type {
 
 import { getAllTaskGroups } from "./Task.api";
 import { toast } from "react-toastify";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 interface TaskDialogProps {
   open: boolean;
@@ -224,40 +225,40 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       maxWidth="sm"
       fullWidth
     >
-      <Box sx={{ p: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, p: 1 }}>
 
         {/* Project */}
         <FormControl fullWidth margin="dense" disabled={disableProjectSelect}>
           <InputLabel>Project</InputLabel>
-          <Select
+          <SearchableSelect
             label="Project"
             value={taskObj.Project_Id == null ? "" : String(taskObj.Project_Id)}
             onChange={handleProjectChange}
-          >
-            <MenuItem value=""><em>Select Project</em></MenuItem>
-            {validProjects.map((p) => (
-              <MenuItem key={p.Project_Id} value={String(p.Project_Id)}>
-                {p.Project_Name}
-              </MenuItem>
-            ))}
-          </Select>
+            searchPlaceholder="Search project..."
+            allOptionLabel="Select Project"
+            allOptionValue=""
+            options={validProjects.map((p) => ({
+              value: String(p.Project_Id),
+              label: p.Project_Name
+            }))}
+          />
         </FormControl>
 
         {/* Task Group */}
         <FormControl fullWidth margin="dense" disabled={loadingTaskGroups || isLoading || disableTaskTypeSelect}>
           <InputLabel>Task Group *</InputLabel>
-          <Select
+          <SearchableSelect
             label="Task Group *"
             value={taskObj.Task_Type_Id == null ? "" : String(taskObj.Task_Type_Id)}
             onChange={handleTaskGroupChange}
-          >
-            <MenuItem value=""><em>Select Task Group</em></MenuItem>
-            {filteredTaskGroups.map((g) => (
-              <MenuItem key={g.Task_Type_Id} value={String(g.Task_Type_Id)}>
-                {g.Task_Type}
-              </MenuItem>
-            ))}
-          </Select>
+            searchPlaceholder="Search task group..."
+            allOptionLabel="Select Task Group"
+            allOptionValue=""
+            options={filteredTaskGroups.map((g) => ({
+              value: String(g.Task_Type_Id),
+              label: g.Task_Type
+            }))}
+          />
         </FormControl>
 
         {/* Task Name */}
@@ -282,15 +283,18 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
 
         {/* Parameters */}
         <FormControl fullWidth margin="dense">
-          <InputLabel>Parameters</InputLabel>
-          <Select
+          <InputLabel id="parameters-label">Parameters</InputLabel>
+          <SearchableSelect
+            labelId="parameters-label"
+            label="Parameters"
             multiple
             value={parameterValues}
-            onChange={handleParameterChange}
-            input={<OutlinedInput label="Parameters" />}
-            renderValue={(selected) => (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onChange={handleParameterChange as any}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            renderValue={(selected: any) => (
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                {selected.map((v) => {
+                {(selected as string[]).map((v) => {
                   const param = getParameterById(Number(v));
                   return (
                     <Chip
@@ -307,19 +311,21 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
               </Box>
             )}
             MenuProps={MenuProps}
-          >
-            {validParameters.map((param) => (
-              <MenuItem key={param.Paramet_Id} value={String(param.Paramet_Id)}>
-                <Checkbox
-                  checked={(taskObj.Paramet_Ids || []).includes(param.Paramet_Id)}
-                />
-                <ListItemText
-                  primary={param.Paramet_Name}
-                  secondary={param.Para_Display_Name}
-                />
-              </MenuItem>
-            ))}
-          </Select>
+            searchPlaceholder="Search parameters..."
+            options={validParameters.map((param) => ({
+              value: String(param.Paramet_Id),
+              label: (
+                <>
+                  <Checkbox checked={(taskObj.Paramet_Ids || []).includes(param.Paramet_Id)} />
+                  <ListItemText
+                    primary={param.Paramet_Name}
+                    secondary={param.Para_Display_Name}
+                  />
+                </>
+              ),
+              searchText: `${param.Paramet_Name} ${param.Para_Display_Name}`
+            }))}
+          />
         </FormControl>
 
       </Box>

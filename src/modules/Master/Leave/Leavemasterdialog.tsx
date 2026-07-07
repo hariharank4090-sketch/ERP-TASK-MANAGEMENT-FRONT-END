@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import React from "react";
 import {
   Dialog,
@@ -11,7 +11,7 @@ import {
   Typography,
   CircularProgress
 } from "@mui/material";
-import Select, { type SingleValue } from "react-select";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 import type {
   LeaveFormState,
@@ -22,7 +22,6 @@ import type {
 } from "./Variables ";
 import { SESSION_OPTIONS, STATUS_OPTIONS } from "./Variables ";
 
-type SelectOption = { value: number | string; label: string };
 
 interface LeaveDialogProps {
   open: boolean;
@@ -40,23 +39,6 @@ interface LeaveDialogProps {
   isLoading?: boolean;
 }
 
-const customSelectStyles = {
-  control: (base: any, state: any) => ({
-    ...base,
-    minHeight: '38px',
-    borderRadius: '8px',
-    borderColor: state.isFocused ? '#c99f65' : '#d1d5db',
-    boxShadow: state.isFocused ? '0 0 0 1px #c99f65' : 'none',
-    '&:hover': { borderColor: '#c99f65' },
-  }),
-  menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
-  option: (base: any, state: { isSelected: boolean; isFocused: boolean }) => ({
-    ...base,
-    backgroundColor: state.isSelected ? '#c99f65' : state.isFocused ? '#f3f4f6' : 'white',
-    color: state.isSelected ? 'white' : '#374151',
-    '&:active': { backgroundColor: '#c99f65' },
-  }),
-};
 
 export const LeaveDialog: React.FC<LeaveDialogProps> = ({
   open,
@@ -91,18 +73,8 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
   };
 
   // Helper function to convert UserDropdown to SelectOption
-  const toSelectOption = (user: UserDropdown | null | undefined): SelectOption | null => {
-    if (!user) return null;
-    return { value: user.value, label: user.label };
-  };
 
   // Helper function to convert SelectOption to UserDropdown
-  const toUserDropdown = (option: SelectOption | null): UserDropdown | null => {
-    if (!option) return null;
-    // Ensure value is number
-    const numValue = typeof option.value === 'string' ? parseInt(option.value, 10) : option.value;
-    return { value: numValue, label: option.label };
-  };
 
   // Delete Dialog
   if (type === "delete") {
@@ -166,21 +138,18 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
           {/* Employee */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Employee *</Typography>
-            <Select
-              value={
-                employeeApply?.EmpId
-                  ? { value: employeeApply.EmpId as number, label: employeeApply.Name }
-                  : null
-              }
-              onChange={(e: SingleValue<SelectOption>) =>
-                e && update({ employeeApply: { EmpId: e.value as number, Name: e.label } })
-              }
-              options={employees}
-              styles={customSelectStyles}
-              isSearchable
-              placeholder="Select Employee"
-              isDisabled={isLoading}
-              menuPortalTarget={document.body}
+            <SearchableSelect
+              value={employeeApply?.EmpId ?? ""}
+              onChange={(e) => {
+                const selectedVal = e.target.value;
+                const opt = employees.find(o => String(o.value) === String(selectedVal));
+                if (opt) update({ employeeApply: { EmpId: opt.value as number, Name: opt.label } });
+              }}
+              options={employees.map(o => ({ value: o.value, label: o.label }))}
+              disabled={isLoading}
+              searchPlaceholder="Search employee..."
+              allOptionLabel="Select Employee"
+              allOptionValue=""
             />
           </Box>
 
@@ -245,50 +214,54 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
           {/* Leave Type */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Leave Type *</Typography>
-            <Select
-              value={leaveType ? { value: leaveType.Id, label: leaveType.LeaveType } : null}
-              onChange={(e: SingleValue<SelectOption>) =>
-                e && update({ leaveType: { Id: e.value as number, LeaveType: e.label } })
-              }
+            <SearchableSelect
+              value={leaveType?.Id ?? ""}
+              onChange={(e) => {
+                const selectedVal = e.target.value;
+                const opt = leaveTypeOptions.find(o => String(o.Id) === String(selectedVal));
+                if (opt) update({ leaveType: { Id: opt.Id, LeaveType: opt.LeaveType } });
+              }}
               options={leaveTypeOptions.map((lt) => ({ value: lt.Id, label: lt.LeaveType }))}
-              styles={customSelectStyles}
-              isSearchable
-              placeholder="Select Leave Type"
-              isDisabled={isLoading}
-              menuPortalTarget={document.body}
+              disabled={isLoading}
+              searchPlaceholder="Search leave type..."
+              allOptionLabel="Select Leave Type"
+              allOptionValue=""
             />
           </Box>
 
           {/* Department */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Department</Typography>
-            <Select
-              value={selectedDepartment || null}
-              onChange={(e: SingleValue<SelectOption>) => update({ selectedDepartment: e || null })}
-              options={departments}
-              styles={customSelectStyles}
-              isSearchable
-              placeholder="Select Department"
-              isDisabled={isLoading}
-              menuPortalTarget={document.body}
+            <SearchableSelect
+              value={selectedDepartment?.value ?? ""}
+              onChange={(e) => {
+                const selectedVal = e.target.value;
+                const opt = departments.find(o => String(o.value) === String(selectedVal));
+                update({ selectedDepartment: opt || null });
+              }}
+              options={departments.map(o => ({ value: o.value, label: o.label }))}
+              disabled={isLoading}
+              searchPlaceholder="Search department..."
+              allOptionLabel="Select Department"
+              allOptionValue=""
             />
           </Box>
 
           {/* In-Charge — uses `users` which is already { value, label }[] */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>In-Charge</Typography>
-            <Select
-              styles={customSelectStyles}
-              menuPortalTarget={document.body}
-              isSearchable
-              placeholder="Select In-Charge"
-              options={users}
-              value={toSelectOption(selectedInCharge)}
-              onChange={(e: SingleValue<SelectOption>) => {
-                const userDropdown = toUserDropdown(e || null);
-                update({ selectedInCharge: userDropdown });
+            <SearchableSelect
+              value={selectedInCharge?.value ?? ""}
+              onChange={(e) => {
+                const selectedVal = e.target.value;
+                const opt = users.find(o => String(o.value) === String(selectedVal));
+                update({ selectedInCharge: opt ? { value: opt.value as number, label: opt.label } : null });
               }}
-              isDisabled={isLoading}
+              options={users.map(o => ({ value: o.value, label: o.label }))}
+              disabled={isLoading}
+              searchPlaceholder="Search in-charge..."
+              allOptionLabel="Select In-Charge"
+              allOptionValue=""
             />
           </Box>
 
@@ -310,14 +283,14 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
           {isEditMode && (
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Status *</Typography>
-              <Select
-                value={status ? { value: status, label: status } : null}
-                onChange={(e: SingleValue<SelectOption>) => e && update({ status: e.value as string })}
-                options={STATUS_OPTIONS}
-                styles={customSelectStyles}
-                placeholder="Select Status"
-                isDisabled={isLoading}
-                menuPortalTarget={document.body}
+              <SearchableSelect
+                value={status || ""}
+                onChange={(e) => update({ status: e.target.value as string })}
+                options={STATUS_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+                disabled={isLoading}
+                searchPlaceholder="Search status..."
+                allOptionLabel="Select Status"
+                allOptionValue=""
               />
             </Box>
           )}

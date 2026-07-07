@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import baseURL from "../config/baseURL";
 
 interface FetchLinkParams {
@@ -5,7 +6,7 @@ interface FetchLinkParams {
     method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
     headers?: Record<string, string>;
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
     bodyData?: Record<string, any> | FormData | null | any[] | any;
     others?: RequestInit;
     autoHeaders?: boolean;
@@ -13,9 +14,9 @@ interface FetchLinkParams {
     loadingOff?: () => void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export interface ApiResponse<T = any> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
     pagination: any;
     errors: boolean;
     currentPage: number;
@@ -28,11 +29,11 @@ export interface ApiResponse<T = any> {
     success: boolean;
     data: T[];
     message: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
     others?: Record<string, any>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export const fetchLink = async <T = any>({
     address,
     method = "GET",
@@ -78,7 +79,7 @@ export const fetchLink = async <T = any>({
             localStorage.clear();
             sessionStorage.clear();
             window.location.href = '/';
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
             return null as any;
         }
 
@@ -99,6 +100,10 @@ export const fetchLink = async <T = any>({
                 sessionStorage.clear();
                 window.location.href = '/';
                 return null as any;
+            }
+            
+            if (json && !json.data) {
+                json.data = [];
             }
             
             return json;

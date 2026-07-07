@@ -27,9 +27,8 @@ import {
   Collapse,
   FormControl,
   InputLabel,
-  Select,
-  MenuItem,
 } from "@mui/material";
+import SearchableSelect from "../../Components/SearchableSelect";
 import {
   Assignment as TaskIcon,
   Refresh,
@@ -47,7 +46,6 @@ import {
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { toast } from "react-toastify";
-import { fetchLink } from "../../Components/customFetch";
 import { useAuth } from "../../auth/authContext";
 import LoadingScreen from "../../Components/loadingScreen";
 
@@ -57,6 +55,7 @@ import {
   getEmployeeDropdown,
   getProjectDropdown,
 } from "./All.api";
+import { getProjectScheduleEmpWithStaffNames } from "../Reports/ExecutionReports.api";
 
 import type {
   WorkMasterData,
@@ -469,29 +468,13 @@ const ExpandedSchedulesComponent: React.FC<{
 
       const empCounts: Record<number, number> = {};
       try {
-        const empRes = await fetchLink<any>({ address: "masters/projectScheduleEmp/list/", method: "GET" });
-        if (empRes?.success) {
-          let empData = empRes.data;
-          if (empData && (empData as any).data) empData = (empData as any).data;
-          else if (empData && (empData as any).items) empData = (empData as any).items;
-
-          if (Array.isArray(empData)) {
-            const counts: Record<number, Set<number>> = {};
-            empData.forEach((item: any) => {
-              const sId = Number(item.Sch_Id || item.schId);
-              const empId = Number(item.Emp_Id || item.empId);
-              if (sId && empId && !isNaN(sId) && !isNaN(empId)) {
-                if (!counts[sId]) counts[sId] = new Set();
-                counts[sId].add(empId);
-              }
-            });
-            Object.keys(counts).forEach(k => {
-              empCounts[Number(k)] = counts[Number(k)].size;
-            });
+        projectSchedules.forEach((ps: any) => {
+          if (ps.schId) {
+            empCounts[ps.schId] = ps.empCount || 0;
           }
-        }
+        });
       } catch (e) {
-        console.error("Failed to fetch emp counts", e);
+        console.error("Failed to process emp counts", e);
       }
 
       setSchedules(
@@ -1091,6 +1074,7 @@ const TaskExpandedComponent: React.FC<{
     } finally {
       if (isMounted.current) setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskTypeId]);
 
   // ── Fetch dropdowns ───────────────────────────────────────────────────────
@@ -1830,6 +1814,7 @@ const TaskTypeExpandedComponent: React.FC<{
     } finally {
       if (isMounted.current) setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, projectName]);
 
   useEffect(() => {
@@ -1981,7 +1966,7 @@ const TaskTypeExpandedComponent: React.FC<{
             >
               Status
             </InputLabel>
-            <Select
+            <SearchableSelect
               labelId="task-type-status-label"
               value={taskTypeStatusFilter}
               label="Status"
@@ -1993,21 +1978,13 @@ const TaskTypeExpandedComponent: React.FC<{
                 "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
                 "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
               }}
-            >
-              <MenuItem value="ALL">All</MenuItem>
-              <MenuItem value="ACTIVE">
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#2e7d32" }} />
-                  Active
-                </Box>
-              </MenuItem>
-              <MenuItem value="INACTIVE">
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#9e9e9e" }} />
-                  Inactive
-                </Box>
-              </MenuItem>
-            </Select>
+              options={[
+                { value: "ALL", label: "All", searchText: "All" },
+                { value: "ACTIVE", label: "Active", searchText: "Active" },
+                { value: "INACTIVE", label: "Inactive", searchText: "Inactive" }
+              ]}
+              searchPlaceholder="Search status..."
+            />
           </FormControl>
 
           <Button
@@ -2213,12 +2190,11 @@ const All = () => {
 
   const loadMasterData = async (forceRefresh: boolean = true) => {
     try {
-      const [tasksData, employeesData, projectsData, psRes, empSchRes] = await Promise.all([
+      const [tasksData, employeesData, projectsData, psRes] = await Promise.all([
         getTaskDropdown(undefined, undefined, forceRefresh),
         getEmployeeDropdown(undefined, undefined, forceRefresh),
         getProjectDropdown(undefined, undefined, forceRefresh),
         getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
-        fetchLink<any>({ address: "masters/projectScheduleEmp/list/", method: "GET" }).catch(() => null),
       ]);
       setTasks(tasksData || []);
       setEmployees(employeesData || []);
@@ -2232,13 +2208,7 @@ const All = () => {
       setProjects(formattedProjects);
       setProjectSchedules(psRes?.data || []);
       
-      let empData = [];
-      if (empSchRes?.success) {
-        empData = empSchRes.data;
-        if (empData && (empData as any).data) empData = (empData as any).data;
-        else if (empData && (empData as any).items) empData = (empData as any).items;
-        if (!Array.isArray(empData)) empData = [];
-      }
+      const empData: any[] = await getProjectScheduleEmpWithStaffNames().catch(() => []);
       setProjectEmpSchedules(empData);
     } catch (err) {
       console.error("Error loading dropdowns", err);
@@ -2652,17 +2622,17 @@ const All = () => {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         {/* Expandable Table & Filters */}
-        <Box sx={{ mt: -2, position: "relative" }}>
+        <Box sx={{ mt: 0, position: "relative" }}>
           
           {/* Filters row overlaying the table header */}
           <Box 
             sx={{ 
               position: "absolute", 
-              top: 12, 
+              top: 10, 
               right: 24, 
               zIndex: 10, 
               display: "flex", 
-              alignItems: "flex-end", 
+              alignItems: "center", 
               gap: 1.5 
             }}
           >
@@ -2675,7 +2645,7 @@ const All = () => {
               >
                 Project Status
               </InputLabel>
-              <Select
+              <SearchableSelect
                 labelId="project-isactive-filter-label"
                 value={projectIsActiveFilter}
                 label="Project Status"
@@ -2691,21 +2661,21 @@ const All = () => {
                   "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
                   "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
                 }}
-              >
-                <MenuItem value="ALL">All Status</MenuItem>
-                <MenuItem value="ACTIVE">
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#2e7d32" }} />
-                    Active Only
-                  </Box>
-                </MenuItem>
-                <MenuItem value="INACTIVE">
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#9e9e9e" }} />
-                    Inactive Only
-                  </Box>
-                </MenuItem>
-              </Select>
+                options={[
+                  { value: "ALL", label: "All Status" },
+                  {
+                    value: "ACTIVE",
+                    label: "Active Only",
+                    searchText: "Active Only"
+                  },
+                  {
+                    value: "INACTIVE",
+                    label: "Inactive Only",
+                    searchText: "Inactive Only"
+                  }
+                ]}
+                searchPlaceholder="Search status..."
+              />
             </FormControl>
 
             {/* Project filter dropdown — lists only projects matching the IsActive filter above */}
@@ -2716,7 +2686,7 @@ const All = () => {
               >
                 Project
               </InputLabel>
-              <Select
+              <SearchableSelect
                 labelId="project-id-filter-label"
                 value={projectIdFilter}
                 label="Project"
@@ -2728,20 +2698,20 @@ const All = () => {
                   "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
                   "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
                 }}
-              >
-                <MenuItem value="ALL">All Projects</MenuItem>
-                {projectsFilteredByIsActive.map((p: any) => (
-                  <MenuItem key={p.Project_Id ?? p.value} value={p.Project_Id ?? p.value}>
-                    {p.Project_Name ?? p.label}
-                  </MenuItem>
-                ))}
-              </Select>
+                options={projectsFilteredByIsActive.map((p: any) => ({
+                  value: p.Project_Id ?? p.value,
+                  label: p.Project_Name ?? p.label
+                }))}
+                allOptionLabel="All Projects"
+                allOptionValue="ALL"
+                searchPlaceholder="Search projects..."
+              />
             </FormControl>
 
             {/* Task Type filter dropdown */}
             <FormControl size="small" sx={{ minWidth: 160 }}>
               <InputLabel id="task-type-filter-label" sx={{ fontSize: "0.95rem" }}>Task Type</InputLabel>
-              <Select
+              <SearchableSelect
                 labelId="task-type-filter-label"
                 value={taskTypeIdFilter}
                 label="Task Type"
@@ -2752,22 +2722,22 @@ const All = () => {
                   "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
                   "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
                 }}
-              >
-                <MenuItem value="ALL">All Task Types</MenuItem>
-                {taskTypes
+                options={taskTypes
                   .filter((t: any) => projectIdFilter === "ALL" || numEq(t.Project_Id, projectIdFilter))
-                  .map((t: any) => (
-                    <MenuItem key={t.Task_Type_Id ?? t.value} value={t.Task_Type_Id ?? t.value}>
-                      {t.Task_Type ?? t.label}
-                    </MenuItem>
-                  ))}
-              </Select>
+                  .map((t: any) => ({
+                    value: t.Task_Type_Id ?? t.value,
+                    label: t.Task_Type ?? t.label
+                  }))}
+                allOptionLabel="All Task Types"
+                allOptionValue="ALL"
+                searchPlaceholder="Search task types..."
+              />
             </FormControl>
 
             {/* Task filter dropdown */}
             <FormControl size="small" sx={{ minWidth: 160 }}>
               <InputLabel id="task-filter-label" sx={{ fontSize: "0.95rem" }}>Task</InputLabel>
-              <Select
+              <SearchableSelect
                 labelId="task-filter-label"
                 value={taskIdFilter}
                 label="Task"
@@ -2778,17 +2748,17 @@ const All = () => {
                   "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
                   "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
                 }}
-              >
-                <MenuItem value="ALL">All Tasks</MenuItem>
-                {tasks
+                options={tasks
                   .filter((t: any) => projectIdFilter === "ALL" || numEq(t.Project_Id || t.project_id, projectIdFilter))
                   .filter((t: any) => taskTypeIdFilter === "ALL" || numEq(t.Task_Type_Id || t.TaskTypeId || t.taskTypeId, taskTypeIdFilter))
-                  .map((t: any) => (
-                    <MenuItem key={t.Task_Id ?? t.value} value={t.Task_Id ?? t.value}>
-                      {t.Task_Name ?? t.label}
-                    </MenuItem>
-                  ))}
-              </Select>
+                  .map((t: any) => ({
+                    value: t.Task_Id ?? t.value,
+                    label: t.Task_Name ?? t.label
+                  }))}
+                allOptionLabel="All Tasks"
+                allOptionValue="ALL"
+                searchPlaceholder="Search tasks..."
+              />
             </FormControl>
 
             <Button
@@ -2803,10 +2773,10 @@ const All = () => {
                 backgroundColor: "#1976d2", 
                 color: "#fff",
                 "&:hover": { backgroundColor: "#115293" }, 
-                height: "40px", 
+                height: "38px", 
                 ml: 1,
                 fontWeight: "bold",
-                borderRadius: "20px",
+                borderRadius: "19px",
                 textTransform: "none",
                 boxShadow: 2,
                 px: 3
@@ -2861,7 +2831,7 @@ const All = () => {
           />
         </Box>
 
-        <LoadingScreen loading={loading} message="Loading Dashboard Data..." />
+        <LoadingScreen loading={loading} message="Loading Dashboard Data..." targetId="main-card-inner" />
 
         {/* AssignTask (Corrections) Dialog */}
         {assignTaskOpen && (

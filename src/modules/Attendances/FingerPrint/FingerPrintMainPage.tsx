@@ -23,6 +23,7 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TablePagination,
   TableHead,
   TableRow,
   Menu,
@@ -2162,6 +2163,8 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
   const [employeeList, setEmployeeList] = useState<
     Array<{ id: string; name: string }>
   >([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
+  const [appliedDepartment, setAppliedDepartment] = useState<string>("");
 
   const filteredRecords = useMemo(() => {
     let result = attendanceRecords;
@@ -2171,8 +2174,32 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     if (appliedEmployee) {
       result = result.filter((r) => r.fingerPrintEmpId === appliedEmployee);
     }
+    if (appliedDepartment) {
+      const validEmpIds = new Set(
+        employeeOptions
+          .filter((emp: any) => emp.Department === appliedDepartment)
+          .map((emp) => emp.fingerPrintEmpId)
+      );
+      result = result.filter((r) => 
+        validEmpIds.has(r.fingerPrintEmpId) || 
+        r.Department === appliedDepartment || 
+        (r as any).DepartmentName === appliedDepartment
+      );
+    }
     return result;
-  }, [attendanceRecords, activeTab, appliedEmployee]);
+  }, [attendanceRecords, activeTab, appliedEmployee, appliedDepartment, employeeOptions]);
+
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    employeeOptions.forEach((emp: any) => {
+      if (emp.Department) depts.add(emp.Department);
+    });
+    return Array.from(depts).sort();
+  }, [employeeOptions]);
+
+  const handleDepartmentChange = (event: SelectChangeEvent) => {
+    setSelectedDepartment(event.target.value);
+  };
 
   const [selectedReport, setSelectedReport] = useState<string>("individual");
   const [isLoadingMonthly, setIsLoadingMonthly] = useState(false);
@@ -2186,8 +2213,17 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
 
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
-  const [mobilePage] = useState(0);
-  const [mobileRowsPerPage] = useState(100);
+  const [mobilePage, setMobilePage] = useState(0);
+  const [mobileRowsPerPage, setMobileRowsPerPage] = useState(10);
+
+  const handleMobilePageChange = (_event: unknown, newPage: number) => {
+    setMobilePage(newPage);
+  };
+
+  const handleMobileRowsPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setMobileRowsPerPage(parseInt(event.target.value, 10));
+    setMobilePage(0);
+  };
 
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -3453,6 +3489,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
               onClick={() => {
                 fetchAttendanceRecords(filterObj);
                 setAppliedEmployee(selectedEmployee);
+                setAppliedDepartment(selectedDepartment);
               }}
               variant="contained"
               size="small"
@@ -3494,6 +3531,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                 onClick={() => {
                   fetchAttendanceRecords(filterObj);
                   setAppliedEmployee(selectedEmployee);
+                  setAppliedDepartment(selectedDepartment);
                 }}
                 variant="contained"
                 color="primary"
@@ -3672,14 +3710,14 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
           sx={{
             mb: isMobile ? 1 : 2,
             display: "flex",
-            flexDirection: "row",
+            flexDirection: isMobile ? "column" : "row",
             justifyContent: isMobile ? "center" : "space-between",
-            alignItems: "center",
+            alignItems: isMobile ? "stretch" : "center",
             gap: isMobile ? 1 : 2,
           }}
         >
-          <Box sx={{ flex: isMobile ? "none" : 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <FormControl sx={{ minWidth: isMobile ? 120 : 300, width: isMobile ? "100%" : 400, display: (isMobile && !showAllTabs) ? 'none' : 'inline-flex' }} size="small">
+          <Box sx={{ flex: isMobile ? "none" : 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 1 : 2, width: isMobile ? "100%" : "auto" }}>
+            <FormControl sx={{ minWidth: isMobile ? 120 : 300, width: isMobile ? "100%" : 400, display: (isMobile && !showAllTabs) ? 'none' : 'flex' }} size="small">
               <InputLabel id="employee-select-label" sx={isMobile ? { fontSize: "0.75rem", lineHeight: 0.8, top: -7 } : {}}>Select Employee</InputLabel>
               <Select
                 labelId="employee-select-label"
@@ -3724,7 +3762,29 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                 ))}
               </Select>
             </FormControl>
-            <Box sx={{ display: "flex", gap: 1 }}>
+
+            <FormControl sx={{ minWidth: isMobile ? 120 : 200, width: isMobile ? "100%" : 250, display: (isMobile && !showAllTabs) ? 'none' : 'flex' }} size="small">
+              <InputLabel id="department-select-label" sx={isMobile ? { fontSize: "0.75rem", lineHeight: 0.8, top: -7 } : {}}>Select Department</InputLabel>
+              <Select
+                labelId="department-select-label"
+                id="department-select"
+                value={selectedDepartment}
+                label="Select Department"
+                onChange={handleDepartmentChange}
+                MenuProps={{ autoFocus: false }}
+                sx={isMobile ? { fontSize: "0.75rem", height: 26, "& .MuiSelect-select": { py: 0, display: "flex", alignItems: "center" } } : {}}
+              >
+                <MenuItem value="">
+                  <em>All Departments</em>
+                </MenuItem>
+                {uniqueDepartments.map((dept) => (
+                  <MenuItem key={dept} value={dept} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
+                    {dept}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Box sx={{ display: "flex", gap: 1, justifyContent: isMobile ? "center" : "flex-start", flexWrap: "wrap" }}>
               <Chip 
                 label={`Present: ${searchedRecords.filter(r => r.AttendanceStatus === 'P').length}`} 
                 color="success" 
@@ -3801,6 +3861,26 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                     No employees found
                   </Typography>
                 </Paper>
+              )}
+              
+              {searchedRecords.length > 0 && (
+                <TablePagination
+                  component="div"
+                  count={searchedRecords.length}
+                  page={mobilePage}
+                  onPageChange={handleMobilePageChange}
+                  rowsPerPage={mobileRowsPerPage}
+                  onRowsPerPageChange={handleMobileRowsPerPageChange}
+                  rowsPerPageOptions={[5, 10, 25, 50]}
+                  labelRowsPerPage="Rows:"
+                  sx={{
+                    '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                      fontSize: '0.75rem',
+                      marginTop: 'auto',
+                      marginBottom: 'auto'
+                    },
+                  }}
+                />
               )}
             </Box>
 

@@ -619,3 +619,31 @@ export const deleteTask = async (
     if (loadingOff) loadingOff();
   }
 };
+
+// ─── Get task parameter details by task ID ─────────────────────────────────────
+export const getTaskParameterDetailsByTaskId = async (
+  taskId: number,
+  loadingOn?: () => void,
+  loadingOff?: () => void
+): Promise<any[]> => {
+  try {
+    if (loadingOn) loadingOn();
+    const res = await fetchLink<BasicApiResponse>({
+      address: `${taskParameterAPI}task/${taskId}`,
+      method: "GET",
+    });
+    if (res && res.success) {
+      if (Array.isArray(res.data)) {
+        return res.data;
+      } else if (res.data && typeof res.data === "object" && "data" in res.data && Array.isArray((res.data as any).data)) {
+        return (res.data as any).data;
+      }
+    }
+    return [];
+  } catch (e: unknown) {
+    console.error(`getTaskParameterDetailsByTaskId Error for task ${taskId}:`, e);
+    return [];
+  } finally {
+    if (loadingOff) loadingOff();
+  }
+};

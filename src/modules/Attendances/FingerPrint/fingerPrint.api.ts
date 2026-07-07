@@ -444,7 +444,8 @@ export const getEmployeeDropdown = async (
                 return dataArray.map((emp: any) => ({
                     EmpId: emp.Emp_Id?.toString() || "",
                     EmpName: emp.Emp_Name || "",
-                    fingerPrintEmpId: emp.fingerPrintEmpId || ""
+                    fingerPrintEmpId: emp.fingerPrintEmpId || "",
+                    Department: emp.Department || ""
                 }));
             }
             return [];

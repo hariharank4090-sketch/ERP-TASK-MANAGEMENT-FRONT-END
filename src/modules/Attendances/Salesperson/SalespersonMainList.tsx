@@ -4,8 +4,6 @@ import {
   Box,
   FormControl,
   IconButton,
-  MenuItem,
-  Select,
   Typography,
   TextField,
   Paper,
@@ -24,6 +22,7 @@ import {
   LocationOn,
   Image as ImageIcon,
 } from "@mui/icons-material";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -123,15 +122,9 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
     setObjDetails({});
   };
 
-  // Handle dropdown change — convert to number or "" (all)
+  // Handle dropdown change
   const handleUserChange = (event: any) => {
-    const value = event.target.value;
-    if (value === "" || value === null || value === undefined) {
-      setSelectedUserId("");
-    } else {
-      const parsed = parseInt(value, 10);
-      setSelectedUserId(isNaN(parsed) ? "" : parsed);
-    }
+    setSelectedUserId(event.target.value);
   };
 
   // Handle image error
@@ -232,22 +225,21 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
         {/* Sales Person Dropdown */}
         <Grid size={{ xs: 12, md: 3 }}>
           <FormControl fullWidth size="small">
-            <Select
+            <SearchableSelect
               value={selectedUserId}
-              displayEmpty
               onChange={handleUserChange}
               sx={{
                 background: "#fff",
                 height: INPUT_HEIGHT,
               }}
-            >
-              <MenuItem value="">All Sales Persons</MenuItem>
-              {salesPersons.map((person) => (
-                <MenuItem key={person.value} value={person.value}>
-                  {person.label}
-                </MenuItem>
-              ))}
-            </Select>
+              options={salesPersons.map((person) => ({
+                value: person.value,
+                label: person.label,
+              })) as any}
+              allOptionLabel="All Sales Persons"
+              allOptionValue=""
+              searchPlaceholder="Search sales person..."
+            />
           </FormControl>
         </Grid>
 
@@ -284,19 +276,21 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
         {/* Display Mode */}
         <Grid size={{ xs: 12, md: 3 }}>
           <FormControl fullWidth size="small">
-            <Select
+            <SearchableSelect
               value={displayMode}
-              onChange={(e) =>
+              onChange={(e: any) =>
                 setDisplayMode(Number(e.target.value) as 0 | 1)
               }
               sx={{
                 background: "#fff",
                 height: INPUT_HEIGHT,
               }}
-            >
-              <MenuItem value={0}>Calendar View</MenuItem>
-              <MenuItem value={1}>Table View</MenuItem>
-            </Select>
+              options={[
+                { value: 0, label: "Calendar View" },
+                { value: 1, label: "Table View" }
+              ]}
+              searchPlaceholder="Search view mode..."
+            />
           </FormControl>
         </Grid>
       </Grid>

@@ -35,6 +35,7 @@ const TodayPlanCard: React.FC<TodayPlanCardProps> = ({
   // Reset mobileExpanded to true whenever the card is opened globally
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMobileExpanded(true);
     }
   }, [open]);

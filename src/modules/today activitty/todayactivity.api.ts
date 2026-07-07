@@ -20,6 +20,12 @@ let tasksCache: TaskDropdown[] = [];
 let employeesCache: EmployeeDropdown[] = [];
 let projectsCache: ProjectDropdown[] = [];
 
+export const clearTodayActivityCaches = () => {
+    tasksCache = [];
+    employeesCache = [];
+    projectsCache = [];
+};
+
 // Helper to build query string from params
 const buildQueryString = (params?: WorkMasterQueryParams): string => {
     if (!params) return '';

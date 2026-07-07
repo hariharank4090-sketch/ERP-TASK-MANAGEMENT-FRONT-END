@@ -16,8 +16,6 @@ import {
   CircularProgress,
   FormControl,
   Button,
-  MenuItem,
-  Select,
   Grid,
   IconButton,
   Collapse,
@@ -35,6 +33,7 @@ import { toast } from "react-toastify";
 
 import { fetchLink } from "../../../Components/customFetch";
 import TodayTaskDialog from "./Emp Scheduleform";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import { 
   getprojectschedule, 
   getprojectDropdown,
@@ -1076,28 +1075,28 @@ const EmpSchedulesMainPage: React.FC = () => {
               Project
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 displayEmpty
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
                 disabled={!isFilterLoaded || loadingProjects}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected) return "Select Project";
                   if (selected === "all") return "All Projects";
                   const project = filteredProjects.find(p => String(p.value) === selected);
                   return project?.label || selected;
                 }}
-              >
-                <MenuItem value="" disabled>
-                  <em>Select Project</em>
-                </MenuItem>
-                <MenuItem value="all">All Projects</MenuItem>
-                {filteredProjects.map((p) => (
-                  <MenuItem key={p.value} value={String(p.value)}>
-                    {p.label}
-                  </MenuItem>
-                ))}
-              </Select>
+                searchPlaceholder="Search project..."
+                allOptionLabel="Select Project"
+                allOptionValue=""
+                options={[
+                  { value: "all", label: "All Projects" },
+                  ...filteredProjects.map((p) => ({
+                    value: String(p.value),
+                    label: p.label
+                  }))
+                ]}
+              />
               {!loadingProjects && !isFilterLoaded && (
                 <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5 }}>
                   Select date range and click Filter
@@ -1117,24 +1116,24 @@ const EmpSchedulesMainPage: React.FC = () => {
               Task
             </Typography>
             <FormControl fullWidth size="small">
-              <Select
+              <SearchableSelect
                 displayEmpty
                 value={selectedTask}
                 onChange={(e) => setSelectedTask(e.target.value)}
                 disabled={!isFilterLoaded || loadingTasks || !selectedProject}
-                renderValue={(selected) => {
+                renderValue={(selected: any) => {
                   if (!selected) return "All Tasks";
                   const task = filteredTasks.find(t => String(t.value) === selected);
                   return task?.label || selected;
                 }}
-              >
-                <MenuItem value="">All Tasks</MenuItem>
-                {filteredTasks.map((t) => (
-                  <MenuItem key={t.value} value={String(t.value)}>
-                    {t.label}
-                  </MenuItem>
-                ))}
-              </Select>
+                searchPlaceholder="Search task..."
+                allOptionLabel="All Tasks"
+                allOptionValue=""
+                options={filteredTasks.map((t) => ({
+                  value: String(t.value),
+                  label: t.label
+                }))}
+              />
               {loadingTasks && (
                 <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5 }}>
                   <CircularProgress size={12} sx={{ mr: 0.5 }} /> Loading…

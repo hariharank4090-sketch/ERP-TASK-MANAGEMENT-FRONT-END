@@ -10,6 +10,7 @@ import type { MenuTreeNode } from "../utils/menuManagement";
 import baseURL from "../config/baseURL";
 import { clearAllCaches } from "../modules/TodayPlan/todayplan.api";
 import { clearDashboardCaches } from "../modules/Dashboard/All.api";
+import { clearTodayActivityCaches } from "../modules/today activitty/todayactivity.api";
 
 // ─────────────────────────────────────────────
 // Storage helpers (module-level, not inside component)
@@ -117,6 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (newToken: string, newUser: User, companies?: CompanyInfo[]) => {
             clearAllCaches();
             clearDashboardCaches();
+            clearTodayActivityCaches();
 
             const enhancedUser: User = {
                 ...newUser,
@@ -247,6 +249,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // ✅ Clear all caches on company switch to ensure fresh data
                 clearAllCaches();
                 clearDashboardCaches();
+                clearTodayActivityCaches();
 
                 console.log("✅ Switched to company:", targetCompany.companyName);
                 return true;
@@ -265,6 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const logout = useCallback(() => {
         clearAllCaches();
         clearDashboardCaches();
+        clearTodayActivityCaches();
         
         setToken(null);
         setUser(null);

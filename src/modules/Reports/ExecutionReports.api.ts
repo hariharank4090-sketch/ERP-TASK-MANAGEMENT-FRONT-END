@@ -27,6 +27,9 @@ const taskUsersCache: Map<number, UserDropdown[]> = new Map();
 let scheduleEmpDataCache: ProjectScheduleEmp[] | null = null;
 let workMasterDataCache: WorkMasterData[] | null = null;
 
+export const getCachedScheduleEmpData = (): ProjectScheduleEmp[] => scheduleEmpDataCache || [];
+export const getCachedWorkMasterData = (): WorkMasterData[] => workMasterDataCache || [];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Get all projects
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +238,7 @@ export const getProjectSchedule = async (
 ): Promise<ProjectScheduleResponse[]> => {
   try {
     const res = await fetchLink<BasicApiResponse>({
-      address: projectScheduleAPI,
+      address: `${projectScheduleAPI}?limit=100000`,
       method: "GET",
       loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
       loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,

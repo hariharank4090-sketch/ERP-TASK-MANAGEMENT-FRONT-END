@@ -9,8 +9,7 @@ import {
   Alert,
   Stack,
   FormControl,
-  Select,
-  MenuItem,
+ 
   Tooltip,
   Divider,
   Chip,
@@ -43,6 +42,7 @@ import {
 
 import TodayTaskDialog from "../work master/TodayTaskDialog";
 import { useAuth } from "../../auth/authContext";
+import SearchableSelect from "../../Components/SearchableSelect";
 
 /* ================================================================
    DATE / TIME HELPERS
@@ -409,36 +409,36 @@ const CreditListPage = () => {
 
   const fetchWorkStatuses = useCallback(async (
     tasks: AssignedTask[],
+    aStart: string,
+    aEnd: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _companyId?: number | null
   ): Promise<Set<string>> => {
     if (!token || tasks.length === 0) return new Set();
 
     try {
-      const empIds = [...new Set(tasks.map(t => t.Emp_Id).filter(id => id != null))];
       const hasWorkKeysSet = new Set<string>();
 
-      for (const empId of empIds) {
-        const workMasterResponse = await getWorkMaster(
-          { empId },
-          undefined,
-          undefined
-        );
+      // Fetch ALL work data in ONE request instead of N sequential requests to fix the massive waterfall delay!
+      const workMasterResponse = await getWorkMaster(
+        { fromDate: aStart, toDate: aEnd },
+        undefined,
+        undefined
+      );
 
-        if (workMasterResponse.success && workMasterResponse.data.length > 0) {
-          workMasterResponse.data.forEach((work: any) => {
-            const workDate = getDateOnly(work.Work_Dt);
-            const taskKey = `${work.Task_Id}_${work.Emp_Id}`;
-            const dateKey = `${taskKey}_${workDate}`;
+      if (workMasterResponse.success && workMasterResponse.data.length > 0) {
+        workMasterResponse.data.forEach((work: any) => {
+          const workDate = getDateOnly(work.Work_Dt);
+          const taskKey = `${work.Task_Id}_${work.Emp_Id}`;
+          const dateKey = `${taskKey}_${workDate}`;
 
-            if (work.Work_Status === "Completed" ||
-              work.Work_Status === "Pending" ||
-              work.Work_Status === "In Progress" ||
-              work.Tot_Minutes > 0) {
-              hasWorkKeysSet.add(dateKey);
-            }
-          });
-        }
+          if (work.Work_Status === "Completed" ||
+            work.Work_Status === "Pending" ||
+            work.Work_Status === "In Progress" ||
+            work.Tot_Minutes > 0) {
+            hasWorkKeysSet.add(dateKey);
+          }
+        });
       }
 
       return hasWorkKeysSet;
@@ -461,10 +461,16 @@ const CreditListPage = () => {
         else setLoading(true);
         if (isMounted.current) setError(null);
 
+        const todayStr = getCurrentDateFormatted();
+        const aStart = assignedViewStart || todayStr;
+        const aEnd = assignedViewEnd || aStart;
+        const eStart = executedViewStart || todayStr;
+        const eEnd = executedViewEnd || eStart;
+
         const [empRes, todayRes, workRes] = await Promise.all([
           getEmployeeDropdown(companyId ?? undefined),
-          getEnrichedTodayPlan({}, companyId),
-          getEnrichedWorkMaster({}),
+          getEnrichedTodayPlan({ from_Task_Assign_dt: aStart, to_Task_Assign_dt: aEnd }, companyId),
+          getEnrichedWorkMaster({ fromDate: eStart, toDate: eEnd }),
         ]);
 
         if (!isMounted.current) return;
@@ -510,7 +516,7 @@ const CreditListPage = () => {
             ? uniqueExecuted.filter((t) => allowedEmpIds.has(Number(t.Emp_Id)))
             : uniqueExecuted;
 
-        const workKeys = await fetchWorkStatuses(scopedA, companyId);
+        const workKeys = await fetchWorkStatuses(scopedA, aStart, aEnd, companyId);
 
         if (isMounted.current) {
           setHasWorkKeys(workKeys);
@@ -530,8 +536,39 @@ const CreditListPage = () => {
         }
       }
     },
-    [token, fetchWorkStatuses]
+    [token, fetchWorkStatuses, assignedViewStart, assignedViewEnd, executedViewStart, executedViewEnd]
   );
+
+  const lastFetchedDates = useRef({ aStart: "", aEnd: "", eStart: "", eEnd: "" });
+
+  // Re-fetch when calendar dates change
+  useEffect(() => {
+    if (!assignedViewStart && !executedViewStart) return;
+    
+    const d = lastFetchedDates.current;
+    if (d.aStart === assignedViewStart && d.aEnd === assignedViewEnd &&
+        d.eStart === executedViewStart && d.eEnd === executedViewEnd) {
+      return;
+    }
+    
+    // Only fetch if we already have a token and the initial mount is done
+    if (!token) return;
+    
+    // Don't re-fetch on the very first render if dates are just being initialized to today
+    // because the initial loadData call (triggered by company selection) will handle it
+    const isFirstDateSet = d.aStart === "" && d.eStart === "";
+    
+    lastFetchedDates.current = {
+      aStart: assignedViewStart,
+      aEnd: assignedViewEnd,
+      eStart: executedViewStart,
+      eEnd: executedViewEnd
+    };
+    
+    if (!isFirstDateSet) {
+      loadData(true, currentCompany?.companyId ?? null);
+    }
+  }, [assignedViewStart, assignedViewEnd, executedViewStart, executedViewEnd, loadData, currentCompany, token]);
 
   // Re-fetch when company changes
   useEffect(() => {
@@ -993,19 +1030,19 @@ const CreditListPage = () => {
 
           <Stack direction="row" spacing={0.25} alignItems="center">
             <FormControl size="small" sx={{ minWidth: isMobile ? 80 : 200 }}>
-              <Select
+              <SearchableSelect
                 value={selectedEmployee}
                 displayEmpty
                 onChange={(e) => setSelectedEmployee(e.target.value)}
                 sx={isMobile ? { fontSize: "0.65rem", "& .MuiSelect-select": { py: 0.3, px: 1 } } : {}}
-              >
-                <MenuItem value="">All Employees</MenuItem>
-                {employees.map((emp: Employee) => (
-                  <MenuItem key={emp.Emp_Id} value={emp.Emp_Id}>
-                    {emp.Emp_Name}
-                  </MenuItem>
-                ))}
-              </Select>
+                searchPlaceholder="Search employee..."
+                allOptionLabel="All Employees"
+                allOptionValue=""
+                options={employees.map((emp: Employee) => ({
+                  value: emp.Emp_Id,
+                  label: emp.Emp_Name
+                }))}
+              />
             </FormControl>
 
             <Tooltip title="Refresh">
