@@ -90,9 +90,13 @@ export type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [token, setToken] = useState<string | null>(
-        () => localStorage.getItem("token")
-    );
+    const [token, setToken] = useState<string | null>(() => {
+        const stored = localStorage.getItem("token");
+        if (!stored || stored === "null" || stored === "undefined" || stored === "") {
+            return null;
+        }
+        return stored;
+    });
     const [user, setUser] = useState<User | null>(
         () => readStorage<User | null>("user", null)
     );

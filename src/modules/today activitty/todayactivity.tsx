@@ -771,8 +771,8 @@ const WorkAbstract = () => {
       )}
 
       {/* Filter Panel */}
-      <Paper elevation={2} sx={{ p: { xs: 0.5, sm: 2 }, mb: { xs: 1, sm: 2 }, borderRadius: 2 }}>
-        <Grid container spacing={{ xs: 0.5, sm: 2 }} alignItems="flex-end">
+      <Paper elevation={2} sx={{ px: { xs: 0.5, sm: 2 }, py: { xs: 0.5, sm: 1 }, mb: { xs: 1, sm: 2 }, borderRadius: 2 }}>
+        <Grid container rowSpacing={{ xs: 0.5, sm: 1.5 }} columnSpacing={{ xs: 0.5, sm: 2 }} alignItems="flex-end">
           {isMobile && (
             <Grid size={{ xs: 12 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", px: 0.5, pt: 0.5 }}>
@@ -792,7 +792,7 @@ const WorkAbstract = () => {
           
           {/* From Date */}
           <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
               From Date <span style={{ color: "red" }}>*</span>
             </Typography>
             <TextField
@@ -813,7 +813,7 @@ const WorkAbstract = () => {
 
           {/* To Date */}
           <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
               To Date <span style={{ color: "red" }}>*</span>
             </Typography>
             <TextField
@@ -834,7 +834,7 @@ const WorkAbstract = () => {
 
           {/* User Dropdown */}
           <Grid size={{ xs: 3, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined, whiteSpace: isMobile ? "nowrap" : undefined }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined, whiteSpace: isMobile ? "nowrap" : undefined }}>
               User Data <span style={{ color: "red" }}>*</span>
             </Typography>
             <FormControl fullWidth size="small">
@@ -897,7 +897,7 @@ const WorkAbstract = () => {
 
           {/* Project Dropdown */}
           <Grid size={{ xs: 4, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
               Project
             </Typography>
             <FormControl fullWidth size="small">
@@ -933,7 +933,7 @@ const WorkAbstract = () => {
 
           {/* Task Dropdown - Shows tasks based on selected project */}
           <Grid size={{ xs: 4, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
               Task
             </Typography>
             <FormControl fullWidth size="small">
@@ -967,7 +967,7 @@ const WorkAbstract = () => {
 
           {/* Status Dropdown */}
           <Grid size={{ xs: 4, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 1, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
               Status
             </Typography>
             <FormControl fullWidth size="small">

@@ -18,7 +18,7 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 function App() {
-    const { token, setNavDetails, currentCompany, isSwitchingCompany } = useAuth();
+    const { isAuthenticated, setNavDetails, currentCompany, isSwitchingCompany } = useAuth();
 
     const [loadingCount, setLoadingCount] = useState<number>(0);
     const [menuData, setMenuData] = useState<MenuRow[]>([]);
@@ -47,7 +47,7 @@ function App() {
     //         isSwitchingCompany acts as a gate: we skip the fetch while the
     //         switch is in progress and re-run once it completes (value → false).
     useEffect(() => {
-        if (!token) {
+        if (!isAuthenticated) {
             setMenuData([]);
             return;
         }
@@ -61,7 +61,7 @@ function App() {
         //          useCallback refs). Adding it would cause an extra fetch on every
         //          render cycle. If ESLint flags this, use the disable comment below.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, currentCompany?.companyId, isSwitchingCompany]);
+    }, [isAuthenticated, currentCompany?.companyId, isSwitchingCompany]);
 
     // ─── Rebuild nav tree from raw menu data ──────────────────────────────────
     // ✅ FIX: useMemo so buildMenuTree is not called on every render – only when
@@ -92,7 +92,7 @@ function App() {
              *    even during the login → authenticated transition.
              */}
             <BrowserRouter>
-                {!token ? (
+                {!isAuthenticated ? (
                     <Routes>
                         <Route
                             path="*"
