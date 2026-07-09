@@ -629,7 +629,7 @@ export const getTaskParameterDetailsByTaskId = async (
   try {
     if (loadingOn) loadingOn();
     const res = await fetchLink<BasicApiResponse>({
-      address: `${taskParameterAPI}task/${taskId}`,
+      address: `${taskParameterAPI}byTask/${taskId}`,
       method: "GET",
     });
     if (res && res.success) {

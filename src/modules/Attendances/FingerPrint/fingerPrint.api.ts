@@ -445,7 +445,8 @@ export const getEmployeeDropdown = async (
                     EmpId: emp.Emp_Id?.toString() || "",
                     EmpName: emp.Emp_Name || "",
                     fingerPrintEmpId: emp.fingerPrintEmpId || "",
-                    Department: emp.Department || ""
+                    Department: emp.Department || "",
+                    BranchId: emp.Branch || emp.BranchId || emp.Branch_Id || emp.branch_id || emp.branchId || emp.branch || emp.company_id || emp.Company_id || ""
                 }));
             }
             return [];
@@ -479,6 +480,31 @@ export const getDeviceDropdown = async (
             return [];
         }
     }, [], "Failed to load devices");
+};
+
+// Get branch dropdown
+export const getBranchDropdown = async (
+    loadingOn?: () => void,
+    loadingOff?: () => void
+): Promise<any[]> => {
+    return safeApiCall(async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({ 
+                address: "masters/branch",
+                method: "GET",
+                loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+                loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+            });
+
+            if (res && res.success && res.data) {
+                return Array.isArray(res.data) ? res.data : [];
+            }
+            return [];
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (error) {
+            return [];
+        }
+    }, [], "Failed to load branches");
 };
 
 // Get employee punch details for a specific date
@@ -549,3 +575,4 @@ export const getdevicedropdown = getDeviceDropdown;
 export const getemployeepunchdetails = getEmployeePunchDetails;
 export const getdepartmentlist = getDepartmentList;
 export const getdefaultleaves = getDefaultLeaves;
+export const getbranchdropdown = getBranchDropdown;

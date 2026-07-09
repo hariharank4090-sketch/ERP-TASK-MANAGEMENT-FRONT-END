@@ -158,6 +158,7 @@ export const getprojectschedule = async (
           updateDate: item.updateDate || item.Update_Date,
           projectName: item.projectName || item.Project_Name,
           Project_Id: item.Project_Id || item.Project_Id,
+          schType: item.schType || item.Sch_Type || null,
           taskDates: item.taskDates?.map((td: any) => ({
             aId: td.aId || td.A_Id,
             schId: td.schId || td.Sch_Id,

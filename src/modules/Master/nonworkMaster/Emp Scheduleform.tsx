@@ -165,6 +165,25 @@ const TodayTaskDialog: React.FC<Props> = ({
     if (open) fetchEmployees();
   }, [open]);
 
+  const extractTimeForInput = (val: any): string => {
+    if (!val) return "";
+    try {
+      if (typeof val === "string" && val.includes("T")) {
+        return val.split("T")[1].substring(0, 5);
+      }
+      if (typeof val === "string" && val.includes(":")) {
+        return val.substring(0, 5);
+      }
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        return d.toISOString().split("T")[1].substring(0, 5);
+      }
+    } catch (e) {
+      console.error("Time parse error", e);
+    }
+    return "";
+  };
+
   useEffect(() => {
     if (sourceData && open) {
       if (timerRef.current) {
@@ -211,8 +230,8 @@ const TodayTaskDialog: React.FC<Props> = ({
         Emp_Id: primaryEmpId,
         Emp_Name: sourceData.Emp_Name || "",
         Work_Dt: workDate,
-        Start_Time: sourceData.Start_Time || "",
-        End_Time: sourceData.End_Time || "",
+        Start_Time: extractTimeForInput(sourceData.Start_Time) || extractTimeForInput(sourceData.Sch_Est_Start_Time) || "",
+        End_Time: extractTimeForInput(sourceData.End_Time) || extractTimeForInput(sourceData.Sch_Est_End_Time) || "",
         Work_Status: statusDisplay,
         Work_Done: sourceData.Work_Done || "",
         Process_Id: sourceData.Process_Id?.toString() || ""
@@ -234,9 +253,47 @@ const TodayTaskDialog: React.FC<Props> = ({
             (param: TaskParameter) => param.Task_Id === String(sourceData.Task_Id)
           );
           setTaskParameters(taskParams);
+          let rawSavedParams = sourceData?.Parameters || sourceData?.parameters || [];
+          let savedParams: any[] = [];
+          
+          if (typeof rawSavedParams === 'string') {
+            try {
+              savedParams = JSON.parse(rawSavedParams);
+            } catch (e) {
+              console.error("Failed to parse work parameters JSON", e);
+            }
+          } else if (Array.isArray(rawSavedParams)) {
+            savedParams = rawSavedParams;
+          }
+
           const initialValues: Record<string, string> = {};
           taskParams.forEach((param: TaskParameter) => {
-            initialValues[`param_${param.Param_Id}`] = param.Default_Value || "";
+            let existingValue = "";
+            
+            if (isEditMode && savedParams && Array.isArray(savedParams)) {
+              const savedParam = savedParams.find((p: any) => {
+                const sourceWorkId = String(sourceData.Work_Id || sourceData.SNo || sourceData.AN_No);
+                const workIdMatch = !p.Work_Id || String(p.Work_Id) === sourceWorkId;
+                const taskIdMatch = !p.Task_Id || String(p.Task_Id) === String(sourceData.Task_Id);
+                
+                const pIds = [String(p.Param_Id), String(p.Paramet_Id), String(p.param_id), String(p.PA_Id)]
+                  .filter(id => id && id !== "undefined" && id !== "null");
+                const paramIds = [String(param.Param_Id), String((param as any).Paramet_Id), String((param as any).param_id), String(param.PA_Id)]
+                  .filter(id => id && id !== "undefined" && id !== "null");
+                
+                const paramIdMatch = pIds.some(id => paramIds.includes(id));
+                
+                return workIdMatch && taskIdMatch && paramIdMatch;
+              });
+
+              if (savedParam && savedParam.Current_Value != null) {
+                existingValue = String(savedParam.Current_Value);
+              } else if (savedParam && savedParam.current_value != null) {
+                existingValue = String(savedParam.current_value);
+              }
+            }
+
+            initialValues[`param_${param.Param_Id}`] = existingValue || param.Default_Value || "";
           });
           setParamValues(initialValues);
         }
@@ -383,6 +440,16 @@ const TodayTaskDialog: React.FC<Props> = ({
     return Object.keys(errors).length === 0;
   };
 
+  const formatTimeForApi = (timeVal: string, dateVal: string) => {
+    if (!timeVal) return null;
+    if (timeVal.includes("T")) return timeVal;
+    try {
+      const d = new Date(`${dateVal}T${timeVal}:00`);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    } catch { /* ignore */ }
+    return timeVal;
+  };
+
   /**
    * Build the payload for a single employee.
    * - CREATE: no Work_Id field (backend auto-generates via IDENTITY / sequence)
@@ -414,9 +481,10 @@ const TodayTaskDialog: React.FC<Props> = ({
       payload.Work_Done = formData.Work_Done.trim();
     }
 
+    if (formData.Start_Time) payload.Start_Time = formatTimeForApi(formData.Start_Time, formData.Work_Dt);
+    if (formData.End_Time) payload.End_Time = formatTimeForApi(formData.End_Time, formData.Work_Dt);
+
     if (isTimerBased) {
-      if (formData.Start_Time) payload.Start_Time = formData.Start_Time;
-      if (formData.End_Time) payload.End_Time = formData.End_Time;
       const totalMinutes = calculateMinutes();
       if (totalMinutes > 0) payload.Tot_Minutes = totalMinutes;
     }
@@ -453,9 +521,10 @@ const TodayTaskDialog: React.FC<Props> = ({
       payload.Work_Done = formData.Work_Done.trim();
     }
 
+    if (formData.Start_Time) payload.Start_Time = formatTimeForApi(formData.Start_Time, formData.Work_Dt);
+    if (formData.End_Time) payload.End_Time = formatTimeForApi(formData.End_Time, formData.Work_Dt);
+
     if (isTimerBased) {
-      if (formData.Start_Time) payload.Start_Time = formData.Start_Time;
-      if (formData.End_Time) payload.End_Time = formData.End_Time;
       const totalMinutes = calculateMinutes();
       if (totalMinutes > 0) payload.Tot_Minutes = totalMinutes;
     }
@@ -674,8 +743,33 @@ const TodayTaskDialog: React.FC<Props> = ({
             <TextField
               type="date"
               fullWidth
+              size="small"
               value={formData.Work_Dt}
               onChange={(e) => handleInputChange("Work_Dt", e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6 }}>
+            <Typography fontWeight={600} gutterBottom>Start Time</Typography>
+            <TextField
+              type="time"
+              fullWidth
+              size="small"
+              value={formData.Start_Time}
+              onChange={(e) => handleInputChange("Start_Time", e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6 }}>
+            <Typography fontWeight={600} gutterBottom>End Time</Typography>
+            <TextField
+              type="time"
+              fullWidth
+              size="small"
+              value={formData.End_Time}
+              onChange={(e) => handleInputChange("End_Time", e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>

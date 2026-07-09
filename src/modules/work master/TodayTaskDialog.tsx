@@ -163,24 +163,28 @@ const TodayTaskDialog: React.FC<Props> = ({
     }
   };
 
-  const getInputType = (displayName: string): string => {
-    switch (displayName?.toLowerCase()) {
-      case "number":
-        return "number";
-      case "date":
-        return "date";
-      default:
-        return "text";
+  const getInputType = (param: any): string => {
+    const display = String(param?.Para_Display_Name || "").toLowerCase();
+    const typeStr = String(param?.Paramet_Data_Type || "").toLowerCase();
+
+    if (display.includes("number") || typeStr.includes("number") || typeStr === "1") {
+      return "number";
     }
+    if (display.includes("date") || typeStr.includes("date") || typeStr === "3") {
+      return "date";
+    }
+    return "text";
   };
 
   const validateInput = (
-    displayName: string,
+    param: any,
     value: string
   ): string | undefined => {
     if (!value) return undefined;
+    
+    const inputType = getInputType(param);
 
-    switch (displayName?.toLowerCase()) {
+    switch (inputType) {
       case "number":
         if (isNaN(Number(value)))
           return "Please enter a valid number";
@@ -298,11 +302,49 @@ const TodayTaskDialog: React.FC<Props> = ({
 
           setTaskParameters(taskParams);
 
+          let rawSavedParams = sourceData?.Parameters || sourceData?.parameters || [];
+          let savedParams: any[] = [];
+          
+          if (typeof rawSavedParams === 'string') {
+            try {
+              savedParams = JSON.parse(rawSavedParams);
+            } catch (e) {
+              console.error("Failed to parse work parameters JSON", e);
+            }
+          } else if (Array.isArray(rawSavedParams)) {
+            savedParams = rawSavedParams;
+          }
+
           const initialValues: Record<string, string> = {};
 
           taskParams.forEach((param: TaskParameter) => {
+            let existingValue = "";
+            
+            if (isEditMode && savedParams && Array.isArray(savedParams)) {
+              const savedParam = savedParams.find((p: any) => {
+                const sourceWorkId = String(sourceData.Work_Id || sourceData.SNo || sourceData.AN_No);
+                const workIdMatch = !p.Work_Id || String(p.Work_Id) === sourceWorkId;
+                const taskIdMatch = !p.Task_Id || String(p.Task_Id) === String(sourceData.Task_Id);
+                
+                const pIds = [String(p.Param_Id), String(p.Paramet_Id), String(p.param_id), String(p.PA_Id)]
+                  .filter(id => id && id !== "undefined" && id !== "null");
+                const paramIds = [String(param.Param_Id), String((param as any).Paramet_Id), String((param as any).param_id), String(param.PA_Id)]
+                  .filter(id => id && id !== "undefined" && id !== "null");
+                
+                const paramIdMatch = pIds.some(id => paramIds.includes(id));
+                
+                return workIdMatch && taskIdMatch && paramIdMatch;
+              });
+
+              if (savedParam && savedParam.Current_Value != null) {
+                existingValue = String(savedParam.Current_Value);
+              } else if (savedParam && savedParam.current_value != null) {
+                existingValue = String(savedParam.current_value);
+              }
+            }
+
             initialValues[`param_${param.Param_Id}`] =
-              param.Default_Value || "";
+              existingValue || param.Default_Value || "";
           });
 
           setParamValues(initialValues);
@@ -314,7 +356,7 @@ const TodayTaskDialog: React.FC<Props> = ({
     };
 
     fetchTaskParameters();
-  }, [sourceData?.Task_Id]);
+  }, [sourceData?.Task_Id, sourceData?.Work_Id, sourceData?.AN_No, isOpen, isEditMode]);
 
   // ==========================================================
   // 4. handleStart FUNCTION
@@ -405,7 +447,7 @@ const TodayTaskDialog: React.FC<Props> = ({
     }));
 
     const error = validateInput(
-      param.Para_Display_Name,
+      param,
       value
     );
 
@@ -883,7 +925,7 @@ const TodayTaskDialog: React.FC<Props> = ({
 
           {taskParameters.map((param) => {
             const inputType = getInputType(
-              param.Para_Display_Name
+              param
             );
 
             const paramValue =

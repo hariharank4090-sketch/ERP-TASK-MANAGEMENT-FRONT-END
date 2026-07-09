@@ -82,6 +82,7 @@ import {
   getParameterDropdown,
   getTaskSchedules,
   getAllTaskGroups,
+  getTaskParameterDetailsByTaskId,
 } from "../Master/Task/Task.api";
 import {
   getprojectschedule,
@@ -154,6 +155,41 @@ const numEq = (a: any, b: any): boolean => {
 };
 
 type ScheduleFilterTab = "DAY" | "WEEKLY" | "MONTHLY" | "SPECIFIC_DAY" | "TIME_BASED" | "ALL";
+
+const extractTime = (val: unknown, defaultTime = "09:00"): string => {
+  const str = String(val || "").trim();
+  if (!str) return defaultTime;
+  const plain = str.match(/^(\d{1,2}):(\d{2})/);
+  if (plain) return `${String(Number(plain[1])).padStart(2, "0")}:${plain[2]}`;
+  const iso = str.match(/T(\d{2}):(\d{2})/);
+  if (iso) return `${iso[1]}:${iso[2]}`;
+  return defaultTime;
+};
+
+const formatDuration = (minutes: number): string => {
+  if (!minutes && minutes !== 0) return "-";
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hrs === 0) return `${mins} min`;
+  if (mins === 0) return `${hrs} hr`;
+  return `${hrs} hr ${mins} min`;
+};
+
+const calculateDurationFromTimes = (startStr: string | undefined, endStr: string | undefined): number => {
+  if (!startStr || !endStr) return 0;
+  const start = extractTime(startStr, "");
+  const end = extractTime(endStr, "");
+  if (!start || !end) return 0;
+  
+  const [sH, sM] = start.split(":").map(Number);
+  const [eH, eM] = end.split(":").map(Number);
+  
+  let startMins = sH * 60 + sM;
+  let endMins = eH * 60 + eM;
+  
+  if (endMins < startMins) endMins += 24 * 60; // handle overnight shifts
+  return endMins - startMins;
+};
 
 // ─── Status filter type ───────────────────────────────────────────────────────
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
@@ -381,7 +417,16 @@ const ScheduleCard: React.FC<{
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center", pt: 0.5 }}>
         <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
           <Typography variant="caption" color="text.secondary">Duration:</Typography>
-          <Chip label={`${sch.taskSchDuration || 0} hrs`} size="small" variant="outlined" />
+          <Chip
+            label={formatDuration(
+              calculateDurationFromTimes(
+                sch.taskDates.length > 0 ? sch.taskDates[0]?.taskStartTime : sch.schEstStartTime,
+                sch.taskDates.length > 0 ? sch.taskDates[0]?.taskEndTime : sch.schEstEndTime
+              ) || (sch.taskSchDuration ? sch.taskSchDuration * 60 : 0)
+            )}
+            size="small"
+            variant="outlined"
+          />
         </Box>
         <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
           <Typography variant="caption" color="text.secondary">Plan:</Typography>
@@ -885,7 +930,14 @@ const ExpandedSchedulesComponent: React.FC<{
                       )}
                     </TableCell>
 
-                    <TableCell align="center" sx={tdStyle}>{sch.taskSchDuration || 0} hrs</TableCell>
+                    <TableCell align="center" sx={tdStyle}>
+                      {formatDuration(
+                        calculateDurationFromTimes(
+                          latestTaskDate ? latestTaskDate.taskStartTime : sch.schEstStartTime,
+                          latestTaskDate ? latestTaskDate.taskEndTime : sch.schEstEndTime
+                        ) || (sch.taskSchDuration ? sch.taskSchDuration * 60 : 0)
+                      )}
+                    </TableCell>
                     <TableCell align="center" sx={tdStyle}>{getStatusChip(sch.schStatus)}</TableCell>
                     <TableCell align="center" sx={tdStyle}>{sch.taskSchTimerBased === 1 ? "Yes" : "No"}</TableCell>
                     <TableCell align="center" sx={tdStyle}>
@@ -1136,16 +1188,61 @@ const TaskExpandedComponent: React.FC<{
     setTaskDialogOpen(true);
   }, [taskTypeId, projectId]);
 
-  const handleEditTask = useCallback((task: TaskDisplay) => {
+  const handleEditTask = useCallback(async (task: TaskDisplay) => {
     setSelectedTask(task);
+
+    let rawIds: any = task.Paramet_Ids;
+    let parametIds: number[] = [];
+    if (Array.isArray(rawIds)) {
+      parametIds = rawIds.flatMap((id: any) => typeof id === "string" ? id.split(",").map(Number) : Number(id));
+    } else if (typeof rawIds === "string") {
+      parametIds = rawIds.split(",").map(Number);
+    } else if (typeof rawIds === "number") {
+      parametIds = [rawIds];
+    }
+    parametIds = parametIds.filter(n => !isNaN(n) && n > 0);
+
+    let rawDataTypes: any = task.Paramet_Data_Types;
+    let parametDataTypes: (string | null)[] = [];
+    if (Array.isArray(rawDataTypes)) {
+      parametDataTypes = rawDataTypes.flatMap((dt: any) => typeof dt === "string" ? dt.split(",") : dt);
+    } else if (typeof rawDataTypes === "string") {
+      parametDataTypes = rawDataTypes.split(",");
+    }
+
+    let rawDisplayNames: any = task.Para_Display_Names;
+    let paraDisplayNames: string[] = [];
+    if (Array.isArray(rawDisplayNames)) {
+      paraDisplayNames = rawDisplayNames.flatMap((dn: any) => typeof dn === "string" ? dn.split(",") : dn);
+    } else if (typeof rawDisplayNames === "string") {
+      paraDisplayNames = rawDisplayNames.split(",");
+    }
+
+    try {
+      const params = await getTaskParameterDetailsByTaskId(task.Task_Id);
+      if (params && params.length > 0) {
+        const fetchedIds = params
+          .map((p: any) => Number(p.Paramet_Id || p.Param_Id || p.paramet_id || p.param_id || p.id))
+          .filter((n: number) => !isNaN(n) && n > 0);
+        
+        if (fetchedIds.length > 0) {
+          parametIds = fetchedIds;
+          parametDataTypes = params.map((p: any) => p.Paramet_Data_Type || p.Param_Data_Type || p.paramet_data_type);
+          paraDisplayNames = params.map((p: any) => p.Para_Display_Name || p.Param_Display_Name || p.para_display_name);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching task parameters", err);
+    }
+
     setTaskObj({
       Task_Name: task.Task_Name || "",
       Task_Desc: task.Task_Desc || null,
       Task_Type_Id: task.Task_Type_Id,
       Project_Id: task.Project_Id,
-      Paramet_Ids: task.Paramet_Ids || [],
-      Paramet_Data_Types: task.Paramet_Data_Types || [],
-      Para_Display_Names: task.Para_Display_Names || [],
+      Paramet_Ids: parametIds,
+      Paramet_Data_Types: parametDataTypes,
+      Para_Display_Names: paraDisplayNames,
       Created_By: 1,
     });
     setTaskDialogType("edit");

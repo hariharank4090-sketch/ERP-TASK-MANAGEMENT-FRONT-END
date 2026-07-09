@@ -6,7 +6,10 @@ import {
   Box,
   Chip,
   Typography,
-  CircularProgress
+  CircularProgress,
+  FormControl,
+  Select,
+  MenuItem
 } from "@mui/material";
 import { Edit, Delete } from "@mui/icons-material";
 import { toast } from "react-toastify";
@@ -15,7 +18,6 @@ import DataTable, { createCol } from "../../../Components/dataTable";
 import { ProjectDialog } from "./Projects.from";
 import { 
   getProjectMaster, 
-  getActiveProjectMaster,
   createProjectMaster, 
   updateProjectMaster, 
   deleteProjectMaster,
@@ -54,19 +56,13 @@ const ProjectMainPage: React.FC<PageProps> = ({
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [showActiveOnly] = useState<boolean>(false);
+  const [filterStatus, setFilterStatus] = useState<"Active" | "Inactive">("Active");
 
   // Fetch Project List
   const fetchProjectList = useCallback(async () => {
     try {
       setIsLoadingProjects(true);
-      let list: projectData[];
-      
-      if (showActiveOnly) {
-        list = await getActiveProjectMaster(loadingOn, loadingOff);
-      } else {
-        list = await getProjectMaster(loadingOn, loadingOff);
-      }
+      const list = await getProjectMaster(loadingOn, loadingOff);
       
       setProjects(list);
       setError(null);
@@ -77,7 +73,7 @@ const ProjectMainPage: React.FC<PageProps> = ({
     } finally {
       setIsLoadingProjects(false);
     }
-  }, [showActiveOnly, loadingOn, loadingOff]);
+  }, [loadingOn, loadingOff]);
 
   // Fetch Dropdown Options
   const fetchDropdowns = useCallback(async () => {
@@ -270,10 +266,18 @@ const ProjectMainPage: React.FC<PageProps> = ({
 
   // Filter projects based on search term
   const filteredProjects = useMemo<TableCompatibleProjectData[]>(() => {
-    if (!searchTerm.trim()) return projects as TableCompatibleProjectData[];
+    let filtered = projects;
+
+    if (filterStatus === "Active") {
+      filtered = filtered.filter(item => (item.Project_Status ?? item.IsActive) === 1);
+    } else if (filterStatus === "Inactive") {
+      filtered = filtered.filter(item => (item.Project_Status ?? item.IsActive) === 0);
+    }
+
+    if (!searchTerm.trim()) return filtered as TableCompatibleProjectData[];
 
     const term = searchTerm.toLowerCase();
-    return projects.filter((item) => {
+    return filtered.filter((item) => {
       const projectName = item.Project_Name?.toLowerCase() || '';
       const projectDesc = item.Project_Desc?.toLowerCase() || '';
       const companyName = getCompanyDisplayName(item).toLowerCase();
@@ -284,7 +288,7 @@ const ProjectMainPage: React.FC<PageProps> = ({
              companyName.includes(term) ||
              projectHeadName.includes(term);
     }) as TableCompatibleProjectData[];
-  }, [searchTerm, projects, getCompanyDisplayName, getProjectHeadDisplayName]);
+  }, [searchTerm, projects, getCompanyDisplayName, getProjectHeadDisplayName, filterStatus]);
 
   // Handle create new project
   const handleCreateNew = useCallback(() => {
@@ -341,6 +345,19 @@ const ProjectMainPage: React.FC<PageProps> = ({
         EnableSerialNumber
         dataArray={tableCompatibleData}
         
+
+         headerActions={
+          <FormControl size="small" sx={{ minWidth: 120, bgcolor: 'white', borderRadius: 1 }}>
+            <Select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as "Active" | "Inactive")}
+              displayEmpty
+            >
+              <MenuItem value="Active">Active</MenuItem>
+              <MenuItem value="Inactive">Inactive</MenuItem>
+            </Select>
+          </FormControl>
+        }
         // Search and Create button props
         showSearch={true}
         searchPlaceholder="Search Project, Company or Head..."
@@ -351,6 +368,8 @@ const ProjectMainPage: React.FC<PageProps> = ({
         onCreateClick={handleCreateNew}
         createButtonColor="#c99f65"
         
+       
+
         // Hide master table details header
         showMasterTableHeader={false}
 

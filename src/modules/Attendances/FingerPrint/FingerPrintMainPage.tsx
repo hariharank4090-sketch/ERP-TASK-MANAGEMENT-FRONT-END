@@ -95,6 +95,7 @@ import {
   getDefaultLeaves,
   getEmployeeFingerPrintId,
   syncFingerprintAttendance,
+  getBranchDropdown,
 } from "./fingerPrint.api";
 import type {
   AttendanceResult,
@@ -2132,6 +2133,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
   const [deviceOptions, setDeviceOptions] = useState<DeviceOption[]>([]);
   const [departmentList, setDepartmentList] = useState<DepartmentOption[]>([]);
+  const [branchList, setBranchList] = useState<any[]>([]);
   const [holidayRecords, setHolidayRecords] = useState<
     Array<{ date: string; description: string; type: string }>
   >([]);
@@ -2165,6 +2167,8 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
   >([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>("");
   const [appliedDepartment, setAppliedDepartment] = useState<string>("");
+  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const [appliedBranch, setAppliedBranch] = useState<string>("");
 
   const filteredRecords = useMemo(() => {
     let result = attendanceRecords;
@@ -2186,16 +2190,76 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         (r as any).DepartmentName === appliedDepartment
       );
     }
+    if (appliedBranch) {
+      const validEmpIds = new Set(
+        employeeOptions
+          .filter((emp: any) => String(emp.BranchId) === String(appliedBranch))
+          .map((emp) => emp.fingerPrintEmpId)
+      );
+      result = result.filter((r) => 
+        validEmpIds.has(r.fingerPrintEmpId) || 
+        String((r as any).BranchId) === String(appliedBranch) || 
+        String((r as any).Branch_Id) === String(appliedBranch) ||
+        String((r as any).Branch) === String(appliedBranch)
+      );
+    }
     return result;
-  }, [attendanceRecords, activeTab, appliedEmployee, appliedDepartment, employeeOptions]);
+  }, [attendanceRecords, activeTab, appliedEmployee, appliedDepartment, appliedBranch, employeeOptions]);
 
   const uniqueDepartments = useMemo(() => {
     const depts = new Set<string>();
-    employeeOptions.forEach((emp: any) => {
+    employeeOptions.filter((emp: any) => {
+      if (selectedBranch && String(emp.BranchId) !== String(selectedBranch)) return false;
+      if (selectedEmployee && String(emp.fingerPrintEmpId) !== String(selectedEmployee)) return false;
+      return true;
+    }).forEach((emp: any) => {
       if (emp.Department) depts.add(emp.Department);
     });
-    return Array.from(depts).sort();
-  }, [employeeOptions]);
+    const result = Array.from(depts).sort();
+    if (result.length === 0 && !selectedBranch && !selectedEmployee) {
+      // Fallback if mapping fails
+      employeeOptions.forEach((emp: any) => {
+        if (emp.Department) depts.add(emp.Department);
+      });
+      return Array.from(depts).sort();
+    }
+    return result;
+  }, [employeeOptions, selectedBranch, selectedEmployee]);
+
+  const filteredEmployeeOptions = useMemo(() => {
+    const filtered = employeeOptions.filter((emp: any) => {
+      if (selectedBranch && String(emp.BranchId) !== String(selectedBranch)) return false;
+      if (selectedDepartment && String(emp.Department) !== String(selectedDepartment)) return false;
+      return true;
+    });
+    return filtered.length > 0 || selectedBranch || selectedDepartment ? filtered : employeeOptions;
+  }, [employeeOptions, selectedBranch, selectedDepartment]);
+
+  const filteredBranchList = useMemo(() => {
+    const validBranchIds = new Set(
+      employeeOptions
+        .map((emp: any) => String(emp.BranchId))
+        .filter((id: string) => id && id !== "undefined" && id !== "null")
+    );
+
+    let filtered = branchList;
+
+    if (validBranchIds.size > 0) {
+      filtered = branchList.filter(branch => validBranchIds.has(String(branch.BranchId)));
+    }
+
+    if (selectedEmployee) {
+      const selectedEmpData = employeeOptions.find((emp: any) => emp.fingerPrintEmpId === selectedEmployee);
+      if (selectedEmpData && selectedEmpData.BranchId) {
+        const empBranchId = String(selectedEmpData.BranchId);
+        filtered = filtered.filter(branch => String(branch.BranchId) === empBranchId);
+      }
+    }
+
+    return filtered.length > 0 ? filtered : branchList;
+  }, [branchList, employeeOptions, selectedEmployee]);
+
+
 
   const handleDepartmentChange = (event: SelectChangeEvent) => {
     setSelectedDepartment(event.target.value);
@@ -2652,15 +2716,17 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       setIsLoadingDropdowns(true);
       if (loadingOn) loadingOn();
 
-      const [employees, devices, departments] = await Promise.all([
+      const [employees, devices, departments, branches] = await Promise.all([
         getEmployeeDropdown(loadingOn, loadingOff),
         getDeviceDropdown(loadingOn, loadingOff),
         getDepartmentList(loadingOn, loadingOff),
+        getBranchDropdown(loadingOn, loadingOff),
       ]);
 
       setEmployeeOptions(employees);
       setDeviceOptions(devices);
       setDepartmentList(departments);
+      setBranchList(branches);
     } catch (error) {
       console.error("Error fetching dropdowns:", error);
       toast.error("Failed to load dropdown options");
@@ -2684,12 +2750,10 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
   }, [loadingOn, loadingOff]);
 
   const downloadMonthlyData = useCallback(async () => {
-    const today = new Date();
-    const prevMonth = subMonths(today, 1);
-    const startDate = format(startOfMonth(prevMonth), "yyyy-MM-dd");
-    const endDate = format(endOfMonth(prevMonth), "yyyy-MM-dd");
-    const monthName = format(prevMonth, "MMMM yyyy");
-    const monthYear = format(prevMonth, "MMM_yyyy");
+    const startDate = filterObj.startDate ? format(new Date(filterObj.startDate), "yyyy-MM-dd") : format(startOfMonth(new Date()), "yyyy-MM-dd");
+    const endDate = filterObj.endDate ? format(new Date(filterObj.endDate), "yyyy-MM-dd") : format(endOfMonth(new Date()), "yyyy-MM-dd");
+    const monthName = `${startDate} to ${endDate}`;
+    const monthYear = `${startDate}_${endDate}`;
 
     try {
       setIsLoadingMonthly(true);
@@ -2724,9 +2788,8 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         "SNo",
         "Employee ID",
         "Employee Name",
-        "Designation",
+        "Branch",
         "Department",
-        "Gender",
         "Log Date",
         "Day",
         "Punch 1",
@@ -2740,15 +2803,16 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       ];
       const wsRows = records.map((record, index) => {
         const logDate = new Date(record.LogDate);
+        const empData = employeeOptions.find((emp: any) => emp.fingerPrintEmpId === record.fingerPrintEmpId);
+        const branchName = branchList.find((b: any) => String(b.BranchId) === String(empData?.BranchId))?.BranchName || "N/A";
+        const empDept = empData?.Department || getDepartmentDisplayName(record.Department || record.Designation_Name || "Other");
+
         return {
           SNo: index + 1,
           "Employee ID": record.fingerPrintEmpId,
           "Employee Name": record.username,
-          Designation: record.Designation_Name || "N/A",
-          Department: getDepartmentDisplayName(
-            record.Department || record.Designation_Name || "Other",
-          ),
-          Gender: normalizeGender(record.Sex || record.Gender),
+          Branch: branchName,
+          Department: empDept,
           "Log Date": format(logDate, "dd/MM/yyyy"),
           Day: format(logDate, "EEEE"),
           "Punch 1": record.Punch1 || "--:--",
@@ -2773,7 +2837,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         { wch: 24 },
         { wch: 20 },
         { wch: 20 },
-        { wch: 8 },
         { wch: 12 },
         { wch: 10 },
         { wch: 12 },
@@ -2820,8 +2883,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       setIsLoadingMonthly(false);
       if (loadingOff) loadingOff();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingOn, loadingOff, getDepartmentDisplayName]);
+  }, [loadingOn, loadingOff, getDepartmentDisplayName, filterObj, employeeOptions, branchList]);
 
   const handleMonthlyClick = () => {
     downloadMonthlyData();
@@ -2892,21 +2954,18 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     try {
       setIsLoadingSummary(true);
 
-      const today = new Date();
-      const monthStart = startOfMonth(today);
-      const monthEnd = endOfMonth(today);
-      const monthName = format(today, "MMMM yyyy");
+      const startDate = filterObj.startDate ? filterObj.startDate : format(startOfMonth(new Date()), "yyyy-MM-dd");
+      const endDate = filterObj.endDate ? filterObj.endDate : format(endOfMonth(new Date()), "yyyy-MM-dd");
+      const monthName = `${startDate} to ${endDate}`;
 
       const allDaysInMonth = eachDayOfInterval({
-        start: monthStart,
-        end: monthEnd,
+        start: new Date(startDate),
+        end: new Date(endDate),
       });
+      const totalDays = allDaysInMonth.length;
       const totalSundaysInMonth = allDaysInMonth.filter(
         (d) => d.getDay() === 0,
       ).length;
-
-      const startDate = format(monthStart, "yyyy-MM-dd");
-      const endDate = format(monthEnd, "yyyy-MM-dd");
 
       const loadingToast = toast.loading(
         `Fetching full month data for ${monthName}…`,
@@ -2939,7 +2998,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         {
           employeeId: string;
           employeeName: string;
-          designation: string;
+          branch: string;
           department: string;
           present: number;
           absent: number;
@@ -2948,16 +3007,36 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         }
       >();
 
+      // Pre-fill map with all active employees to ensure those with 0 punches are included in summary
+      employeeOptions.forEach((emp: any) => {
+        const id = emp.fingerPrintEmpId;
+        if (!id) return;
+        const branchName = branchList.find((b: any) => String(b.BranchId) === String(emp.BranchId))?.BranchName || "N/A";
+        const empDept = emp.Department || getDepartmentDisplayName("Other");
+        empMap.set(id, {
+          employeeId: id,
+          employeeName: emp.EmpName || emp.username || "Unknown",
+          branch: branchName,
+          department: empDept,
+          present: 0,
+          absent: 0,
+          approvedLeave: 0,
+          pendingLeave: 0,
+        });
+      });
+
       monthRecords.forEach((record) => {
         const id = record.fingerPrintEmpId;
         if (!empMap.has(id)) {
+          const empData = employeeOptions.find((emp: any) => emp.fingerPrintEmpId === id);
+          const branchName = branchList.find((b: any) => String(b.BranchId) === String(empData?.BranchId))?.BranchName || "N/A";
+          const empDept = empData?.Department || getDepartmentDisplayName(record.Department || record.Designation_Name || "Other");
+
           empMap.set(id, {
             employeeId: id,
             employeeName: record.username,
-            designation: record.Designation_Name || "N/A",
-            department: getDepartmentDisplayName(
-              record.Department || record.Designation_Name || "Other",
-            ),
+            branch: branchName,
+            department: empDept,
             present: 0,
             absent: 0,
             approvedLeave: 0,
@@ -2976,8 +3055,10 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         "SNo",
         "Employee ID",
         "Employee Name",
-        "Designation",
+        "Branch",
         "Department",
+        "Total Days",
+        "Total Working Days",
         "Total Present",
         "Total Absent",
         "Approved Leave",
@@ -2985,19 +3066,26 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         "Company Leave",
         "Sunday Count",
       ];
-      const wsRows = Array.from(empMap.values()).map((row, index) => ({
-        SNo: index + 1,
-        "Employee ID": row.employeeId,
-        "Employee Name": row.employeeName,
-        Designation: row.designation,
-        Department: row.department,
-        "Total Present": row.present,
-        "Total Absent": row.absent,
-        "Approved Leave": row.approvedLeave,
-        "Pending Leave": row.pendingLeave,
-        "Company Leave": totalSundaysInMonth,
-        "Sunday Count": totalSundaysInMonth,
-      }));
+      const wsRows = Array.from(empMap.values()).map((row, index) => {
+        const workingDays = totalDays - totalSundaysInMonth;
+        // If absent is not correctly populated by backend, you can dynamically calculate it as:
+        // const calculatedAbsent = Math.max(0, workingDays - row.present - row.approvedLeave);
+        return {
+          SNo: index + 1,
+          "Employee ID": row.employeeId,
+          "Employee Name": row.employeeName,
+          Branch: row.branch,
+          Department: row.department,
+          "Total Days": totalDays,
+          "Total Working Days": workingDays,
+          "Total Present": row.present,
+          "Total Absent": Math.max(0, workingDays - row.present - row.approvedLeave),
+          "Approved Leave": row.approvedLeave,
+          "Pending Leave": row.pendingLeave,
+          "Company Leave": totalSundaysInMonth,
+          "Sunday Count": totalSundaysInMonth,
+        };
+      });
 
       const XLSX = await import("xlsx");
       const ws = XLSX.utils.json_to_sheet(wsRows, { header: wsHeaders });
@@ -3007,6 +3095,8 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         { wch: 24 },
         { wch: 22 },
         { wch: 22 },
+        { wch: 14 },
+        { wch: 18 },
         { wch: 14 },
         { wch: 13 },
         { wch: 15 },
@@ -3018,11 +3108,11 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       XLSX.utils.book_append_sheet(
         wb,
         ws,
-        `Summary ${format(today, "MMM yyyy")}`,
+        `Summary ${startDate}_${endDate}`,
       );
       XLSX.writeFile(
         wb,
-        `attendance_summary_${format(today, "yyyyMMdd_HHmmss")}.xlsx`,
+        `attendance_summary_${startDate}_${endDate}_${format(new Date(), "yyyyMMdd_HHmmss")}.xlsx`,
       );
 
       toast.update(loadingToast, {
@@ -3039,7 +3129,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     } finally {
       setIsLoadingSummary(false);
     }
-  }, [loadingOn, loadingOff, getDepartmentDisplayName]);
+  }, [loadingOn, loadingOff, getDepartmentDisplayName, filterObj, employeeOptions, branchList]);
 
   const handleCumulativeDownload = useCallback(async () => {
     if (cumulativeSelectedEmps.length === 0) {
@@ -3049,11 +3139,10 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     try {
       setIsLoadingCumulative(true);
 
-      const today = new Date();
-      const startDate = format(startOfMonth(today), "yyyy-MM-dd");
-      const endDate = format(endOfMonth(today), "yyyy-MM-dd");
-      const monthName = format(today, "MMMM yyyy");
-      const monthYear = format(today, "MMM_yyyy");
+      const startDate = filterObj.startDate ? format(new Date(filterObj.startDate), "yyyy-MM-dd") : format(startOfMonth(new Date()), "yyyy-MM-dd");
+      const endDate = filterObj.endDate ? format(new Date(filterObj.endDate), "yyyy-MM-dd") : format(endOfMonth(new Date()), "yyyy-MM-dd");
+      const monthName = `${startDate} to ${endDate}`;
+      const monthYear = `${startDate}_${endDate}`;
 
       const loadingToast = toast.loading(
         `Fetching data for ${cumulativeSelectedEmps.length} employee(s)...`,
@@ -3088,9 +3177,8 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         "SNo",
         "Employee ID",
         "Employee Name",
-        "Designation",
+        "Branch",
         "Department",
-        "Gender",
         "Log Date",
         "Day",
         "Punch 1",
@@ -3104,15 +3192,16 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       ];
       const wsRows = records.map((record, index) => {
         const logDate = new Date(record.LogDate);
+        const empData = employeeOptions.find((emp: any) => emp.fingerPrintEmpId === record.fingerPrintEmpId);
+        const branchName = branchList.find((b: any) => String(b.BranchId) === String(empData?.BranchId))?.BranchName || "N/A";
+        const empDept = empData?.Department || getDepartmentDisplayName(record.Department || record.Designation_Name || "Other");
+
         return {
           SNo: index + 1,
           "Employee ID": record.fingerPrintEmpId,
           "Employee Name": record.username,
-          Designation: record.Designation_Name || "N/A",
-          Department: getDepartmentDisplayName(
-            record.Department || record.Designation_Name || "Other",
-          ),
-          Gender: normalizeGender(record.Sex || record.Gender),
+          Branch: branchName,
+          Department: empDept,
           "Log Date": format(logDate, "dd/MM/yyyy"),
           Day: format(logDate, "EEEE"),
           "Punch 1": record.Punch1 || "--:--",
@@ -3137,7 +3226,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         { wch: 24 },
         { wch: 20 },
         { wch: 20 },
-        { wch: 8 },
         { wch: 12 },
         { wch: 10 },
         { wch: 12 },
@@ -3173,53 +3261,128 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     } finally {
       setIsLoadingCumulative(false);
     }
-  }, [cumulativeSelectedEmps, loadingOn, loadingOff, getDepartmentDisplayName]);
+  }, [cumulativeSelectedEmps, loadingOn, loadingOff, getDepartmentDisplayName, filterObj, employeeOptions, branchList]);
 
-  const handleExcelDownload = () => {
+  const handleExcelDownload = useCallback(async () => {
     try {
-      const exportData = searchedRecords.map((record, index) => ({
-        SNo: index + 1,
-        "Employee ID": record.fingerPrintEmpId,
-        "Employee Name": record.username,
-        Designation: record.Designation_Name,
-        Department: getDepartmentDisplayName(
-          record.Department || record.Designation_Name || "Other",
-        ),
-        Gender: normalizeGender(record.Sex || record.Gender),
-        "Log Date": format(new Date(record.LogDate), "dd/MM/yyyy"),
-        Day: format(new Date(record.LogDate), "EEEE"),
-        "Punch 1": record.Punch1 || "--:--",
-        "Punch 2": record.Punch2 || "--:--",
-        "Punch 3": record.Punch3 || "--:--",
-        "Punch 4": record.Punch4 || "--:--",
-        "Punch 5": record.Punch5 || "--:--",
-        "Punch 6": record.Punch6 || "--:--",
-        Status:
-          StatusLabels[record.AttendanceStatus] || record.AttendanceStatus,
-        Device: record.DeviceName || "N/A",
-      }));
+      if (!selectedEmployee) {
+        toast.warning("Please select an employee to download individual report.");
+        return;
+      }
+      
+      const startDate = filterObj.startDate || format(startOfMonth(new Date()), "yyyy-MM-dd");
+      const endDate = filterObj.endDate || format(endOfMonth(new Date()), "yyyy-MM-dd");
 
-      const headers = Object.keys(exportData[0] || {}).join(",");
-      const csvRows = exportData.map((row) => Object.values(row).join(","));
-      const csvString = [headers, ...csvRows].join("\n");
+      const params: DateRangeParams = {
+        startDate,
+        endDate,
+        EmpId: "",
+        FingerPrintId: "",
+      };
 
-      const blob = new Blob(["\uFEFF" + csvString], {
-        type: "text/csv;charset=utf-8;",
+      const loadingToast = toast.loading("Fetching individual attendance...");
+      if (loadingOn) loadingOn();
+      
+      const allRecords = await getFingerprintAttendance(params, loadingOn, loadingOff);
+      const records = allRecords.filter((r) => String(r.fingerPrintEmpId).trim().toLowerCase() === String(selectedEmployee).trim().toLowerCase());
+
+      toast.update(loadingToast, {
+        render: "Generating Excel file...",
+        type: "info",
+        isLoading: true,
       });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `attendance_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      toast.success("Excel downloaded successfully");
+
+      const allDays = eachDayOfInterval({
+        start: new Date(startDate + "T00:00:00"),
+        end: new Date(endDate + "T00:00:00"),
+      });
+
+      const empData = employeeOptions.find((emp: any) => String(emp.fingerPrintEmpId) === String(selectedEmployee));
+      const branchName = branchList.find((b: any) => String(b.BranchId) === String(empData?.BranchId))?.BranchName || "N/A";
+      const empDept = empData?.Department || getDepartmentDisplayName("Other");
+      const empNameStr = empData ? (empData.EmpName || selectedEmployee) : selectedEmployee;
+
+      const exportData = allDays.map((day, index) => {
+        const dateStr = format(day, "yyyy-MM-dd");
+        const record = records.find(r => {
+          if (!r.LogDate) return false;
+          // LogDate might be ISO string or other format, safe parse:
+          try {
+            return format(new Date(r.LogDate), "yyyy-MM-dd") === dateStr;
+          } catch (e) {
+            return r.LogDate.startsWith(dateStr);
+          }
+        });
+
+        if (record) {
+          return {
+            SNo: index + 1,
+            "Employee ID": record.fingerPrintEmpId,
+            "Employee Name": record.username || empNameStr,
+            Branch: branchName,
+            Department: empDept,
+            "Log Date": format(new Date(record.LogDate), "dd/MM/yyyy"),
+            Day: format(new Date(record.LogDate), "EEEE"),
+            "Punch 1": record.Punch1 || "--:--",
+            "Punch 2": record.Punch2 || "--:--",
+            "Punch 3": record.Punch3 || "--:--",
+            "Punch 4": record.Punch4 || "--:--",
+            "Punch 5": record.Punch5 || "--:--",
+            "Punch 6": record.Punch6 || "--:--",
+            Status: StatusLabels[record.AttendanceStatus] || record.AttendanceStatus,
+            Device: record.DeviceName || "N/A",
+          };
+        } else {
+          return {
+            SNo: index + 1,
+            "Employee ID": selectedEmployee,
+            "Employee Name": empNameStr,
+            Branch: branchName,
+            Department: empDept,
+            "Log Date": format(day, "dd/MM/yyyy"),
+            Day: format(day, "EEEE"),
+            "Punch 1": "--:--",
+            "Punch 2": "--:--",
+            "Punch 3": "--:--",
+            "Punch 4": "--:--",
+            "Punch 5": "--:--",
+            "Punch 6": "--:--",
+            Status: "Absent",
+            Device: "N/A",
+          };
+        }
+      });
+
+      const XLSX = await import("xlsx");
+      const wsHeaders = [
+        "SNo", "Employee ID", "Employee Name", "Branch", "Department",
+        "Log Date", "Day", "Punch 1", "Punch 2", "Punch 3", "Punch 4", "Punch 5", "Punch 6",
+        "Status", "Device"
+      ];
+      const ws = XLSX.utils.json_to_sheet(exportData, { header: wsHeaders });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Individual Report");
+      
+
+      
+      XLSX.writeFile(
+        wb,
+        `Individual_Report_${empNameStr}_${format(new Date(), "yyyyMMdd_HHmmss")}.xlsx`,
+      );
+
+      toast.update(loadingToast, {
+        render: "Excel downloaded successfully",
+        type: "success",
+        isLoading: false,
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error("Error downloading Excel:", error);
       toast.error("Failed to download Excel");
+    } finally {
+      if (loadingOff) loadingOff();
     }
-  };
+  }, [loadingOn, loadingOff, filterObj, selectedEmployee, employeeOptions, branchList, getDepartmentDisplayName]);
 
   const searchedRecords = useMemo(() => {
     if (!searchTerm.trim()) return filteredRecords;
@@ -3490,6 +3653,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                 fetchAttendanceRecords(filterObj);
                 setAppliedEmployee(selectedEmployee);
                 setAppliedDepartment(selectedDepartment);
+                setAppliedBranch(selectedBranch);
               }}
               variant="contained"
               size="small"
@@ -3532,6 +3696,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                   fetchAttendanceRecords(filterObj);
                   setAppliedEmployee(selectedEmployee);
                   setAppliedDepartment(selectedDepartment);
+                  setAppliedBranch(selectedBranch);
                 }}
                 variant="contained"
                 color="primary"
@@ -3629,6 +3794,10 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
               color="primary"
               onClick={() => {
                 handleReportClick("individual");
+                if (!selectedEmployee) {
+                  toast.warning("Please select an employee to download individual report.");
+                  return;
+                }
                 handleExcelDownload();
               }}
               sx={{
@@ -3753,7 +3922,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                 <MenuItem value="">
                   <em>All Employees</em>
                 </MenuItem>
-                {employeeOptions
+                {filteredEmployeeOptions
                   .filter((emp) => emp.EmpName.toLowerCase().includes(empSearchTerm.toLowerCase()))
                   .map((emp) => (
                   <MenuItem key={emp.EmpId} value={emp.fingerPrintEmpId} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
@@ -3780,6 +3949,28 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                 {uniqueDepartments.map((dept) => (
                   <MenuItem key={dept} value={dept} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
                     {dept}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl sx={{ minWidth: isMobile ? 120 : 200, width: isMobile ? "100%" : 250, display: (isMobile && !showAllTabs) ? 'none' : 'flex' }} size="small">
+              <InputLabel id="branch-select-label" sx={isMobile ? { fontSize: "0.75rem", lineHeight: 0.8, top: -7 } : {}}>Select Branch</InputLabel>
+              <Select
+                labelId="branch-select-label"
+                id="branch-select"
+                value={selectedBranch}
+                label="Select Branch"
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                MenuProps={{ autoFocus: false }}
+                sx={isMobile ? { fontSize: "0.75rem", height: 26, "& .MuiSelect-select": { py: 0, display: "flex", alignItems: "center" } } : {}}
+              >
+                <MenuItem value="">
+                  <em>All Branches</em>
+                </MenuItem>
+                {filteredBranchList.map((branch) => (
+                  <MenuItem key={branch.BranchId} value={branch.BranchId.toString()} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
+                    {branch.BranchName}
                   </MenuItem>
                 ))}
               </Select>

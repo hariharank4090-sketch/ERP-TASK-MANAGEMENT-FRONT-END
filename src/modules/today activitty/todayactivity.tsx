@@ -584,7 +584,9 @@ const WorkAbstract = () => {
       Work_Done: row.Work_Done,
       Start_Time: row.Start_Time,
       End_Time: row.End_Time,
-      Work_Status: row.Work_Status
+      Work_Status: row.Work_Status,
+      parameters: row.parameters,
+      Parameters: (row as any).Parameters
     });
     setEditDialogOpen(true);
   };

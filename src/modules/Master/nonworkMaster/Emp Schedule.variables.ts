@@ -26,6 +26,7 @@ export type projectscheduleData = {
   updateBy: number | null;
   updateDate: string | null;
   projectName?: string;
+  schType?: number;
   taskDates?: projectschedulesubtableData[];
   planDetails?: Array<{
     planMonth: number | null;

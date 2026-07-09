@@ -534,6 +534,8 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
             />
           )}
 
+          {headerActions && headerActions}
+
           {showCreateButton && onCreateClick && (
             <Tooltip title={createButtonLabel}>
               <Button
@@ -558,8 +560,6 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
               </Button>
             </Tooltip>
           )}
-
-          {headerActions && headerActions}
         </Box>
       </Box>
 

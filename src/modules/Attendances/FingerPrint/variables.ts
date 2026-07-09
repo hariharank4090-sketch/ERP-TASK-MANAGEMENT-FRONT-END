@@ -70,6 +70,7 @@ export interface EmployeeOption {
     EmpName: string;
     fingerPrintEmpId: string;
     Department?: string;
+    BranchId?: string | number;
 }
 
 export interface DeviceOption {

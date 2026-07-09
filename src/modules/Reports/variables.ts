@@ -209,4 +209,7 @@ export interface TaskWithSchedule extends TaskData {
   Work_Status: string | null;
   Schedule_SchNo: string | null;
   Schedule_SchId: string | null;
+  Start_Time?: string | null;
+  End_Time?: string | null;
+  Duration?: string | null;
 }

@@ -1117,17 +1117,46 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const handleEditTask = useCallback(async (task: TaskDisplay) => {
     setSelectedTask(task);
     
-    let parametIds = task.Paramet_Ids || [];
-    let parametDataTypes = task.Paramet_Data_Types || [];
-    let paraDisplayNames = task.Para_Display_Names || [];
+    let rawIds: any = task.Paramet_Ids;
+    let parametIds: number[] = [];
+    if (Array.isArray(rawIds)) {
+      parametIds = rawIds.flatMap((id: any) => typeof id === "string" ? id.split(",").map(Number) : Number(id));
+    } else if (typeof rawIds === "string") {
+      parametIds = rawIds.split(",").map(Number);
+    } else if (typeof rawIds === "number") {
+      parametIds = [rawIds];
+    }
+    parametIds = parametIds.filter(n => !isNaN(n) && n > 0);
+
+    let rawDataTypes: any = task.Paramet_Data_Types;
+    let parametDataTypes: (string | null)[] = [];
+    if (Array.isArray(rawDataTypes)) {
+      parametDataTypes = rawDataTypes.flatMap((dt: any) => typeof dt === "string" ? dt.split(",") : dt);
+    } else if (typeof rawDataTypes === "string") {
+      parametDataTypes = rawDataTypes.split(",");
+    }
+
+    let rawDisplayNames: any = task.Para_Display_Names;
+    let paraDisplayNames: string[] = [];
+    if (Array.isArray(rawDisplayNames)) {
+      paraDisplayNames = rawDisplayNames.flatMap((dn: any) => typeof dn === "string" ? dn.split(",") : dn);
+    } else if (typeof rawDisplayNames === "string") {
+      paraDisplayNames = rawDisplayNames.split(",");
+    }
 
     try {
       if (loadingOn) loadingOn();
       const params = await getTaskParameterDetailsByTaskId(task.Task_Id);
       if (params && params.length > 0) {
-        parametIds = params.map((p: any) => Number(p.Param_Id));
-        parametDataTypes = params.map((p: any) => p.Paramet_Data_Type);
-        paraDisplayNames = params.map((p: any) => p.Para_Display_Name);
+        const fetchedIds = params
+          .map((p: any) => Number(p.Paramet_Id || p.Param_Id || p.paramet_id || p.param_id || p.id))
+          .filter((n: number) => !isNaN(n) && n > 0);
+        
+        if (fetchedIds.length > 0) {
+          parametIds = fetchedIds;
+          parametDataTypes = params.map((p: any) => p.Paramet_Data_Type || p.Param_Data_Type || p.paramet_data_type);
+          paraDisplayNames = params.map((p: any) => p.Para_Display_Name || p.Param_Display_Name || p.para_display_name);
+        }
       }
     } catch (err) {
       console.error("Error fetching task parameters", err);

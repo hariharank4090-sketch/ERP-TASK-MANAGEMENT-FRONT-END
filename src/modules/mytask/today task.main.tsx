@@ -817,6 +817,9 @@ const CreditListPage = () => {
       Project_Name: task.Project_Name,
       Sch_Est_Start_Time: task.Sch_Est_Start_Time,
       Sch_Est_End_Time: task.Sch_Est_End_Time,
+      parameters: task.parameters,
+      Parameters: (task as any).Parameters,
+      type: task.type
     };
 
     setSelectedPlan(plan);
@@ -1505,6 +1508,7 @@ const CreditListPage = () => {
           window.dispatchEvent(new CustomEvent("work-created"));
         }}
         selectedPlan={selectedPlan}
+        isEditMode={selectedPlan?.type === "executed" || (selectedPlan?.Work_Status && selectedPlan?.Work_Status !== "Pending")}
         onTimerStart={handleTimerStart}
         onTimerStop={handleTimerStop}
       />

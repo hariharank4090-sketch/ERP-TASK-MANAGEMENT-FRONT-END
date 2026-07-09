@@ -81,6 +81,42 @@ const formatDateForExcel = (dateString: string | null): string => {
   }
 };
 
+// Format time to HH:MM
+const formatTimeToHHMM = (dateString: string | null | undefined): string => {
+  if (!dateString) return "—";
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleTimeString([], { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return dateString;
+  }
+};
+
+// Calculate duration between start and end time
+const calculateDuration = (startString: string | null | undefined, endString: string | null | undefined): string => {
+  if (!startString || !endString) return "—";
+  try {
+    const start = new Date(startString);
+    const end = new Date(endString);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return "—";
+    
+    let diffMs = end.getTime() - start.getTime();
+    if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000; // Handle overnight shifts
+    
+    const diffMins = Math.floor(diffMs / 60000);
+    const hours = Math.floor(diffMins / 60);
+    const minutes = diffMins % 60;
+    
+    if (hours === 0 && minutes === 0) return "—";
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  } catch {
+    return "—";
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Work-status badge (Completed / In Progress / Pending)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -384,6 +420,9 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         "Assigned Staff": task.Staff_Name || "Not Assigned",
         "Schedule Start": formatDateForExcel(task.Schedule_Start_Date),
         "Schedule End": formatDateForExcel(task.Schedule_End_Date),
+        "Start Time": formatTimeToHHMM(task.Start_Time),
+        "End Time": formatTimeToHHMM(task.End_Time),
+        "Duration": calculateDuration(task.Start_Time, task.End_Time),
         "Plan Days": task.Plan_Days !== null ? `${task.Plan_Days} day${task.Plan_Days !== 1 ? "s" : ""}` : "—",
         "Execution Days": `${task.Execution_Days} day${task.Execution_Days !== 1 ? "s" : ""}`,
         "Actual End Date": formatDateForExcel(task.Actual_End_Date) || "—",
@@ -402,6 +441,9 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         { wch: 25 },  // Assigned Staff
         { wch: 18 },  // Schedule Start
         { wch: 18 },  // Schedule End
+        { wch: 12 },  // Start Time
+        { wch: 12 },  // End Time
+        { wch: 12 },  // Duration
         { wch: 12 },  // Plan Days
         { wch: 15 },  // Execution Days
         { wch: 18 },  // Actual End Date
@@ -709,7 +751,10 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     { label: "Task Name", align: "left" as const },
     { label: "Assigned Staff", align: "left" as const },
     { label: "Schedule Start", align: "left" as const },
-    { label: "Schedule End", align: "left" as const },
+   { label: "Schedule End", align: "left" as const },
+     { label: "Start Time", align: "left" as const },
+    { label: "End Time", align: "left" as const },
+    { label: "Duration", align: "center" as const },
     { label: "Plan Days", align: "center" as const },
     { label: "Execution Days", align: "center" as const },
     { label: "Actual End Date", align: "left" as const },
@@ -770,6 +815,9 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   <Typography variant="body2">{getUserNameById(selectedUserId)}</Typography>
                 ) : "—"}
               </TableCell>
+              <TableCell align="center">—</TableCell>
+              <TableCell align="center">—</TableCell>
+              <TableCell align="center">—</TableCell>
               <TableCell align="center">—</TableCell>
               <TableCell align="center">—</TableCell>
               <TableCell align="center">—</TableCell>
@@ -877,6 +925,18 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   Not Scheduled
                 </Typography>
               )}
+            </TableCell>
+
+            <TableCell>
+              <Typography variant="body2">{formatTimeToHHMM(task.Start_Time)}</Typography>
+            </TableCell>
+
+            <TableCell>
+              <Typography variant="body2">{formatTimeToHHMM(task.End_Time)}</Typography>
+            </TableCell>
+
+            <TableCell align="center">
+              <Typography variant="body2">{calculateDuration(task.Start_Time, task.End_Time)}</Typography>
             </TableCell>
 
             <TableCell align="center">

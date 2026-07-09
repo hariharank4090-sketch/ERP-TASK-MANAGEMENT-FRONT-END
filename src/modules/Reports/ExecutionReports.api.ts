@@ -523,6 +523,9 @@ export const getTasksWithStaff = async (
             Work_Status: workStatus,
             Schedule_SchNo: schedule.schNo,
             Schedule_SchId: schedule.schId,
+            Start_Time: schedule.schEstStartTime,
+            End_Time: schedule.schEstEndTime,
+            Duration: schedule.taskSchDuration,
           });
         } else {
           // Schedule entry without a matching task record
@@ -547,6 +550,9 @@ export const getTasksWithStaff = async (
             Work_Status: workStatus,
             Schedule_SchNo: schedule.schNo,
             Schedule_SchId: schedule.schId,
+            Start_Time: schedule.schEstStartTime,
+            End_Time: schedule.schEstEndTime,
+            Duration: schedule.taskSchDuration,
           });
         }
       }

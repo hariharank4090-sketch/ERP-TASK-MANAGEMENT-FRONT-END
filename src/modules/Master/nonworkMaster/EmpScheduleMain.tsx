@@ -156,21 +156,6 @@ const formatTimeTo12Hour = (timeString: string): string => {
   }
 };
 
-const formatTimeTo12HourFromISO = (timeString: string): string => {
-  if (!timeString) return "-";
-  try {
-    if (timeString.includes("T")) {
-      const date = new Date(timeString);
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    }
-    const [h, m] = timeString.split(":").map(Number);
-    return `${String(h % 12 || 12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${
-      h >= 12 ? "PM" : "AM"
-    }`;
-  } catch {
-    return "-";
-  }
-};
 
 const formatDuration = (minutes: number): string => {
   if (!minutes && minutes !== 0) return "-";
@@ -181,6 +166,22 @@ const formatDuration = (minutes: number): string => {
   return `${hrs} hr ${mins} min`;
 };
 
+const calculateDurationFromTimes = (startStr: string | undefined, endStr: string | undefined): number => {
+  if (!startStr || !endStr) return 0;
+  const start = extractTime(startStr, "");
+  const end = extractTime(endStr, "");
+  if (!start || !end) return 0;
+  
+  const [sH, sM] = start.split(":").map(Number);
+  const [eH, eM] = end.split(":").map(Number);
+  
+  let startMins = sH * 60 + sM;
+  let endMins = eH * 60 + eM;
+  
+  if (endMins < startMins) endMins += 24 * 60; // handle overnight shifts
+  return endMins - startMins;
+};
+
 // ─────────────────────────────────────────────────────────────
 // STATUS CHIP
 // ─────────────────────────────────────────────────────────────
@@ -188,12 +189,11 @@ const formatDuration = (minutes: number): string => {
 const getStatusChip = (status: number) => {
   const map: Record<
     number,
-    { label: string; color: "success" | "error" | "warning" | "default" | "info" }
+    { label: string; color: "success" | "error" | "warning" | "default" | "info" | "primary" | "secondary" }
   > = {
-    1: { label: "Active",    color: "success" },
-    2: { label: "Completed", color: "default" },
-    3: { label: "Cancelled", color: "error"   },
-    4: { label: "On Hold",   color: "warning"  },
+    1: { label: "Inprocess", color: "primary" },
+    2: { label: "Pending",   color: "warning" },
+    3: { label: "Completed", color: "success" },
   };
   const s = map[status] || { label: "Unknown", color: "default" as const };
   return (
@@ -607,7 +607,7 @@ const EmpSchedulesMainPage: React.FC = () => {
         setIsFilterLoaded(true);
         
         // Reset selections
-        setSelectedProject("");
+        setSelectedProject("all");
         setSelectedTask("");
         setFilteredSchedules([]);
         // Reset work date filter to current date
@@ -947,16 +947,18 @@ const EmpSchedulesMainPage: React.FC = () => {
             {work.Work_Done || "-"}
           </Typography>
         </TableCell>
-        <TableCell sx={tdStyle} align="center">{formatDuration(work.Tot_Minutes || 0)}</TableCell>
+        <TableCell sx={tdStyle} align="center">
+          {formatDuration(calculateDurationFromTimes(work.Start_Time, work.End_Time) || work.Tot_Minutes || 0)}
+        </TableCell>
         <TableCell sx={tdStyle} align="center">
           {work.Start_Time && work.End_Time ? (
             <Typography variant="caption">
-              {formatTimeTo12HourFromISO(work.Start_Time)} - {formatTimeTo12HourFromISO(work.End_Time)}
+              {formatTimeTo12Hour(work.Start_Time)} - {formatTimeTo12Hour(work.End_Time)}
             </Typography>
           ) : work.Start_Time ? (
-            <Typography variant="caption">Start: {formatTimeTo12HourFromISO(work.Start_Time)}</Typography>
+            <Typography variant="caption">Start: {formatTimeTo12Hour(work.Start_Time)}</Typography>
           ) : work.End_Time ? (
-            <Typography variant="caption">End: {formatTimeTo12HourFromISO(work.End_Time)}</Typography>
+            <Typography variant="caption">End: {formatTimeTo12Hour(work.End_Time)}</Typography>
           ) : (
             "-"
           )}
@@ -986,6 +988,19 @@ const EmpSchedulesMainPage: React.FC = () => {
         </TableCell>
       </TableRow>
     ));
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────
+
+  const getScheduleTypeChip = (schType: number | undefined) => {
+    if (schType === 1) {
+      return <Chip label="One-Time" size="small" color="primary" variant="outlined" sx={{ fontSize: "0.75rem", height: "24px" }} />;
+    } else if (schType === 2) {
+      return <Chip label="Repetitive" size="small" color="secondary" variant="outlined" sx={{ fontSize: "0.75rem", height: "24px" }} />;
+    }
+    return <Chip label="-" size="small" variant="outlined" sx={{ fontSize: "0.75rem", height: "24px" }} />;
   };
 
   // ─────────────────────────────────────────────────────────
@@ -1081,14 +1096,12 @@ const EmpSchedulesMainPage: React.FC = () => {
                 onChange={(e) => setSelectedProject(e.target.value)}
                 disabled={!isFilterLoaded || loadingProjects}
                 renderValue={(selected: any) => {
-                  if (!selected) return "Select Project";
+                  if (!selected) return "All Projects";
                   if (selected === "all") return "All Projects";
                   const project = filteredProjects.find(p => String(p.value) === selected);
                   return project?.label || selected;
                 }}
                 searchPlaceholder="Search project..."
-                allOptionLabel="Select Project"
-                allOptionValue=""
                 options={[
                   { value: "all", label: "All Projects" },
                   ...filteredProjects.map((p) => ({
@@ -1278,9 +1291,11 @@ const EmpSchedulesMainPage: React.FC = () => {
                 <TableCell sx={thStyle} width={40}>#</TableCell>
                 <TableCell sx={thStyle}>Schedule No.</TableCell>
                 <TableCell sx={thStyle}>Schedule Date</TableCell>
-                <TableCell sx={thStyle}>Task Name</TableCell>
-                <TableCell sx={thStyle}>Task Type</TableCell>
                 <TableCell sx={thStyle}>Project Name</TableCell>
+                <TableCell sx={thStyle}>Task Type</TableCell>
+                <TableCell sx={thStyle}>Task Name</TableCell>
+                <TableCell sx={thStyle} align="center">Schedule Type</TableCell>
+                <TableCell sx={thStyle} align="center">Plan Type</TableCell>
                 <TableCell sx={thStyle} align="center">Schedule Period</TableCell>
                 <TableCell sx={thStyle} align="center">Est. Time</TableCell>
                 <TableCell sx={thStyle} align="center">Duration</TableCell>
@@ -1333,9 +1348,15 @@ const EmpSchedulesMainPage: React.FC = () => {
                       <TableCell sx={tdStyle}>
                         {formatDateToDDMMYYYY(row.schDate)}
                       </TableCell>
-                      <TableCell sx={tdStyle}>{row.taskName || "-"}</TableCell>
-                      <TableCell sx={tdStyle}>{row.taskType || "-"}</TableCell>
                       <TableCell sx={tdStyle}>{row.projectName || "-"}</TableCell>
+                      <TableCell sx={tdStyle}>{row.taskType || "-"}</TableCell>
+                      <TableCell sx={tdStyle}>{row.taskName || "-"}</TableCell>
+                      <TableCell sx={tdStyle} align="center">
+                        {getScheduleTypeChip((row as any).schType)}
+                      </TableCell>
+                      <TableCell sx={tdStyle} align="center">
+                        {row.planType || "-"}
+                      </TableCell>
                       <TableCell sx={tdStyle} align="center">
                         {formatDateToDDMMYYYY(row.schStartDate)} to{" "}
                         {formatDateToDDMMYYYY(row.schEndDate)}
