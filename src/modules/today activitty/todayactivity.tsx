@@ -593,6 +593,27 @@ const WorkAbstract = () => {
   const handleEditSuccess = () => {
     handleSearch();
   };
+
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // ✅ Listen for work-created events to auto-reload data (e.g. from TodayPlanCard)
+  useEffect(() => {
+    const handleWorkCreated = () => {
+      setRefreshTrigger((prev) => prev + 1);
+    };
+    window.addEventListener("work-created", handleWorkCreated);
+    return () => {
+      window.removeEventListener("work-created", handleWorkCreated);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      handleSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger]);
+
   const handleCloseEditDialog = () => {
     setEditDialogOpen(false);
     setSelectedRowData(null);

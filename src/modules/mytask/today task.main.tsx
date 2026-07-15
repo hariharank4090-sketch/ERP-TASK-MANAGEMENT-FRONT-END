@@ -608,6 +608,17 @@ const CreditListPage = () => {
     loadData,
   ]);
 
+  // ✅ Listen for work-created events to auto-reload data
+  useEffect(() => {
+    const handleWorkCreated = () => {
+      loadData(true, currentCompany?.companyId ?? null);
+    };
+    window.addEventListener("work-created", handleWorkCreated);
+    return () => {
+      window.removeEventListener("work-created", handleWorkCreated);
+    };
+  }, [currentCompany?.companyId, loadData]);
+
   // ✅ Listen for timer events from other tabs/components (same as list view)
   useEffect(() => {
     const handleTimerStart = (event: any) => {
