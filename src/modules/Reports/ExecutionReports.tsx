@@ -160,6 +160,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   
   // Filter states
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("1");
   const [selectedTaskTypeId, setSelectedTaskTypeId] = useState<number | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -292,6 +293,11 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     term: string
   ) => {
     let filtered = [...allTasks];
+
+    if (projectStatusFilter !== "") {
+      const validProjectIds = new Set(projects.filter(p => p.IsActive?.toString() === projectStatusFilter).map(p => Number(p.Project_Id)));
+      filtered = filtered.filter(task => validProjectIds.has(Number(task.Project_Id)));
+    }
     
     if (projectId !== null) {
       filtered = filtered.filter(task => task.Project_Id === projectId);
@@ -369,6 +375,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   // ─── Reset all filters ──────────────────────────────────────────────────────
   const handleResetFilters = () => {
     setSelectedProjectId(null);
+    setProjectStatusFilter("1");
     setSelectedTaskTypeId(null);
     setSelectedTaskId(null);
     setSelectedUserId(null);
@@ -386,6 +393,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const handleRefresh = () => {
     loadMasterData();
     setSelectedProjectId(null);
+    setProjectStatusFilter("1");
     setSelectedTaskTypeId(null);
     setSelectedTaskId(null);
     setSelectedUserId(null);
@@ -844,12 +852,23 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
 
     return (
       <TableBody>
-        {currentPageTasks.map((task, index) => (
-          <TableRow
-            key={`${task.Task_Id}_${task.Schedule_SchNo}_${index}`}
-            hover
-            sx={{ "&:hover": { bgcolor: "#fafafa" } }}
-          >
+        {currentPageTasks.map((task, index) => {
+          let rowBg = "#ffffff";
+          if (!task.Staff_Name || task.Execution_Days === 0) {
+            rowBg = "#ffffff";
+          } else if (task.Work_Status === "In Progress") {
+            rowBg = "#ffe0b2"; // orange
+          } else if (task.Work_Status === "Completed") {
+            rowBg = "#c8e6c9"; // green
+          } else if (task.Work_Status === "Pending") {
+            rowBg = "#ffcdd2"; // red
+          }
+
+          return (
+            <TableRow
+              key={`${task.Task_Id}_${task.Schedule_SchNo}_${index}`}
+              sx={{ bgcolor: rowBg }}
+            >
             <TableCell>{page * rowsPerPage + index + 1}</TableCell>
 
             <TableCell>
@@ -1003,7 +1022,8 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               <WorkStatusBadge status={task.Work_Status} />
             </TableCell>
           </TableRow>
-        ))}
+          );
+        })}
       </TableBody>
     );
   };
@@ -1138,6 +1158,36 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         </Box>
         
         <Grid container spacing={0.5}>
+          {/* Project Status Filter */}
+          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              Project Status
+            </Typography>
+            <FormControl fullWidth size="small">
+              <SearchableSelect
+                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, "& .MuiOutlinedInput-notchedOutline": { padding: 0 } } : {}}
+                displayEmpty
+                value={projectStatusFilter}
+                onChange={(e: SelectChangeEvent<string>) => {
+                  setProjectStatusFilter(e.target.value);
+                  setSelectedProjectId(null); // Reset selected project when status changes
+                }}
+                renderValue={(selected: any) => {
+                  if (selected === "1") return "Active";
+                  if (selected === "0") return "Inactive";
+                  return "All";
+                }}
+                searchPlaceholder="Search Status..."
+                allOptionLabel="All"
+                allOptionValue=""
+                options={[
+                  { value: "1", label: "Active" },
+                  { value: "0", label: "Inactive" }
+                ]}
+              />
+            </FormControl>
+          </Grid>
+
           {/* Project Filter */}
           <Grid size={{ xs: 4, sm: 4, md: 2 }}>
             <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1163,6 +1213,11 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                 allOptionValue="all"
                 options={projects
                   .filter(project => {
+                    if (projectStatusFilter !== "") {
+                      if (project.IsActive?.toString() !== projectStatusFilter) {
+                        return false;
+                      }
+                    }
                     const pId = Number(project.Project_Id);
                     if (!canSeeAllUsers) {
                       if (isLoadingUserProjects || userAssignedProjectIds === null) return false;
@@ -1449,17 +1504,29 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               </Paper>
             ) : (
               <Grid container spacing={2}>
-                {currentPageTasks.map((task, index) => (
-                  <Grid size={{ xs: 12 }} key={index}>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 0.5,
-                        borderRadius: "8px",
-                        border: "1px solid #e0e0e0",
-                        bgcolor: "#fffaf0"
-                      }}
-                    >
+                {currentPageTasks.map((task, index) => {
+                  let cardBg = "#fffaf0";
+                  if (!task.Staff_Name || task.Execution_Days === 0) {
+                    cardBg = "#ffffff";
+                  } else if (task.Work_Status === "In Progress") {
+                    cardBg = "#ffe0b2";
+                  } else if (task.Work_Status === "Completed") {
+                    cardBg = "#c8e6c9";
+                  } else if (task.Work_Status === "Pending") {
+                    cardBg = "#ffcdd2";
+                  }
+
+                  return (
+                    <Grid size={{ xs: 12 }} key={index}>
+                      <Paper
+                        elevation={0}
+                        sx={{
+                          p: 0.5,
+                          borderRadius: "8px",
+                          border: "1px solid #e0e0e0",
+                          bgcolor: cardBg
+                        }}
+                      >
                       {/* Project Name */}
                       <Box sx={{ mb: 0.5 }}>
                         <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Project Name</Typography>
@@ -1543,7 +1610,8 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                       </Box>
                     </Paper>
                   </Grid>
-                ))}
+                );
+                })}
               </Grid>
             )}
           </Box>

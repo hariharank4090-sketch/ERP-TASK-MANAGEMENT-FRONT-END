@@ -33,6 +33,7 @@ import { toast } from "react-toastify";
 
 import { fetchLink } from "../../../Components/customFetch";
 import TodayTaskDialog from "./Emp Scheduleform";
+import AppDialog from "../../../Components/appDialog";
 import SearchableSelect from "../../../Components/SearchableSelect";
 import { 
   getprojectschedule, 
@@ -248,6 +249,10 @@ const EmpSchedulesMainPage: React.FC = () => {
   const [fromDate, setFromDate] = useState<string>(getTodayDate());
   const [toDate, setToDate] = useState<string>(getTodayDate());
 
+  // Dialog state for delete
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [workToDelete, setWorkToDelete] = useState<WorkDetail | null>(null);
+
   // Work Date filter for expandable table - set to current date by default
   const [workDateFilter, setWorkDateFilter] = useState<string>(getTodayDate());
 
@@ -384,8 +389,11 @@ const EmpSchedulesMainPage: React.FC = () => {
         return [];
       }
 
+      // Filter work details by Task_Id so it only shows data for this specific row
+      const filteredByTask = worksArray.filter((work: any) => work.Task_Id === schedule.taskId);
+
       // Enhance work details with schedule information and employee names
-      return worksArray.map((work: any) => ({
+      return filteredByTask.map((work: any) => ({
         ...work,
         Project_Name: schedule.projectName,
         Schedule_Start_Date: schedule.schStartDate,
@@ -407,7 +415,7 @@ const EmpSchedulesMainPage: React.FC = () => {
   const handleRowExpand = useCallback(async (row: ProjectScheduleDisplay) => {
     // Create a new array with updated expanded state
     const updatedSchedules = filteredSchedules.map(schedule => {
-      if (schedule.schId === row.schId) {
+      if (schedule.schId === row.schId && schedule.taskId === row.taskId) {
         return {
           ...schedule,
           expanded: !schedule.expanded
@@ -419,12 +427,12 @@ const EmpSchedulesMainPage: React.FC = () => {
     setFilteredSchedules(updatedSchedules);
     
     // If expanding and no work details loaded yet, fetch them
-    const currentRow = updatedSchedules.find(s => s.schId === row.schId);
+    const currentRow = updatedSchedules.find(s => s.schId === row.schId && s.taskId === row.taskId);
     if (currentRow?.expanded && (!currentRow.workDetails || currentRow.workDetails.length === 0)) {
       // Set loading state
       setFilteredSchedules(prev => 
         prev.map(s => 
-          s.schId === row.schId ? { ...s, loadingWork: true } : s
+          s.schId === row.schId && s.taskId === row.taskId ? { ...s, loadingWork: true } : s
         )
       );
       
@@ -433,7 +441,7 @@ const EmpSchedulesMainPage: React.FC = () => {
       // Update with fetched data and apply work date filter
       setFilteredSchedules(prev => 
         prev.map(s => 
-          s.schId === row.schId 
+          s.schId === row.schId && s.taskId === row.taskId
             ? { 
                 ...s, 
                 workDetails, 
@@ -460,7 +468,7 @@ const EmpSchedulesMainPage: React.FC = () => {
   // HANDLE DELETE WORK
   // ─────────────────────────────────────────────────────────
 
-  const handleDeleteWork = useCallback(async (work: WorkDetail, event: React.MouseEvent) => {
+  const handleDeleteWork = useCallback((work: WorkDetail, event: React.MouseEvent) => {
     event.stopPropagation();
     
     if (!work.SNo) {
@@ -468,41 +476,51 @@ const EmpSchedulesMainPage: React.FC = () => {
       return;
     }
     
-    if (window.confirm(`Are you sure you want to delete work for ${work.Emp_Name || 'employee'}?`)) {
-      try {
-        const response = await fetchLink<any>({
-          address: `masters/workMaster/${work.SNo}`,
-          method: "DELETE",
-        });
-        
-        if (response?.success) {
-          toast.success("Work record deleted successfully");
-          // Refresh the work details for the parent schedule
-          const parentSchedule = filteredSchedules.find(s => s.schId === work.Sch_Id);
-          if (parentSchedule) {
-            // Refetch work details
-            const updatedWorkDetails = await fetchWorkDetails(work.Sch_Id || 0, parentSchedule);
-            setFilteredSchedules(prev => 
-              prev.map(s => 
-                s.schId === work.Sch_Id 
-                  ? { 
-                      ...s, 
-                      workDetails: updatedWorkDetails,
-                      filteredWorkDetails: filterWorkDetailsByDate(updatedWorkDetails, workDateFilter)
-                    } 
-                  : s
-              )
-            );
-          }
-        } else {
-          toast.error(response?.message || "Failed to delete work record");
+    setWorkToDelete(work);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const confirmDeleteWork = async () => {
+    if (!workToDelete || !workToDelete.SNo) return;
+    
+    try {
+      const response = await fetchLink<any>({
+        address: `masters/workMaster/${workToDelete.SNo}`,
+        method: "DELETE",
+      });
+      
+      if (response?.success) {
+        toast.success("Work record deleted successfully");
+        // Refresh the work details for the parent schedule
+        const parentSchedule = filteredSchedules.find(
+          s => String(s.schId) === String(workToDelete.Sch_Id) && String(s.taskId) === String(workToDelete.Task_Id)
+        );
+        if (parentSchedule) {
+          // Refetch work details
+          const updatedWorkDetails = await fetchWorkDetails(Number(workToDelete.Sch_Id) || 0, parentSchedule);
+          setFilteredSchedules(prev => 
+            prev.map(s => 
+              String(s.schId) === String(workToDelete.Sch_Id) && String(s.taskId) === String(workToDelete.Task_Id)
+                ? { 
+                    ...s, 
+                    workDetails: updatedWorkDetails,
+                    filteredWorkDetails: filterWorkDetailsByDate(updatedWorkDetails, workDateFilter)
+                  } 
+                : s
+            )
+          );
         }
-      } catch (err) {
-        console.error("Error deleting work:", err);
-        toast.error("Network error deleting work record");
+      } else {
+        toast.error(response?.message || "Failed to delete work record");
       }
+    } catch (err) {
+      console.error("Error deleting work:", err);
+      toast.error("Network error deleting work record");
+    } finally {
+      setDeleteDialogOpen(false);
+      setWorkToDelete(null);
     }
-  }, [filteredSchedules, fetchWorkDetails, workDateFilter, filterWorkDetailsByDate]);
+  };
 
   // ─────────────────────────────────────────────────────────
   // LOAD ALL MASTER DATA ON MOUNT
@@ -868,14 +886,16 @@ const EmpSchedulesMainPage: React.FC = () => {
 
   const handleEditWorkSuccess = useCallback(() => {
     // Refresh the work details for the parent schedule
-    if (selectedWork?.Sch_Id) {
-      const parentSchedule = filteredSchedules.find(s => s.schId === selectedWork.Sch_Id);
+    if (selectedWork?.Sch_Id && selectedWork?.Task_Id) {
+      const parentSchedule = filteredSchedules.find(
+        s => String(s.schId) === String(selectedWork.Sch_Id) && String(s.taskId) === String(selectedWork.Task_Id)
+      );
       if (parentSchedule) {
         // Refetch work details
-        fetchWorkDetails(selectedWork.Sch_Id, parentSchedule).then(updatedWorkDetails => {
+        fetchWorkDetails(Number(selectedWork.Sch_Id), parentSchedule).then(updatedWorkDetails => {
           setFilteredSchedules(prev => 
             prev.map(s => 
-              s.schId === selectedWork.Sch_Id 
+              String(s.schId) === String(selectedWork.Sch_Id) && String(s.taskId) === String(selectedWork.Task_Id)
                 ? { 
                     ...s, 
                     workDetails: updatedWorkDetails,
@@ -1319,7 +1339,7 @@ const EmpSchedulesMainPage: React.FC = () => {
                 </TableRow>
               ) : (
                 displayData.map((row, idx) => (
-                  <React.Fragment key={row.schId ?? idx}>
+                  <React.Fragment key={`${row.schId}-${row.taskId}-${idx}`}>
                     {/* Main Row */}
                     <TableRow
                       onClick={(e) => handleRowClick(row, e)}
@@ -1491,6 +1511,21 @@ const EmpSchedulesMainPage: React.FC = () => {
         existingWork={selectedWork}
         isEditMode={true}
       />
+      {/* Delete Confirmation Dialog */}
+      <AppDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title="Confirm Delete"
+        onSubmit={confirmDeleteWork}
+        submitText="Delete"
+        closeText="Cancel"
+        isSubmit={false}
+      >
+        <Typography variant="body1" sx={{ py: 2, textAlign: "center" }}>
+          Are you sure you want to delete work for <strong>{workToDelete?.Emp_Name || 'employee'}</strong>?
+        </Typography>
+      </AppDialog>
+
     </Box>
   );
 };

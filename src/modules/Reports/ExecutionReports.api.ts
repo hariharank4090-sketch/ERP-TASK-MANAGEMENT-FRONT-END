@@ -298,9 +298,9 @@ const buildExecutionDetailsMap = (
   const map = new Map<string, ExecutionDetails>();
 
   workMasterData.forEach((work) => {
-    // Use Sch_No as the key to match with getProjectScheduleEmp
-    // If Sch_No is missing (unassigned work), use Project_Id and Task_Id
-    const key = work.Sch_No || `UNASSIGNED_${work.Project_Id}_${work.Task_Id}`;
+    // Use Sch_Id as the key to match with getProjectScheduleEmp
+    // If Sch_Id is missing (unassigned work), use Project_Id and Task_Id
+    const key = work.Sch_Id || `UNASSIGNED_${work.Project_Id}_${work.Task_Id}`;
     if (!key) return;
 
     if (!map.has(key)) {
@@ -316,6 +316,8 @@ const buildExecutionDetailsMap = (
         staffWorkDatesById: new Map<number, Set<string>>(),
         projectId: work.Project_Id,
         taskId: work.Task_Id,
+        schStartDate: work.Sch_Start_Date,
+        schEndDate: work.Sch_End_Date,
       });
     }
 
@@ -421,16 +423,16 @@ export const getTasksWithStaff = async (
       }
     });
     
-    // ── Build staff map keyed by Schedule_Sch_No ────────────────────────────
-    const staffMapBySchNo = new Map<string, {empId: number, staffName: string}[]>();
+    // ── Build staff map keyed by Sch_Id ────────────────────────────
+    const staffMapBySchId = new Map<string, {empId: number, staffName: string}[]>();
     scheduleEmpData.forEach((item) => {
-      const key = item.Schedule_Sch_No;
+      const key = item.Sch_Id;
       if (key && item.Staff_Name && !item.Staff_Name.includes("Unknown Staff")) {
         const entry = { empId: item.Emp_Id, staffName: item.Staff_Name };
-        if (!staffMapBySchNo.has(key)) {
-          staffMapBySchNo.set(key, [entry]);
+        if (!staffMapBySchId.has(key)) {
+          staffMapBySchId.set(key, [entry]);
         } else {
-          const list = staffMapBySchNo.get(key)!;
+          const list = staffMapBySchId.get(key)!;
           if (!list.some(x => x.empId === entry.empId)) {
             list.push(entry);
           }
@@ -447,13 +449,13 @@ export const getTasksWithStaff = async (
     const processedKeys = new Set<string>();
 
     for (const schedule of projectScheduleData) {
-      processedKeys.add(schedule.schNo);
+      processedKeys.add(schedule.schId);
       
-      // Get execution details by Sch_No
-      const executionDetails = executionDetailsMap.get(schedule.schNo);
+      // Get execution details by Sch_Id
+      const executionDetails = executionDetailsMap.get(schedule.schId);
       
-      // Get scheduled staff names by Sch_No
-      const scheduledStaff = staffMapBySchNo.get(schedule.schNo) || [];
+      // Get scheduled staff names by Sch_Id
+      const scheduledStaff = staffMapBySchId.get(schedule.schId) || [];
       
       let staffToUse: {empId: number, staffName: string}[] = [];
       
@@ -492,13 +494,9 @@ export const getTasksWithStaff = async (
         schedule.schEndDate
       );
 
-      // Formatted schedule dates
-      const scheduleStartDate = schedule.schStartDate
-        ? new Date(schedule.schStartDate).toLocaleDateString()
-        : null;
-      const scheduleEndDate = schedule.schEndDate
-        ? new Date(schedule.schEndDate).toLocaleDateString()
-        : null;
+      // Raw schedule dates
+      const scheduleStartDate = schedule.schStartDate || null;
+      const scheduleEndDate = schedule.schEndDate || null;
 
       const existingTask = taskById.get(Number(schedule.Task_Id));
 
@@ -589,9 +587,9 @@ export const getTasksWithStaff = async (
             ...existingTask,
             Project_Id: existingTask.Project_Id,
             Staff_Name: staff.staffName,
-            Schedule_Start_Date: null,
-            Schedule_End_Date: null,
-            Plan_Days: null,
+            Schedule_Start_Date: executionDetails.schStartDate || null,
+            Schedule_End_Date: executionDetails.schEndDate || null,
+            Plan_Days: calculatePlanDays(executionDetails.schStartDate || null, executionDetails.schEndDate || null),
             Execution_Days: executionDays,
             Actual_End_Date: actualEndDate,
             Work_Status: workStatus,
@@ -611,9 +609,9 @@ export const getTasksWithStaff = async (
             Update_Date: null,
             Project_Id: projectId,
             Staff_Name: staff.staffName,
-            Schedule_Start_Date: null,
-            Schedule_End_Date: null,
-            Plan_Days: null,
+            Schedule_Start_Date: executionDetails.schStartDate || null,
+            Schedule_End_Date: executionDetails.schEndDate || null,
+            Plan_Days: calculatePlanDays(executionDetails.schStartDate || null, executionDetails.schEndDate || null),
             Execution_Days: executionDays,
             Actual_End_Date: actualEndDate,
             Work_Status: workStatus,

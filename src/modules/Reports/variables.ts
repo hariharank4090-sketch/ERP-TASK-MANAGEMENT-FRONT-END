@@ -196,6 +196,8 @@ export interface ExecutionDetails {
   staffWorkDatesById: Map<number, Set<string>>;
   projectId?: string;
   taskId?: string;
+  schStartDate?: string;
+  schEndDate?: string;
 }
 
 export interface TaskWithSchedule extends TaskData {
