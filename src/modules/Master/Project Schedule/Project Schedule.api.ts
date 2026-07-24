@@ -9,7 +9,8 @@ import type {
   ProjectDropdown,
   taskDropdown,
   taskTypeDropdown,
-  schedulePlanDropdown
+  schedulePlanDropdown,
+  ProjectScheduleExtension
 } from "./Project Schedule.variables";
 
 // API endpoints
@@ -155,6 +156,8 @@ export const getprojectschedule = async (
           planType: item.planType || item.Plan_Type,
           schStartDate: item.schStartDate || item.Sch_Start_Date,
           schEndDate: item.schEndDate || item.Sch_End_Date,
+          schFirstStartDate: item.schFirstStartDate || item.Sch_First_Start_Date || item.sch_first_start_date || item.SchFirstStartDate || item.schfirststartdate || null,
+          schFirstEndDate: item.schFirstEndDate || item.Sch_First_End_Date || item.sch_first_end_date || item.SchFirstEndDate || item.schfirstenddate || null,
           taskSchTimerBased: item.taskSchTimerBased || item.Task_Sch_Timer_Based,
           schEstStartTime: item.schEstStartTime || item.Sch_Est_Start_Time,
           schEstEndTime: item.schEstEndTime || item.Sch_Est_End_Time,
@@ -168,6 +171,7 @@ export const getprojectschedule = async (
           Project_Id: item.Project_Id || item.Project_Id,
           schType: item.schType || item.Sch_Type || null,
           empCount: item.empCount || item.Emp_Count || item.EmployeeCount || item.Employee_Count || item.employeeCount || item.employee_count || item.assignedEmployees || 0,
+          hasExtension: item.hasExtension || item.Has_Extension || 0,
 
           taskDates: (item.taskDates || item.Task_Dates || item.task_dates || [])?.map((td: any) => {
             if (typeof td === "string" || td instanceof Date) {
@@ -215,6 +219,33 @@ export const getprojectschedule = async (
     console.error("getprojectschedule Error:", e);
     toast.error("Network error loading project schedules");
     return { data: [], totalPages: 1 };
+  }
+};
+
+// Get extension history for a schedule
+export const getScheduleExtensions = async (
+  schId: number,
+  loadingOn?: () => void,
+  loadingOff?: () => void
+): Promise<ProjectScheduleExtension[]> => {
+  try {
+    const res = await fetchLink<BasicApiResponse>({
+      address: `${ProjectScheduleAPI}${schId}/extensions`,
+      method: "GET",
+      loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+      loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+    });
+
+    if (res && res.success && res.data) {
+      if (Array.isArray(res.data)) return res.data as unknown as ProjectScheduleExtension[];
+      if (Array.isArray((res.data as any).data)) return (res.data as any).data as unknown as ProjectScheduleExtension[];
+      return [];
+    } else {
+      return [];
+    }
+  } catch (e: unknown) {
+    console.error("getScheduleExtensions Error:", e);
+    return [];
   }
 };
 
@@ -400,7 +431,13 @@ export const getschedulePlanDropdown = async (
 const formatDateForSQL = (date: Date | string | null): string | null => {
   if (!date) return null;
   const d = date instanceof Date ? date : new Date(date);
-  return d.toISOString().split('T')[0];
+  if (isNaN(d.getTime())) return null;
+  
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
 };
 
 // Helper function to format time
@@ -504,6 +541,24 @@ export const updateprojectschedule = async (
     if (body.Sch_Status !== undefined) cleanBody.Sch_Status = Number(body.Sch_Status);
     if (body.Project_Id !== undefined) cleanBody.Project_Id = Number(body.Project_Id);
     if (body.Sch_Type !== undefined) cleanBody.Sch_Type = Number(body.Sch_Type);
+    if (body.Sch_First_Start_Date !== undefined) {
+      const formatted = body.Sch_First_Start_Date ? formatDateForSQL(body.Sch_First_Start_Date) : null;
+      cleanBody.Sch_First_Start_Date = formatted;
+      cleanBody.schFirstStartDate = formatted;
+      cleanBody.sch_first_start_date = formatted;
+      cleanBody.Sch_first_start_date = formatted;
+      cleanBody.SchFirstStartDate = formatted;
+      cleanBody.schfirststartdate = formatted;
+    }
+    if (body.Sch_First_End_Date !== undefined) {
+      const formatted = body.Sch_First_End_Date ? formatDateForSQL(body.Sch_First_End_Date) : null;
+      cleanBody.Sch_First_End_Date = formatted;
+      cleanBody.schFirstEndDate = formatted;
+      cleanBody.sch_first_end_date = formatted;
+      cleanBody.Sch_first_end_date = formatted;
+      cleanBody.SchFirstEndDate = formatted;
+      cleanBody.schfirstenddate = formatted;
+    }
 
     if (body.planDetails) {
       cleanBody.planDetails = {
@@ -522,6 +577,15 @@ export const updateprojectschedule = async (
 
     if (body.specificDates) {
       cleanBody.specificDates = body.specificDates;
+    }
+
+    if (body.isExtension !== undefined) {
+      cleanBody.isExtension = body.isExtension;
+      if (body.isExtension) {
+        cleanBody.Sch_Id = body.schId;
+        if (body.Sch_Start_Date) cleanBody.Sch_EX_Start_Date = formatDateForSQL(body.Sch_Start_Date);
+        if (body.Sch_End_Date) cleanBody.Sch_EX_End_Date = formatDateForSQL(body.Sch_End_Date);
+      }
     }
 
     console.log("Updating schedule with data:", cleanBody);
@@ -573,5 +637,31 @@ export const deleteprojectschedule = async (
     console.error("DELETE projectschedule Error:", e);
     toast.error("Network error deleting project schedule");
     return false;
+  }
+};
+
+export const getprojectscheduleextensions = async (
+  id: number,
+  loadingOn?: () => void,
+  loadingOff?: () => void
+): Promise<any[]> => {
+  try {
+    const res = await fetchLink<BasicApiResponse>({
+      address: `${ProjectScheduleAPI}${id}/extensions`,
+      method: "GET",
+      loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+      loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+    });
+
+    if (res?.success) {
+      return res.data || [];
+    } else {
+      toast.error(res?.message || "Failed to fetch extension history");
+      return [];
+    }
+  } catch (e: unknown) {
+    console.error("getprojectscheduleextensions Error:", e);
+    toast.error("Network error fetching extensions");
+    return [];
   }
 };

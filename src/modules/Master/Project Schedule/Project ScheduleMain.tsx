@@ -4,9 +4,19 @@ import {
   Tooltip,
   Alert,
   Box,
-  Chip
-} from "@mui/material";
-import { Edit, Delete, Person } from "@mui/icons-material";
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow} from "@mui/material";
+import { Edit, Delete, Person, History } from "@mui/icons-material";
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
 
@@ -22,7 +32,8 @@ import {
   getprojectDropdown,
   gettaskDropdown,
   gettaskTypeDropdown,
-  getschedulePlanDropdown
+  getschedulePlanDropdown,
+  getScheduleExtensions
 } from "./Project Schedule.api";
 
 import type {
@@ -32,7 +43,8 @@ import type {
   ProjectDropdown,
   taskDropdown,
   taskTypeDropdown,
-  schedulePlanDropdown
+  schedulePlanDropdown,
+  ProjectScheduleExtension
 } from "./Project Schedule.variables";
 
 import { emptyprojectschedule } from "./Project Schedule.variables";
@@ -173,6 +185,10 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   const [assignTaskLoading,             setAssignTaskLoading]             = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedScheduleForCorrection, setSelectedScheduleForCorrection] = useState<any>(null);
+
+  const [extensionsDialogOpen, setExtensionsDialogOpen] = useState(false);
+  const [extensionsData, setExtensionsData] = useState<ProjectScheduleExtension[]>([]);
+  const [selectedScheduleForExtensions, setSelectedScheduleForExtensions] = useState<ProjectScheduleDisplay | null>(null);
 
   const [projects,       setProjects]       = useState<ProjectDropdown[]>([]);
   const [filteredTasks,  setFilteredTasks]  = useState<taskDropdown[]>([]);
@@ -368,6 +384,8 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
       Entry_By:            1,
       Project_Id:          Number(row.Project_Id),
       Sch_Type:            row.schType, // Preserve the schType value from API
+      Sch_First_Start_Date: (row.schFirstStartDate || (row as any).Sch_First_Start_Date) && toYMD(row.schFirstStartDate || (row as any).Sch_First_Start_Date) ? new Date(toYMD(row.schFirstStartDate || (row as any).Sch_First_Start_Date) + "T00:00:00") : null,
+      Sch_First_End_Date:   (row.schFirstEndDate || (row as any).Sch_First_End_Date) && toYMD(row.schFirstEndDate || (row as any).Sch_First_End_Date) ? new Date(toYMD(row.schFirstEndDate || (row as any).Sch_First_End_Date) + "T00:00:00") : null,
       planDetails: row.planDetails?.[0]
         ? { Plan_Month: row.planDetails[0].planMonth ? Number(row.planDetails[0].planMonth) : null,
             Plan_Day:   row.planDetails[0].planDay   ? Number(row.planDetails[0].planDay)   : null }
@@ -420,9 +438,18 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
     setAssignTaskOpen(true);
   };
 
+  const handleViewExtensions = async (row: ProjectScheduleDisplay) => {
+    setSelectedScheduleForExtensions(row);
+    if (loadingOn) loadingOn();
+    const data = await getScheduleExtensions(row.schId, loadingOn, loadingOff);
+    setExtensionsData(data);
+    if (loadingOff) loadingOff();
+    setExtensionsDialogOpen(true);
+  };
+
   const handleDeleteSchedule = (id: number) => { setSelectedId(id); setDialogType("delete"); };
 
-  const saveSchedule = async () => {
+  const saveSchedule = async (isExtension?: boolean) => {
     // Validate Sch_Type is selected (One-Time or Repetitive)
     if (!scheduleObj.Sch_Type || (scheduleObj.Sch_Type !== 1 && scheduleObj.Sch_Type !== 2)) {
       toast.warn("Please select Schedule Type (One-Time or Repetitive)");
@@ -451,6 +478,8 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
         Sch_Plan_Id:         Number(scheduleObj.Sch_Plan_Id),
         Sch_Start_Date:      scheduleObj.Sch_Start_Date,
         Sch_End_Date:        scheduleObj.Sch_End_Date,
+        Sch_First_Start_Date: scheduleObj.Sch_First_Start_Date,
+        Sch_First_End_Date:  scheduleObj.Sch_First_End_Date,
         Task_Sch_Timer_Based: scheduleObj.Task_Sch_Timer_Based,
         Sch_Est_Start_Time:  scheduleObj.Sch_Est_Start_Time,
         Sch_Est_End_Time:    scheduleObj.Sch_Est_End_Time,
@@ -460,7 +489,8 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
         Sch_Type:            scheduleObj.Sch_Type, // Send the user selected value
         planDetails:         scheduleObj.planDetails,
         selectedDays:        scheduleObj.selectedDays?.map(d => Number(d)),
-        specificDates:       scheduleObj.specificDates || []
+        specificDates:       scheduleObj.specificDates || [],
+        isExtension:         isExtension
       };
       success = await updateprojectschedule(updateData);
     } else {
@@ -599,6 +629,26 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
           createCol("taskType",    "string", "Task Type"),
           createCol("taskName",    "string", "Task Name"),
           {
+            isVisible: 1, ColumnHeader: "Sch First Start Date", align: "center" as const, isCustomCell: true,
+            Cell: ({ row }: { row: Record<string, unknown> }) => {
+              const r = row as unknown as projectscheduleData;
+              const val = r.schFirstStartDate || (r as any).Sch_First_Start_Date;
+              if (!val || val === "null" || String(val).startsWith("1970") || String(val).startsWith("1900")) return <span></span>;
+              const formatted = formatDateToDDMMYYYY(val);
+              return <span>{formatted === "-" ? "" : formatted}</span>;
+            },
+          },
+          {
+            isVisible: 1, ColumnHeader: "Sch First End Date", align: "center" as const, isCustomCell: true,
+            Cell: ({ row }: { row: Record<string, unknown> }) => {
+              const r = row as unknown as projectscheduleData;
+              const val = r.schFirstEndDate || (r as any).Sch_First_End_Date;
+              if (!val || val === "null" || String(val).startsWith("1970") || String(val).startsWith("1900")) return <span></span>;
+              const formatted = formatDateToDDMMYYYY(val);
+              return <span>{formatted === "-" ? "" : formatted}</span>;
+            },
+          },
+          {
             isVisible: 1, ColumnHeader: "Schedule Type", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
@@ -619,6 +669,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
               return <span>{formatDateToDDMMYYYY(r.schStartDate)} to {formatDateToDDMMYYYY(r.schEndDate)}</span>;
             },
           },
+         
           {
             isVisible: 1, ColumnHeader: "Est. Time", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
@@ -690,6 +741,25 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
               return <span style={{ fontWeight: count > 0 ? 600 : 400, color: count > 0 ? "#1976d2" : "#666" }}>{count}</span>;
             },
           },
+           {
+            isVisible: 1, ColumnHeader: "Extended", align: "center" as const, isCustomCell: true,
+            Cell: ({ row }: { row: Record<string, unknown> }) => {
+              const r = row as unknown as projectscheduleData;
+              return (
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+                  {r.hasExtension === 1 ? (
+                    <Tooltip title="View Extension History">
+                      <IconButton size="small" onClick={() => handleViewExtensions(r as unknown as ProjectScheduleDisplay)} color="primary">
+                        <History fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
+                    <span style={{ color: "#999" }}>No</span>
+                  )}
+                </div>
+              );
+            },
+          },
           {
             isVisible: 1, ColumnHeader: "Actions", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
@@ -744,6 +814,45 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
           }}
         />
       )}
+
+      <Dialog open={extensionsDialogOpen} onClose={() => setExtensionsDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ borderBottom: '1px solid #eee' }}>Extension Details</DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <TableContainer>
+            <Table size="small" sx={{ minWidth: 800 }}>
+              <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+                <TableRow>
+                  <TableCell sx={{ py: 2 }}><strong>Schedule No.</strong></TableCell>
+                  <TableCell sx={{ py: 2 }}><strong>Schedule Date</strong></TableCell>
+                  <TableCell sx={{ py: 2 }}><strong>Extended Start Date</strong></TableCell>
+                  <TableCell sx={{ py: 2 }}><strong>Extended End Date</strong></TableCell>
+                  <TableCell sx={{ py: 2 }}><strong>Est. Time</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {extensionsData.length > 0 ? (
+                  extensionsData.map((ext, idx) => (
+                    <TableRow key={idx} hover>
+                      <TableCell>{selectedScheduleForExtensions?.schNo}</TableCell>
+                      <TableCell>{formatDateToDDMMYYYY(selectedScheduleForExtensions?.schDate || "")}</TableCell>
+                      <TableCell>{formatDateToDDMMYYYY(ext.Sch_EX_Start_Date || (ext as any).sch_ex_start_date)}</TableCell>
+                      <TableCell>{formatDateToDDMMYYYY(ext.Sch_EX_End_Date || (ext as any).sch_ex_end_date)}</TableCell>
+                      <TableCell>{`${formatTimeTo12Hour(ext.Sch_Est_Start_Time || (ext as any).sch_est_start_time)} - ${formatTimeTo12Hour(ext.Sch_Est_End_Time || (ext as any).sch_est_end_time)}`}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>No extension history found.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid #eee' }}>
+          <Button variant="contained" color="inherit" onClick={() => setExtensionsDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {dialogType && (
         <ProjectScheduleDialog

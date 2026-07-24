@@ -21,6 +21,7 @@ interface AppDialogProps {
   maxWidth?: "xs" | "sm" | "md" | "lg" | "xl";
   fullWidth?: boolean;
   isSubmit?: boolean;
+  extraActions?: React.ReactNode;
 }
 
 const AppDialog: React.FC<AppDialogProps> = ({
@@ -34,6 +35,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
   maxWidth = "sm",
   fullWidth = true,
   isSubmit = false,
+  extraActions,
 }) => {
   return (
     <Dialog
@@ -124,6 +126,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
           backgroundColor: "#f9f9f9",
         }}
       >
+        {extraActions && <Box sx={{ flexGrow: 1 }}>{extraActions}</Box>}
         <Button
           onClick={onClose}
           sx={{ 

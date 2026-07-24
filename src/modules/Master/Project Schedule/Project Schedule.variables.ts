@@ -12,6 +12,8 @@ export type projectscheduleData = {
   planType: string;
   schStartDate: string;
   schEndDate: string;
+  schFirstStartDate?: string;
+  schFirstEndDate?: string;
   taskSchTimerBased: number;
   schEstStartTime: string;
   schEstEndTime: string;
@@ -25,6 +27,7 @@ export type projectscheduleData = {
   schTypeId?: number;
   schType?: number;  // 1=One-Time, 2=Repetitive
   empCount?: number;
+  hasExtension?: number;
   taskDates?: projectschedulesubtableData[];
   planDetails?: Array<{
     planMonth: number | null;
@@ -45,6 +48,20 @@ export type projectschedulesubtableData = {
   taskEndTime: string;
 };
 
+// Extension history data
+export type ProjectScheduleExtension = {
+  Sch_EX_Id: number;
+  Sch_Id: number;
+  Sch_EX_Start_Date: string;
+  Sch_EX_End_Date: string;
+  Task_Sch_Timer_Based: boolean | number;
+  Sch_Est_Start_Time: string;
+  Sch_Est_End_Time: string;
+  Task_Sch_Duaration: number;
+  Sch_Type: number;
+  Employee_Names?: string;
+};
+
 // Plan details structure - matches tbl_Project_Sch_DT
 export type planDetailsType = {
   Plan_Month: number | null;
@@ -62,6 +79,8 @@ export type projectscheduleCreateInput = {
   Sch_Plan_Id: number;
   Sch_Start_Date: Date | string | null;
   Sch_End_Date: Date | string | null;
+  Sch_First_Start_Date?: Date | string | null;
+  Sch_First_End_Date?: Date | string | null;
   Task_Sch_Timer_Based: boolean;
   Sch_Est_Start_Time: string;
   Sch_Est_End_Time: string;
@@ -86,6 +105,8 @@ export type projectscheduleUpdateInput = {
   Sch_Plan_Id?: number;
   Sch_Start_Date?: Date | string | null;
   Sch_End_Date?: Date | string | null;
+  Sch_First_Start_Date?: Date | string | null;
+  Sch_First_End_Date?: Date | string | null;
   Task_Sch_Timer_Based?: boolean;
   Sch_Est_Start_Time?: string;
   Sch_Est_End_Time?: string;
@@ -96,6 +117,7 @@ export type projectscheduleUpdateInput = {
   selectedDays?: number[];
   specificDates?: string[];
   Sch_Type?: number;  // 1=One-Time, 2=Repetitive
+  isExtension?: boolean;
 };
 
 // For sub-table Create (Task Dates)

@@ -54,7 +54,7 @@ dayjs.extend(customParseFormat);
 interface ProjectScheduleDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (isExtension?: boolean) => void;
   type: "create" | "edit" | "view" | "delete";
   scheduleObj?: projectscheduleCreateInput;
   setScheduleObj?: React.Dispatch<
@@ -815,7 +815,8 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
 
   // ── Dialog actions ────────────────────────────────────────────────────────
   const handleClose = () => { onClose(); setDateError(""); };
-  const handleSubmit = () => {
+  const handleSubmit = (isExtensionFlag?: boolean | any) => {
+    const isExt = isExtensionFlag === true;
     // Validate that user has selected One-Time or Repetitive
     if (!localUI.durationType) {
       toast.error("Please select One-Time or Repetitive");
@@ -836,7 +837,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       alert("Please select at least one specific date");
       return;
     }
-    if (isViewMode) handleClose(); else onSubmit();
+    if (isViewMode) handleClose(); else onSubmit(isExt);
   };
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -1040,6 +1041,18 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       closeText="Cancel"
       maxWidth="md"
       fullWidth
+      extraActions={
+        isEditMode ? (
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => handleSubmit(true)}
+            sx={{ textTransform: "none", fontWeight: 600 }}
+          >
+            Extension
+          </Button>
+        ) : undefined
+      }
     >
       {isLoading ? (
         <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
@@ -1147,6 +1160,47 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
               ]}
             />
           </FormControl>
+
+          {/* ═══ FIRST DATES (Visible only in Edit Mode / View Mode) ═══ */}
+          {(isEditMode || isViewMode) && (
+            <Box sx={{ border: "1px solid #e0e0e0", p: 2, borderRadius: 1, mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                First Dates
+              </Typography>
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <Box sx={{ display: "flex", gap: 2 }}>
+                  <DatePicker
+                    label="Sch First Start Date"
+                    value={scheduleObj?.Sch_First_Start_Date ? dayjs(scheduleObj.Sch_First_Start_Date) : null}
+                    onChange={(date) => {
+                      if (!isFormDisabled && setScheduleObj && scheduleObj) {
+                        setScheduleObj({ ...scheduleObj, Sch_First_Start_Date: date ? (date as any).toDate() : null });
+                      }
+                    }}
+                    disabled={isFormDisabled}
+                    format="DD-MM-YYYY"
+                    slotProps={{
+                      textField: { size: "small", fullWidth: true },
+                    }}
+                  />
+                  <DatePicker
+                    label="Sch First End Date"
+                    value={scheduleObj?.Sch_First_End_Date ? dayjs(scheduleObj.Sch_First_End_Date) : null}
+                    onChange={(date) => {
+                      if (!isFormDisabled && setScheduleObj && scheduleObj) {
+                        setScheduleObj({ ...scheduleObj, Sch_First_End_Date: date ? (date as any).toDate() : null });
+                      }
+                    }}
+                    disabled={isFormDisabled}
+                    format="DD-MM-YYYY"
+                    slotProps={{
+                      textField: { size: "small", fullWidth: true },
+                    }}
+                  />
+                </Box>
+              </LocalizationProvider>
+            </Box>
+          )}
 
           {/* Duration header - User manually selects One-Time or Repetitive */}
           <Box
