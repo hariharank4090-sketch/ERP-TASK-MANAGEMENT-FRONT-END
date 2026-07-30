@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { toast } from "react-toastify";
-import { fetchLink } from "../../Components/customFetch";
+import { fetchLink } from "../../../Components/customFetch";
 import type {
   projectData,
   projectCreateInput,

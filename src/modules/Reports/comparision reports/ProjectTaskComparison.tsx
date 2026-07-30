@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useAuth } from "../../auth/authContext";
+import { useAuth } from "../../../auth/authContext";
 import {
   getEnrichedTodayPlan,
   getEnrichedWorkMaster,
   getEmployeeDropdown,
-} from "../TodayPlan/todayplan.api";
-import { fetchLink } from "../../Components/customFetch";
+} from "../../TodayPlan/todayplan.api";
+import { fetchLink } from "../../../Components/customFetch";
 import { Box, Typography, LinearProgress, Stack, Chip } from "@mui/material";
 
 // --- CSS ---

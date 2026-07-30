@@ -29,10 +29,10 @@ import {
 import { Refresh, ClearAll, Search as SearchIcon, Download as DownloadIcon } from "@mui/icons-material";
 import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
-import { useAuth } from "../../auth/authContext";
-import SearchableSelect from "../../Components/SearchableSelect";
+import { useAuth } from "../../../auth/authContext";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
-import type { PageProps } from "../../routes/indexRouter";
+import type { PageProps } from "../../../routes/indexRouter";
 import { 
   getProjectMaster, 
   getTasksWithStaff, 
@@ -231,6 +231,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
       setIsLoadingProjectTasks(false);
       setIsLoadingUsers(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingOn, loadingOff]);
 
   // ─── Handle project selection change ────────────────────────────────────────
