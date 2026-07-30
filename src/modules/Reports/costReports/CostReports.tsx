@@ -147,19 +147,22 @@ const CostBasedReports = () => {
 
         // Fetch staff based reports
         const reportRes = await fetchStaffBasedReport({ Fromdate: fromDate, Todate: toDate });
-        if (reportRes && reportRes.data) {
-          setData(Array.isArray(reportRes.data) ? reportRes.data : []);
+        if (reportRes && Array.isArray(reportRes.data)) {
+          setData(reportRes.data);
         } else if (Array.isArray(reportRes)) {
           setData(reportRes);
+        } else {
+          setData([]);
         }
       } catch (err) {
         console.error("Failed to load staff based reports", err);
+        setData([]);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, user?.Company_Id]);
 
   const renderAbstractView = () => {
     const datesSet = new Set<string>();
@@ -180,8 +183,9 @@ const CostBasedReports = () => {
       const processedInvoices = new Set<string>();
       let dateKey = "—";
       let rowDateStr = "";
-      if (row.Stock_Journal_date) {
-        let raw = String(row.Stock_Journal_date).trim();
+      const rawDateVal = row.EventDate || row.Stock_Journal_date || row.Date || row.Trip_Date || row.date || row.eventDate;
+      if (rawDateVal) {
+        let raw = String(rawDateVal).trim();
         if (raw.includes('T')) raw = raw.split('T')[0];
         if (raw.includes(' ')) raw = raw.split(' ')[0]; // Handle YYYY-MM-DD HH:MM:SS
         
@@ -211,7 +215,26 @@ const CostBasedReports = () => {
 
       datesSet.add(dateKey);
 
-      const invoiceKey = `${row.Invoice_no}_${row.Trans_Id}`;
+      const invoiceKey = `${row.Invoice_no || row.InvoiceId || row.STJ_Id || 'inv'}_${row.Trans_Id || row.Trip_Id || ''}`;
+
+      if (row.CostName || row.Cost_Center_Name || row.Name) {
+        const staff = String(row.CostName || row.Cost_Center_Name || row.Name || "").trim();
+        const field = String(row.CostType || row.StaffType || row.Category || "Other").trim();
+        if (staff) {
+          const duplicateKey = `${invoiceKey}_${field}_${staff}`;
+          if (!processedInvoices.has(duplicateKey)) {
+            processedInvoices.add(duplicateKey);
+            let qtyToAdd = Number(row.TotalTonnage || row.Qty || 0);
+            if (displayMode === 'invoice-count') {
+              qtyToAdd = 1;
+            }
+            uniqueStaffNames.add(staff);
+            const mapKey = `${staff}_${dateKey}`;
+            qtyMap[mapKey] = (qtyMap[mapKey] || 0) + qtyToAdd;
+            countMap[mapKey] = (countMap[mapKey] || 0) + 1;
+          }
+        }
+      }
 
       staffFields.forEach((field) => {
         const staff = String(row[field] || "").trim();
@@ -221,7 +244,7 @@ const CostBasedReports = () => {
         if (processedInvoices.has(duplicateKey)) return;
         processedInvoices.add(duplicateKey);
 
-        let qtyToAdd = Number(row.Qty || 0);
+        let qtyToAdd = Number(row.Qty || row.TotalTonnage || 0);
         if (displayMode === 'invoice-count') {
           qtyToAdd = 1;
         }
@@ -352,8 +375,9 @@ const CostBasedReports = () => {
     data.forEach((row: any) => {
       let dateKey = "—";
       let rowDateStr = "";
-      if (row.Stock_Journal_date) {
-        let raw = String(row.Stock_Journal_date).trim();
+      const rawDateVal = row.EventDate || row.Stock_Journal_date || row.Date || row.Trip_Date || row.date || row.eventDate;
+      if (rawDateVal) {
+        let raw = String(rawDateVal).trim();
         if (raw.includes('T')) raw = raw.split('T')[0];
         if (raw.includes(' ')) raw = raw.split(' ')[0]; // Handle YYYY-MM-DD HH:MM:SS
         
@@ -381,10 +405,44 @@ const CostBasedReports = () => {
       if (dateKey === "—") return;
       if (rowDateStr && (rowDateStr < fromDate || rowDateStr > toDate)) return;
 
-      const qty = displayMode === 'invoice-count' ? 1 : Number(row.Qty || 0);
-      const actQty = displayMode === 'invoice-count' ? 1 : Number(row.Act_Qty || 0);
+      const qty = displayMode === 'invoice-count' ? 1 : Number(row.TotalTonnage || row.Qty || 0);
+      const actQty = displayMode === 'invoice-count' ? 1 : Number(row.Act_Qty || row.TotalTonnage || row.Qty || 0);
 
       const processedStaffs = new Set<string>();
+
+      if (row.CostName || row.Cost_Center_Name || row.Name) {
+        const staff = String(row.CostName || row.Cost_Center_Name || row.Name || "").trim();
+        let field = String(row.CostType || row.StaffType || row.Category || "Others1").trim();
+        const matchedField = categoryFields.find(f => f.toLowerCase() === field.toLowerCase()) || field;
+
+        if (staff) {
+          const duplicateKey = `${row.Invoice_no || row.InvoiceId}_${row.Trans_Id || row.Trip_Id}_${matchedField}_${staff}`;
+          if (!processedStaffs.has(duplicateKey)) {
+            processedStaffs.add(duplicateKey);
+            const pivotKey = staff;
+
+            if (!pivotMap.has(pivotKey)) {
+              const baseRow: any = {
+                staffName: staff,
+                godownName: row.Godown_Name || "—",
+                Qty: 0,
+                Act_Qty: 0
+              };
+              categoryFields.forEach(f => baseRow[f] = 0);
+              pivotMap.set(pivotKey, baseRow);
+            }
+
+            const existing = pivotMap.get(pivotKey);
+            if (existing[matchedField] !== undefined) {
+              existing[matchedField] += qty;
+            } else {
+              existing[matchedField] = qty;
+            }
+            existing.Qty += qty;
+            existing.Act_Qty += actQty;
+          }
+        }
+      }
 
       categoryFields.forEach((field) => {
         const staff = String(row[field] || "").trim();
@@ -539,7 +597,7 @@ const CostBasedReports = () => {
           right: 0,
           top: '50%',
           transform: 'translateY(-50%)',
-          backgroundColor: '#243a73',
+          backgroundColor: '#D2A86D',
           color: 'white',
           borderRadius: '8px 0 0 8px',
           width: 32,
@@ -547,7 +605,7 @@ const CostBasedReports = () => {
           boxShadow: 2,
           zIndex: 1000,
           '&:hover': {
-            backgroundColor: '#1b2c5b',
+            backgroundColor: '#b88a4f',
           }
         }}
       >
@@ -593,17 +651,17 @@ const CostBasedReports = () => {
             <FormControl>
               <FormLabel sx={{ color: 'text.secondary', mb: 1, fontSize: '0.9rem' }}>Stock Filter</FormLabel>
               <RadioGroup value={tempStockFilter} onChange={(e) => setTempStockFilter(e.target.value)}>
-                <FormControlLabel value="data-only" control={<Radio size="small" />} label="Data only has values" />
-                <FormControlLabel value="data-with-0" control={<Radio size="small" />} label="Data with 0" />
-                <FormControlLabel value="all" control={<Radio size="small" />} label="All" />
+                <FormControlLabel value="data-only" control={<Radio size="small" sx={{ '&.Mui-checked': { color: '#D2A86D' } }} />} label="Data only has values" />
+                <FormControlLabel value="data-with-0" control={<Radio size="small" sx={{ '&.Mui-checked': { color: '#D2A86D' } }} />} label="Data with 0" />
+                <FormControlLabel value="all" control={<Radio size="small" sx={{ '&.Mui-checked': { color: '#D2A86D' } }} />} label="All" />
               </RadioGroup>
             </FormControl>
 
             <FormControl>
               <FormLabel sx={{ color: '#1c3c78', mb: 1, fontSize: '0.9rem', fontWeight: 600 }}>Value Display Mode</FormLabel>
               <RadioGroup value={tempDisplayMode} onChange={(e) => setTempDisplayMode(e.target.value)}>
-                <FormControlLabel value="quantity" control={<Radio size="small" />} label="Quantity" />
-                <FormControlLabel value="invoice-count" control={<Radio size="small" />} label="Invoice Count" />
+                <FormControlLabel value="quantity" control={<Radio size="small" sx={{ '&.Mui-checked': { color: '#D2A86D' } }} />} label="Quantity" />
+                <FormControlLabel value="invoice-count" control={<Radio size="small" sx={{ '&.Mui-checked': { color: '#D2A86D' } }} />} label="Invoice Count" />
               </RadioGroup>
             </FormControl>
 
@@ -612,9 +670,9 @@ const CostBasedReports = () => {
               fullWidth 
               onClick={handleApplyFilter}
               sx={{ 
-                backgroundColor: '#243a73', 
+                backgroundColor: '#D2A86D', 
                 mt: 2, 
-                '&:hover': { backgroundColor: '#1b2c5b' } 
+                '&:hover': { backgroundColor: '#b88a4f' } 
               }}
             >
               APPLY FILTER

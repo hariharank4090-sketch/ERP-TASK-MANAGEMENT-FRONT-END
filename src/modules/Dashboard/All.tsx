@@ -2445,7 +2445,7 @@ const All = () => {
   const [workData, setWorkData] = useState<WorkMasterData[]>([]);
   const [taskTypes, setTaskTypes] = useState<tasktypeData[]>([]);
   const [tasks, setTasks] = useState<TaskDropdown[]>([]);
-  const [, setEmployees] = useState<EmployeeDropdown[]>([]);
+  const [employees, setEmployees] = useState<EmployeeDropdown[]>([]);
   const [projects, setProjects] = useState<ProjectDropdown[]>([]);
   const [projectSchedules, setProjectSchedules] = useState<any[]>([]);
   const [projectEmpSchedules, setProjectEmpSchedules] = useState<any[]>([]);
@@ -2458,6 +2458,8 @@ const All = () => {
   const [appliedProjectId, setAppliedProjectId] = useState<number | "ALL">("ALL");
   const [appliedTaskTypeId, setAppliedTaskTypeId] = useState<number | "ALL">("ALL");
   const [appliedTaskId, setAppliedTaskId] = useState<number | "ALL">("ALL");
+  const [employeeIdFilter, setEmployeeIdFilter] = useState<number | "ALL">("ALL");
+  const [appliedEmployeeId, setAppliedEmployeeId] = useState<number | "ALL">("ALL");
 
   // ── IsActive filter for the project dropdown list itself AND data filtering ──
   const [projectIsActiveFilter, setProjectIsActiveFilter] = useState<StatusFilter>("ACTIVE");
@@ -2819,8 +2821,21 @@ const All = () => {
         return hasTaskInTasks || hasSch || hasWork;
       });
     }
+    if (appliedEmployeeId !== "ALL") {
+      data = data.filter((row) => {
+        const hasWork = row.workEntries?.some((w: any) => numEq(w.Emp_Id, appliedEmployeeId));
+        const hasSch = projectEmpSchedules.some((emp: any) => 
+            numEq(emp.Emp_Id || emp.empId, appliedEmployeeId) && 
+            projectSchedules.some((sch: any) => 
+                numEq(sch.Sch_Id || sch.schId, emp.Sch_Id || emp.schId) && 
+                numEq(sch.Project_Id || sch.project_id || sch.projectId, row.Project_Id)
+            )
+        );
+        return hasWork || hasSch;
+      });
+    }
     return data;
-  }, [groupedData, appliedProjectId, appliedTaskTypeId, appliedTaskId, taskTypes, tasks, projectSchedules]);
+  }, [groupedData, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, taskTypes, tasks, projectSchedules, projectEmpSchedules]);
 
   // ── Outer table columns ────────────────────────────────────────────────────
   const tableColumns: Column[] = [
@@ -2943,12 +2958,12 @@ const All = () => {
               zIndex: 10, 
               display: "flex", 
               alignItems: "center", 
-              gap: 1.5 
+              gap: 0.5 
             }}
           >
 
             {/* ── IsActive filter: controls which projects appear in dropdown AND data shown ── */}
-            <FormControl size="small" sx={{ minWidth: 130 }}>
+            <FormControl size="small" sx={{ minWidth: 50 }}>
               <InputLabel
                 id="project-isactive-filter-label"
                 sx={{ fontSize: "0.82rem" }}
@@ -2989,7 +3004,7 @@ const All = () => {
             </FormControl>
 
             {/* Project filter dropdown — lists only projects matching the IsActive filter above */}
-            <FormControl size="small" sx={{ minWidth: 160 }}>
+            <FormControl size="small" sx={{ minWidth: 50 }}>
               <InputLabel
                 id="project-id-filter-label"
                 sx={{ fontSize: "0.95rem" }}
@@ -3019,7 +3034,7 @@ const All = () => {
             </FormControl>
 
             {/* Task Type filter dropdown */}
-            <FormControl size="small" sx={{ minWidth: 160 }}>
+            <FormControl size="small" sx={{ minWidth: 50 }}>
               <InputLabel id="task-type-filter-label" sx={{ fontSize: "0.95rem" }}>Task Type</InputLabel>
               <SearchableSelect
                 labelId="task-type-filter-label"
@@ -3045,7 +3060,7 @@ const All = () => {
             </FormControl>
 
             {/* Task filter dropdown */}
-            <FormControl size="small" sx={{ minWidth: 160 }}>
+            <FormControl size="small" sx={{ minWidth: 50 }}>
               <InputLabel id="task-filter-label" sx={{ fontSize: "0.95rem" }}>Task</InputLabel>
               <SearchableSelect
                 labelId="task-filter-label"
@@ -3071,12 +3086,73 @@ const All = () => {
               />
             </FormControl>
 
+            {/* Employee filter dropdown */}
+            <FormControl size="small" sx={{ minWidth: 50 }}>
+              <InputLabel id="employee-filter-label" sx={{ fontSize: "0.95rem" }}>Employee</InputLabel>
+              <SearchableSelect
+                labelId="employee-filter-label"
+                value={employeeIdFilter}
+                label="Employee"
+                onChange={(e) => setEmployeeIdFilter(e.target.value as number | "ALL")}
+                sx={{
+                  fontSize: "0.95rem", backgroundColor: "#fff",
+                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
+                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
+                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
+                }}
+                options={employees
+                  .filter((e: any) => {
+                    const empId = e.Emp_Id ?? e.value;
+                    if (projectIdFilter === "ALL" && taskTypeIdFilter === "ALL" && taskIdFilter === "ALL") return true;
+
+                    // Check if employee has a schedule that matches filters
+                    const inSchedules = projectEmpSchedules.some((empSch: any) => {
+                      if (!numEq(empSch.Emp_Id || empSch.empId, empId)) return false;
+                      const sch = projectSchedules.find((s: any) => numEq(s.Sch_Id || s.schId, empSch.Sch_Id || empSch.schId));
+                      if (!sch) return false;
+                      
+                      if (projectIdFilter !== "ALL" && !numEq(sch.Project_Id || sch.project_id || sch.projectId, projectIdFilter)) return false;
+                      if (taskIdFilter !== "ALL" && !numEq(sch.Task_Id || sch.taskId, taskIdFilter)) return false;
+                      
+                      if (taskTypeIdFilter !== "ALL") {
+                         const task: any = tasks.find((t: any) => numEq(t.Task_Id ?? t.value, sch.Task_Id || sch.taskId));
+                         if (!task || !numEq(task.Task_Type_Id || task.TaskTypeId || task.taskTypeId, taskTypeIdFilter)) return false;
+                      }
+                      return true;
+                    });
+                    if (inSchedules) return true;
+
+                    // Check if employee has work data that matches filters
+                    const inWork = workData.some((w: any) => {
+                      if (!numEq(w.Emp_Id, empId)) return false;
+                      if (projectIdFilter !== "ALL" && !numEq(w.Project_Id, projectIdFilter)) return false;
+                      if (taskIdFilter !== "ALL" && !numEq(w.Task_Id, taskIdFilter)) return false;
+                      if (taskTypeIdFilter !== "ALL") {
+                         const task: any = tasks.find((t: any) => numEq(t.Task_Id ?? t.value, w.Task_Id));
+                         if (!task || !numEq(task.Task_Type_Id || task.TaskTypeId || task.taskTypeId, taskTypeIdFilter)) return false;
+                      }
+                      return true;
+                    });
+                    
+                    return inWork;
+                  })
+                  .map((e: any) => ({
+                    value: e.Emp_Id ?? e.value,
+                    label: e.Emp_Name ?? e.label
+                  }))}
+                allOptionLabel="All Employees"
+                allOptionValue="ALL"
+                searchPlaceholder="Search employees..."
+              />
+            </FormControl>
+
             <Button
               variant="contained"
               onClick={() => {
                 setAppliedProjectId(projectIdFilter);
                 setAppliedTaskTypeId(taskTypeIdFilter);
                 setAppliedTaskId(taskIdFilter);
+                setAppliedEmployeeId(employeeIdFilter);
               }}
               startIcon={<SearchIcon />}
               sx={{ 

@@ -17,16 +17,22 @@ export const fetchCostCenterList = async (
       loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
     });
 
-    if (res && res.success) {
-      return res;
+    if (res && (res.success || Array.isArray(res.data) || Array.isArray(res))) {
+      return {
+        success: true,
+        data: Array.isArray(res) ? res : (Array.isArray(res.data) ? res.data : []),
+        message: res.message
+      };
     } else {
-      toast.error(res?.message || "Failed to load Cost Centers");
-      return { success: false, message: res?.message || "Failed to load Cost Centers" };
+      const isNoDataMsg = res?.message?.toLowerCase().includes("no data") || res?.message?.toLowerCase().includes("no record");
+      if (!isNoDataMsg) {
+        toast.error(res?.message || "Failed to load Cost Centers");
+      }
+      return { success: false, data: [], message: res?.message || "Failed to load Cost Centers" };
     }
   } catch (e: unknown) {
     console.error("fetchCostCenterList Error:", e);
-    toast.error("Network error loading Cost Centers");
-    return { success: false, message: "Network error loading Cost Centers" };
+    return { success: false, data: [], message: "Network error loading Cost Centers" };
   }
 };
 
@@ -48,20 +54,21 @@ export const fetchStaffBasedReport = async (
       loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
     });
 
-    if (res && res.success) {
-      return res;
+    if (res && (res.success || Array.isArray(res.data) || Array.isArray(res))) {
+      return {
+        success: true,
+        data: Array.isArray(res) ? res : (Array.isArray(res.data) ? res.data : []),
+        message: res.message
+      };
     } else {
-      // If it's returning an array directly, we shouldn't throw an error, 
-      // but wrap it in a success response just in case
-      if (Array.isArray(res)) {
-         return { success: true, data: res };
+      const isNoDataMsg = res?.message?.toLowerCase().includes("no data") || res?.message?.toLowerCase().includes("no record");
+      if (!isNoDataMsg) {
+        toast.error(res?.message || "Failed to load Staff Based Reports");
       }
-      toast.error(res?.message || "Failed to load Staff Based Reports");
-      return { success: false, message: res?.message || "Failed to load Staff Based Reports" };
+      return { success: false, data: [], message: res?.message || "Failed to load Staff Based Reports" };
     }
   } catch (e: unknown) {
     console.error("fetchStaffBasedReport Error:", e);
-    toast.error("Network error loading Staff Based Reports");
-    return { success: false, message: "Network error loading Staff Based Reports" };
+    return { success: false, data: [], message: "Network error loading Staff Based Reports" };
   }
 };
