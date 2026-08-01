@@ -33,6 +33,7 @@ import {
   DialogActions,
 } from "@mui/material";
 import SearchableSelect from "../../Components/SearchableSelect";
+import DashboardTopFilterBar from "../../Components/TopFilterBar";
 import {
   Assignment as TaskIcon,
   Refresh,
@@ -45,7 +46,6 @@ import {
   Category as CategoryIcon,
   KeyboardArrowDown,
   KeyboardArrowRight,
-  Search as SearchIcon,
   History,
 } from "@mui/icons-material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -2939,6 +2939,9 @@ const All = () => {
     },
   ];
 
+  // Filter dialog state
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -2946,232 +2949,8 @@ const All = () => {
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {/* Expandable Table & Filters */}
-        <Box sx={{ mt: 0, position: "relative" }}>
-          
-          {/* Filters row overlaying the table header */}
-          <Box 
-            sx={{ 
-              position: "absolute", 
-              top: 10, 
-              right: 24, 
-              zIndex: 10, 
-              display: "flex", 
-              alignItems: "center", 
-              gap: 0.5 
-            }}
-          >
-
-            {/* ── IsActive filter: controls which projects appear in dropdown AND data shown ── */}
-            <FormControl size="small" sx={{ minWidth: 50 }}>
-              <InputLabel
-                id="project-isactive-filter-label"
-                sx={{ fontSize: "0.82rem" }}
-              >
-                Project Status
-              </InputLabel>
-              <SearchableSelect
-                labelId="project-isactive-filter-label"
-                value={projectIsActiveFilter}
-                label="Project Status"
-                onChange={(e) => {
-                  const newFilter = e.target.value as StatusFilter;
-                  setProjectIsActiveFilter(newFilter);
-                  setProjectIdFilter("ALL");
-                }}
-                sx={{
-                  fontSize: "0.82rem",
-                  backgroundColor: "#fff",
-                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                }}
-                options={[
-                  { value: "ALL", label: "All Status" },
-                  {
-                    value: "ACTIVE",
-                    label: "Active Only",
-                    searchText: "Active Only"
-                  },
-                  {
-                    value: "INACTIVE",
-                    label: "Inactive Only",
-                    searchText: "Inactive Only"
-                  }
-                ]}
-                searchPlaceholder="Search status..."
-              />
-            </FormControl>
-
-            {/* Project filter dropdown — lists only projects matching the IsActive filter above */}
-            <FormControl size="small" sx={{ minWidth: 50 }}>
-              <InputLabel
-                id="project-id-filter-label"
-                sx={{ fontSize: "0.95rem" }}
-              >
-                Project
-              </InputLabel>
-              <SearchableSelect
-                labelId="project-id-filter-label"
-                value={projectIdFilter}
-                label="Project"
-                onChange={(e) => setProjectIdFilter(e.target.value as number | "ALL")}
-                sx={{
-                  fontSize: "0.95rem",
-                  backgroundColor: "#fff",
-                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                }}
-                options={projectsFilteredByIsActive.map((p: any) => ({
-                  value: p.Project_Id ?? p.value,
-                  label: p.Project_Name ?? p.label
-                }))}
-                allOptionLabel="All Projects"
-                allOptionValue="ALL"
-                searchPlaceholder="Search projects..."
-              />
-            </FormControl>
-
-            {/* Task Type filter dropdown */}
-            <FormControl size="small" sx={{ minWidth: 50 }}>
-              <InputLabel id="task-type-filter-label" sx={{ fontSize: "0.95rem" }}>Task Type</InputLabel>
-              <SearchableSelect
-                labelId="task-type-filter-label"
-                value={taskTypeIdFilter}
-                label="Task Type"
-                onChange={(e) => setTaskTypeIdFilter(e.target.value as number | "ALL")}
-                sx={{
-                  fontSize: "0.95rem", backgroundColor: "#fff",
-                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                }}
-                options={taskTypes
-                  .filter((t: any) => projectIdFilter === "ALL" || numEq(t.Project_Id, projectIdFilter))
-                  .map((t: any) => ({
-                    value: t.Task_Type_Id ?? t.value,
-                    label: t.Task_Type ?? t.label
-                  }))}
-                allOptionLabel="All Task Types"
-                allOptionValue="ALL"
-                searchPlaceholder="Search task types..."
-              />
-            </FormControl>
-
-            {/* Task filter dropdown */}
-            <FormControl size="small" sx={{ minWidth: 50 }}>
-              <InputLabel id="task-filter-label" sx={{ fontSize: "0.95rem" }}>Task</InputLabel>
-              <SearchableSelect
-                labelId="task-filter-label"
-                value={taskIdFilter}
-                label="Task"
-                onChange={(e) => setTaskIdFilter(e.target.value as number | "ALL")}
-                sx={{
-                  fontSize: "0.95rem", backgroundColor: "#fff",
-                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                }}
-                options={tasks
-                  .filter((t: any) => projectIdFilter === "ALL" || numEq(t.Project_Id || t.project_id, projectIdFilter))
-                  .filter((t: any) => taskTypeIdFilter === "ALL" || numEq(t.Task_Type_Id || t.TaskTypeId || t.taskTypeId, taskTypeIdFilter))
-                  .map((t: any) => ({
-                    value: t.Task_Id ?? t.value,
-                    label: t.Task_Name ?? t.label
-                  }))}
-                allOptionLabel="All Tasks"
-                allOptionValue="ALL"
-                searchPlaceholder="Search tasks..."
-              />
-            </FormControl>
-
-            {/* Employee filter dropdown */}
-            <FormControl size="small" sx={{ minWidth: 50 }}>
-              <InputLabel id="employee-filter-label" sx={{ fontSize: "0.95rem" }}>Employee</InputLabel>
-              <SearchableSelect
-                labelId="employee-filter-label"
-                value={employeeIdFilter}
-                label="Employee"
-                onChange={(e) => setEmployeeIdFilter(e.target.value as number | "ALL")}
-                sx={{
-                  fontSize: "0.95rem", backgroundColor: "#fff",
-                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
-                }}
-                options={employees
-                  .filter((e: any) => {
-                    const empId = e.Emp_Id ?? e.value;
-                    if (projectIdFilter === "ALL" && taskTypeIdFilter === "ALL" && taskIdFilter === "ALL") return true;
-
-                    // Check if employee has a schedule that matches filters
-                    const inSchedules = projectEmpSchedules.some((empSch: any) => {
-                      if (!numEq(empSch.Emp_Id || empSch.empId, empId)) return false;
-                      const sch = projectSchedules.find((s: any) => numEq(s.Sch_Id || s.schId, empSch.Sch_Id || empSch.schId));
-                      if (!sch) return false;
-                      
-                      if (projectIdFilter !== "ALL" && !numEq(sch.Project_Id || sch.project_id || sch.projectId, projectIdFilter)) return false;
-                      if (taskIdFilter !== "ALL" && !numEq(sch.Task_Id || sch.taskId, taskIdFilter)) return false;
-                      
-                      if (taskTypeIdFilter !== "ALL") {
-                         const task: any = tasks.find((t: any) => numEq(t.Task_Id ?? t.value, sch.Task_Id || sch.taskId));
-                         if (!task || !numEq(task.Task_Type_Id || task.TaskTypeId || task.taskTypeId, taskTypeIdFilter)) return false;
-                      }
-                      return true;
-                    });
-                    if (inSchedules) return true;
-
-                    // Check if employee has work data that matches filters
-                    const inWork = workData.some((w: any) => {
-                      if (!numEq(w.Emp_Id, empId)) return false;
-                      if (projectIdFilter !== "ALL" && !numEq(w.Project_Id, projectIdFilter)) return false;
-                      if (taskIdFilter !== "ALL" && !numEq(w.Task_Id, taskIdFilter)) return false;
-                      if (taskTypeIdFilter !== "ALL") {
-                         const task: any = tasks.find((t: any) => numEq(t.Task_Id ?? t.value, w.Task_Id));
-                         if (!task || !numEq(task.Task_Type_Id || task.TaskTypeId || task.taskTypeId, taskTypeIdFilter)) return false;
-                      }
-                      return true;
-                    });
-                    
-                    return inWork;
-                  })
-                  .map((e: any) => ({
-                    value: e.Emp_Id ?? e.value,
-                    label: e.Emp_Name ?? e.label
-                  }))}
-                allOptionLabel="All Employees"
-                allOptionValue="ALL"
-                searchPlaceholder="Search employees..."
-              />
-            </FormControl>
-
-            <Button
-              variant="contained"
-              onClick={() => {
-                setAppliedProjectId(projectIdFilter);
-                setAppliedTaskTypeId(taskTypeIdFilter);
-                setAppliedTaskId(taskIdFilter);
-                setAppliedEmployeeId(employeeIdFilter);
-              }}
-              startIcon={<SearchIcon />}
-              sx={{ 
-                backgroundColor: "#1976d2", 
-                color: "#fff",
-                "&:hover": { backgroundColor: "#115293" }, 
-                height: "38px", 
-                ml: 1,
-                fontWeight: "bold",
-                borderRadius: "19px",
-                textTransform: "none",
-                boxShadow: 2,
-                px: 3
-              }}
-            >
-              Search
-            </Button>
-
-          </Box>
+        {/* Expandable Table with Filter button in Header */}
+        <Box sx={{ mt: 0 }}>
           <FilterableTable
             dataArray={filteredGroupedData as unknown as TableRowData[]}
             columns={tableColumns}
@@ -3182,6 +2961,37 @@ const All = () => {
             ExcelPrintOption={false}
             showMasterTableHeader={false}
             title="Project Overview"
+            headerActions={
+              <DashboardTopFilterBar
+                projectIsActiveFilter={projectIsActiveFilter}
+                setProjectIsActiveFilter={setProjectIsActiveFilter}
+                projectIdFilter={projectIdFilter}
+                setProjectIdFilter={setProjectIdFilter}
+                taskTypeIdFilter={taskTypeIdFilter}
+                setTaskTypeIdFilter={setTaskTypeIdFilter}
+                taskIdFilter={taskIdFilter}
+                setTaskIdFilter={setTaskIdFilter}
+                employeeIdFilter={employeeIdFilter}
+                setEmployeeIdFilter={setEmployeeIdFilter}
+                projectsFilteredByIsActive={projectsFilteredByIsActive}
+                taskTypes={taskTypes}
+                tasks={tasks}
+                employees={employees}
+                projectEmpSchedules={projectEmpSchedules}
+                projectSchedules={projectSchedules}
+                workData={workData}
+                onSearch={() => {
+                  setAppliedProjectId(projectIdFilter);
+                  setAppliedTaskTypeId(taskTypeIdFilter);
+                  setAppliedTaskId(taskIdFilter);
+                  setAppliedEmployeeId(employeeIdFilter);
+                }}
+                dialogOpen={filterDialogOpen}
+                onOpenDialog={() => setFilterDialogOpen(true)}
+                onCloseDialog={() => setFilterDialogOpen(false)}
+                numEq={numEq}
+              />
+            }
             isExpendable={true}
             expandableComp={({ row }: { row: Record<string, unknown> }) => {
               const projectRow = row as unknown as ProjectRow;

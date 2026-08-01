@@ -9,5 +9,8 @@ export default defineConfig({
     // host: "localhost",
     // port: 5173
 
+    //  host: "192.168.1.10",
+    // port: 5173
+
   }
 })

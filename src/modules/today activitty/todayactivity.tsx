@@ -1,23 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Box,
-  Grid,
   TextField,
-  MenuItem,
   Button,
   Typography,
   Paper,
-  Table,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
   FormControl,
-  Select,
   CircularProgress,
-  Alert,
   Tooltip,
   IconButton,
   Dialog,
@@ -32,11 +22,11 @@ import PrintIcon from "@mui/icons-material/Print";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloseIcon from "@mui/icons-material/Close";
-import SearchIcon from "@mui/icons-material/Search";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
-import MenuIcon from "@mui/icons-material/Menu";
 import EditIcon from "@mui/icons-material/Edit";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import TableViewIcon from "@mui/icons-material/TableView";
+import * as XLSX from "xlsx";
 import {
   getEnrichedWorkMaster,
   getAllEmployees,
@@ -53,6 +43,10 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import TodayTaskDialog from "../work master/TodayTaskDialog";
 import { useAuth } from "../../auth/authContext";
+import { fetchLink } from "../../Components/customFetch";
+import SearchableSelect from "../../Components/SearchableSelect";
+import DashboardTopFilterBar from "../../Components/TopFilterBar";
+import FilterableTable, { type Column } from "../../Components/dataTable";
 
 // ─── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -109,6 +103,7 @@ const formatScheduleDate = (dateString: string | null): string => {
     return "—";
   }
 };
+
 
 const formatDateForDisplay = (dateString: string): string => {
   if (!dateString) return "";
@@ -174,6 +169,35 @@ const calculateDuration = (
   }
 };
 
+const getDurationMinutes = (
+  startTime: string | null,
+  endTime: string | null
+): number => {
+  if (!startTime || !endTime) return 0;
+  try {
+    const extractTime = (
+      timeStr: string
+    ): { hours: number; minutes: number } | null => {
+      let match = timeStr.match(/T(\d{2}):(\d{2}):(\d{2})/);
+      if (!match) match = timeStr.match(/(\d{2}):(\d{2}):(\d{2})/);
+      if (!match) match = timeStr.match(/(\d{2}):(\d{2})/);
+      if (match && match[1] && match[2])
+        return { hours: parseInt(match[1], 10), minutes: parseInt(match[2], 10) };
+      return null;
+    };
+    const start = extractTime(startTime);
+    const end = extractTime(endTime);
+    if (!start || !end) return 0;
+    const startMins = start.hours * 60 + start.minutes;
+    const endMins = end.hours * 60 + end.minutes;
+    let diff = endMins - startMins;
+    if (diff < 0) diff += 24 * 60;
+    return diff;
+  } catch {
+    return 0;
+  }
+};
+
 const getStatusColor = (status: string): string => {
   switch (status) {
     case "Completed":  return "#4caf50";
@@ -224,25 +248,188 @@ const WorkAbstract = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [fromDate, setFromDate] = useState<string>(getTodayDate());
   const [toDate, setToDate] = useState<string>(getTodayDate());
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [filterDialogOpen, setFilterDialogOpen] = useState<boolean>(false);
 
   // ── Data state ───────────────────────────────────────────────────────────
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>("");
+  const [, setError] = useState<string>("");
   const [workData, setWorkData] = useState<WorkMasterData[]>([]);
 
   // master lists
   const [allUsers, setAllUsers] = useState<EmployeeDropdown[]>([]);
   const [allProjects, setAllProjects] = useState<ProjectDropdown[]>([]);
   const [allTasks, setAllTasks] = useState<TaskDropdown[]>([]);
+  const [taskTypes, setTaskTypes] = useState<any[]>([]);
   
-  // filtered dropdown options shown to user
-  const [filteredProjects, setFilteredProjects] = useState<ProjectDropdown[]>([]);
-  const [filteredTasks, setFilteredTasks] = useState<TaskDropdown[]>([]);
-  const [userTaskIds, setUserTaskIds] = useState<Set<string>>(new Set());
+  const [selectedTaskType, setSelectedTaskType] = useState<string>("");
+  const [dateRangeWorkData, setDateRangeWorkData] = useState<WorkMasterData[]>([]);
 
   const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
   const [loadingProjects, setLoadingProjects] = useState<boolean>(false);
   const [loadingTasks, setLoadingTasks] = useState<boolean>(false);
+  const [loadingTaskTypes, setLoadingTaskTypes] = useState<boolean>(false);
+
+  // Fetch all work entries for the selected date range to filter the dropdowns
+  useEffect(() => {
+    const fetchDateRangeData = async () => {
+      if (!fromDate || !toDate) {
+        setDateRangeWorkData([]);
+        return;
+      }
+      setLoadingUsers(true);
+      try {
+        const params: Record<string, string> = {
+          fromDate,
+          toDate
+        };
+        const response = await getEnrichedWorkMaster(params);
+        if (response.success) {
+          setDateRangeWorkData(response.data);
+        } else {
+          setDateRangeWorkData([]);
+        }
+      } catch (err) {
+        console.error("Error fetching date range data:", err);
+        setDateRangeWorkData([]);
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+    fetchDateRangeData();
+  }, [fromDate, toDate, refreshTrigger]);
+
+  const activeEmployees = useMemo(() => {
+    if (dateRangeWorkData.length === 0) return allUsers;
+    const uniqueEmpIds = new Set<number>();
+    dateRangeWorkData.forEach(work => {
+      if (work.Emp_Id) {
+        uniqueEmpIds.add(Number(work.Emp_Id));
+      }
+    });
+    const active = allUsers.filter(u => uniqueEmpIds.has(Number(u.Emp_Id)));
+    return active.length > 0 ? active : allUsers;
+  }, [dateRangeWorkData, allUsers]);
+
+  const filteredProjects = useMemo(() => {
+    let data = dateRangeWorkData;
+    if (selectedUser && selectedUser !== "all") {
+      data = data.filter(work => String(work.Emp_Id) === selectedUser);
+    }
+    if (data.length === 0) return allProjects;
+    const uniqueProjectIds = new Set<string>();
+    data.forEach(work => {
+      if (work.Project_Id) {
+        uniqueProjectIds.add(String(work.Project_Id));
+      }
+    });
+    const filtered = allProjects.filter(project =>
+      uniqueProjectIds.has(String(project.Project_Id))
+    );
+    return filtered.length > 0 ? filtered : allProjects;
+  }, [dateRangeWorkData, selectedUser, allProjects]);
+
+  const filteredTaskTypes = useMemo(() => {
+    let data = dateRangeWorkData;
+    if (selectedUser && selectedUser !== "all") {
+      data = data.filter(work => String(work.Emp_Id) === selectedUser);
+    }
+    if (selectedProject) {
+      data = data.filter(work => String(work.Project_Id) === selectedProject);
+    }
+    
+    if (data.length === 0) {
+      if (!selectedProject) return taskTypes;
+      return taskTypes.filter(t => String(t.Project_Id) === String(selectedProject));
+    }
+
+    const uniqueTaskTypeNamesOrIds = new Set<string>();
+    data.forEach(work => {
+      const taskDef = allTasks.find(t => String(t.Task_Id) === String(work.Task_Id));
+      const rowTaskTypeId = (work as any).Task_Type_Id || (taskDef as any)?.Task_Type_Id || null;
+      const rowTaskTypeName = (work as any).Task_Type || (taskDef as any)?.Task_Type || "";
+      if (rowTaskTypeId) {
+        uniqueTaskTypeNamesOrIds.add(String(rowTaskTypeId));
+      }
+      if (rowTaskTypeName) {
+        uniqueTaskTypeNamesOrIds.add(String(rowTaskTypeName).toLowerCase());
+      }
+    });
+
+    const filtered = taskTypes.filter(t => {
+      if (selectedProject && String(t.Project_Id) !== selectedProject) return false;
+      return uniqueTaskTypeNamesOrIds.has(String(t.Task_Type_Id)) || 
+             uniqueTaskTypeNamesOrIds.has(String(t.Task_Type).toLowerCase());
+    });
+
+    return filtered.length > 0 ? filtered : (selectedProject ? taskTypes.filter(t => String(t.Project_Id) === String(selectedProject)) : taskTypes);
+  }, [dateRangeWorkData, selectedUser, selectedProject, taskTypes, allTasks]);
+
+  const filteredTasks = useMemo(() => {
+    let data = dateRangeWorkData;
+    if (selectedUser && selectedUser !== "all") {
+      data = data.filter(work => String(work.Emp_Id) === selectedUser);
+    }
+    if (selectedProject) {
+      data = data.filter(work => String(work.Project_Id) === selectedProject);
+    }
+    if (selectedTaskType) {
+      data = data.filter(work => {
+        const taskDef = allTasks.find(t => String(t.Task_Id) === String(work.Task_Id));
+        const rowTaskTypeId = (work as any).Task_Type_Id || (taskDef as any)?.Task_Type_Id || null;
+        const rowTaskTypeName = (work as any).Task_Type || (taskDef as any)?.Task_Type || "";
+        return String(rowTaskTypeId) === selectedTaskType || 
+               String(rowTaskTypeName).toLowerCase() === selectedTaskType.toLowerCase();
+      });
+    }
+
+    if (data.length === 0) {
+      let tasks = allTasks;
+      if (selectedProject) {
+        tasks = tasks.filter(task => String(task.Project_Id) === selectedProject);
+      }
+      return tasks;
+    }
+
+    const uniqueTaskIds = new Set<string>();
+    data.forEach(work => {
+      if (work.Task_Id) {
+        uniqueTaskIds.add(String(work.Task_Id));
+      }
+    });
+
+    const filtered = allTasks.filter(task => uniqueTaskIds.has(String(task.Task_Id)));
+    return filtered.length > 0 ? filtered : allTasks;
+  }, [dateRangeWorkData, selectedUser, selectedProject, selectedTaskType, allTasks]);
+
+
+
+  // Reset values when they are no longer in the filtered lists
+  useEffect(() => {
+    if (selectedUser && selectedUser !== "all" && !activeEmployees.find(u => String(u.Emp_Id) === selectedUser)) {
+      setSelectedUser("");
+    }
+  }, [activeEmployees, selectedUser]);
+
+  useEffect(() => {
+    if (selectedProject && !filteredProjects.find(p => String(p.Project_Id) === selectedProject)) {
+      setSelectedProject("");
+    }
+  }, [filteredProjects, selectedProject]);
+
+  useEffect(() => {
+    if (selectedTaskType && !filteredTaskTypes.find(t => String(t.Task_Type_Id) === selectedTaskType || String(t.Task_Type).toLowerCase() === selectedTaskType.toLowerCase())) {
+      setSelectedTaskType("");
+    }
+  }, [filteredTaskTypes, selectedTaskType]);
+
+  useEffect(() => {
+    if (selectedTask && !filteredTasks.find(t => String(t.Task_Id) === selectedTask)) {
+      setSelectedTask("");
+    }
+  }, [filteredTasks, selectedTask]);
+
+
 
   // dialog state
   const [selectedWorkDone, setSelectedWorkDone] = useState<string | null>(null);
@@ -259,21 +446,41 @@ const WorkAbstract = () => {
   // Check if current user can see "All Users" option (UserTypeId === 1 or UserTypeId === 0)
   const canSeeAllUsers = user?.UserTypeId === 1 || user?.UserTypeId === 0;
 
+  const totalDurationStr = useMemo(() => {
+    let totalMinutes = 0;
+    workData.forEach((row) => {
+      totalMinutes += getDurationMinutes(row.Start_Time, row.End_Time);
+    });
+    if (totalMinutes === 0) return "0m";
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
+    return `${m}m`;
+  }, [workData]);
+
   // ── On mount: load all users, projects, tasks ─────────────────────────────────
   useEffect(() => {
     const loadMasterData = async () => {
       setLoadingUsers(true);
       setLoadingProjects(true);
       setLoadingTasks(true);
+      setLoadingTaskTypes(true);
       try {
-        const [usersData, projectsData, tasksData] = await Promise.all([
+        const [usersData, projectsData, tasksData, taskTypesRes] = await Promise.all([
           getAllEmployees(),
           getAllProjects(),
-          getAllTasks()
+          getAllTasks(),
+          fetchLink({ address: "masters/taskType/", method: "GET" })
         ]);
         setAllUsers(usersData);
         setAllProjects(projectsData);
         setAllTasks(tasksData);
+
+        let typeList: any[] = [];
+        if ((taskTypesRes as any)?.data && Array.isArray((taskTypesRes as any).data)) typeList = (taskTypesRes as any).data;
+        else if ((taskTypesRes as any)?.items && Array.isArray((taskTypesRes as any).items)) typeList = (taskTypesRes as any).items;
+        else if (Array.isArray(taskTypesRes)) typeList = taskTypesRes;
+        setTaskTypes(typeList);
 
         // Auto-select first user and auto-load data
         if (usersData && usersData.length > 0) {
@@ -328,107 +535,14 @@ const WorkAbstract = () => {
         setLoadingUsers(false);
         setLoadingProjects(false);
         setLoadingTasks(false);
+        setLoadingTaskTypes(false);
       }
     };
     loadMasterData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Filter projects based on selected user and date range ──────────────────
-  useEffect(() => {
-    const filterProjects = async () => {
-      if (!selectedUser || !isFilterLoaded) {
-        setFilteredProjects([]);
-        setUserTaskIds(new Set());
-        return;
-      }
-
-      setLoadingProjects(true);
-      try {
-        const params: Record<string, string> = {
-          fromDate,
-          toDate
-        };
-        
-        if (selectedUser !== "all") {
-          params.empId = selectedUser;
-        }
-        
-        const response = await getEnrichedWorkMaster(params);
-        
-        if (response.success && response.data.length > 0) {
-          const uniqueProjectIds = new Set<string>();
-          const uniqueTaskIds = new Set<string>();
-          response.data.forEach(work => {
-            if (work.Project_Id) {
-              uniqueProjectIds.add(work.Project_Id);
-            }
-            if (work.Task_Id) {
-              uniqueTaskIds.add(String(work.Task_Id));
-            }
-          });
-          
-          const projects = allProjects.filter(project => 
-            uniqueProjectIds.has(String(project.Project_Id))
-          );
-          setFilteredProjects(projects);
-          setUserTaskIds(uniqueTaskIds);
-        } else {
-          setFilteredProjects([]);
-          setUserTaskIds(new Set());
-        }
-        
-        if (selectedProject && !filteredProjects.find(p => String(p.Project_Id) === selectedProject)) {
-          setSelectedProject("");
-        }
-      } catch {
-        setError("Error loading projects for selected user");
-        setFilteredProjects([]);
-      } finally {
-        setLoadingProjects(false);
-      }
-    };
-
-    filterProjects();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUser, fromDate, toDate, isFilterLoaded, allProjects]);
-
-  // ── Filter tasks based on selected project ONLY ──────────────────
-  useEffect(() => {
-    const filterTasksByProject = () => {
-      setLoadingTasks(true);
-      try {
-        let tasks = allTasks;
-        
-        // Only show tasks that the user actually worked on
-        if (isFilterLoaded && selectedUser) {
-          tasks = tasks.filter(task => userTaskIds.has(String(task.Task_Id)));
-        }
-
-        // Filter by selected project (if any)
-        if (selectedProject) {
-          tasks = tasks.filter(task => String(task.Project_Id) === selectedProject);
-        }
-        
-        setFilteredTasks(tasks);
-        
-        // Reset task selection if current selection is not in filtered list
-        // Note: we might NOT want to reset it if it was manually preserved, but
-        // this smart reset is usually correct for invalid options.
-        if (selectedTask && !tasks.find(t => String(t.Task_Id) === selectedTask)) {
-          // setSelectedTask("");
-        }
-      } catch {
-        setError("Error loading tasks for selected project");
-        setFilteredTasks([]);
-      } finally {
-        setLoadingTasks(false);
-      }
-    };
-
-    filterTasksByProject();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject, allTasks, userTaskIds, isFilterLoaded, selectedUser]);
+  // Dropdown filtering is now computed dynamically via useMemo hook from dateRangeWorkData.
 
   // ── Filter button ──────────────────────────────────────────────────
   const handleFilter = async () => {
@@ -514,6 +628,16 @@ const WorkAbstract = () => {
           });
         }
 
+        if (selectedTaskType) {
+          enriched = enriched.filter((row) => {
+            const taskDef = allTasks.find(t => String(t.Task_Id) === String(row.Task_Id));
+            const rowTaskTypeId = (row as any).Task_Type_Id || (taskDef as any)?.Task_Type_Id || null;
+            const rowTaskTypeName = (row as any).Task_Type || (taskDef as any)?.Task_Type || "";
+            return String(rowTaskTypeId) === selectedTaskType || 
+                   String(rowTaskTypeName).toLowerCase() === selectedTaskType.toLowerCase();
+          });
+        }
+
         setWorkData(enriched);
 
         if (!enriched.length) {
@@ -549,14 +673,13 @@ const WorkAbstract = () => {
     setSelectedProject("");
     setSelectedTask("");
     setSelectedStatus("");
+    setSelectedTaskType("");
     setFromDate(getTodayDate());
     setToDate(getTodayDate());
     setWorkData([]);
     setError("");
     setIsFilterLoaded(false);
     setIsSearchPerformed(false);
-    setFilteredProjects([]);
-    setFilteredTasks([]);
   };
 
   // ── Work-done detail dialog ──────────────────────────────────────────────
@@ -594,8 +717,6 @@ const WorkAbstract = () => {
     handleSearch();
   };
 
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
   // ✅ Listen for work-created events to auto-reload data (e.g. from TodayPlanCard)
   useEffect(() => {
     const handleWorkCreated = () => {
@@ -614,9 +735,241 @@ const WorkAbstract = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
 
+  const getTaskTypeName = (row: WorkMasterData) => {
+    if ((row as any).Task_Type) return (row as any).Task_Type;
+    const taskTypeId = (row as any).Task_Type_Id;
+    if (taskTypeId) {
+      const typeDef = taskTypes.find(t => String(t.Task_Type_Id) === String(taskTypeId));
+      if (typeDef) return typeDef.Task_Type;
+    }
+    const taskDef = allTasks.find(t => String(t.Task_Id) === String(row.Task_Id));
+    if (taskDef) {
+      const taskDefTypeId = (taskDef as any).Task_Type_Id;
+      if (taskDefTypeId) {
+        const typeDef = taskTypes.find(t => String(t.Task_Type_Id) === String(taskDefTypeId));
+        if (typeDef) return typeDef.Task_Type;
+      }
+    }
+    return "—";
+  };
+
+  const columns = useMemo<Column[]>(() => [
+    {
+      Field_Name: "Work_Dt",
+      ColumnHeader: "Work Date",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          {formatDate(row.Work_Dt as string)}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Emp_Name",
+      ColumnHeader: "Staff",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          {String(row.Emp_Name || allUsers.find((e) => e.Emp_Id === row.Emp_Id)?.Emp_Name || "—")}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Project_Name",
+      ColumnHeader: "Project Name",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+          {String(row.Project_Name || "—")}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Task_Type",
+      ColumnHeader: "Task Type",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          {getTaskTypeName(row as any)}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Task_Name",
+      ColumnHeader: "Task",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+          {String(row.Task_Name || "—")}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Start_Time",
+      ColumnHeader: "Time",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+          {row.Start_Time
+            ? `${formatTime12Hour(row.Start_Time as string)} – ${formatTime12Hour(row.End_Time as string)}`
+            : "—"}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Duration",
+      ColumnHeader: "Duration",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          {calculateDuration(row.Start_Time as string, row.End_Time as string)}
+        </Typography>
+      )
+    },
+    {
+      Field_Name: "Work_Done",
+      ColumnHeader: "Work Comment",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => {
+        const workDoneText = (row.Work_Done as string) || "";
+        const needsTruncation = workDoneText.length > 500;
+        const displayText = truncateText(workDoneText, 500);
+        return (
+          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+            <Typography
+              sx={{ fontSize: "0.75rem", flex: 1, whiteSpace: "normal", wordBreak: "break-word" }}
+            >
+              {displayText}
+            </Typography>
+            {needsTruncation && (
+              <Tooltip title="View full description">
+                <IconButton
+                  size="small"
+                  onClick={() => handleViewWorkDone(workDoneText)}
+                  sx={{ p: 0.5, flexShrink: 0 }}
+                >
+                  <VisibilityIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+        );
+      }
+    },
+    {
+      Field_Name: "Work_Status",
+      ColumnHeader: "Status",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <Box
+          sx={{
+            backgroundColor: getStatusColor(row.Work_Status as string),
+            color: "white",
+            px: 1,
+            py: 0.5,
+            borderRadius: "4px",
+            display: "inline-block",
+            fontSize: "0.7rem",
+            fontWeight: "bold",
+            whiteSpace: "nowrap"
+          }}
+        >
+          {(row.Work_Status as string) || "Pending"}
+        </Box>
+      )
+    },
+    {
+      Field_Name: "Actions",
+      ColumnHeader: "Actions",
+      isVisible: 1,
+      isCustomCell: true,
+      align: "center",
+      Cell: ({ row }) => (
+        <Tooltip title="Edit Work Comment">
+          <IconButton
+            size="small"
+            onClick={() => handleEditRow(row as any)}
+            sx={{ color: "#1976d2", "&:hover": { backgroundColor: "#e3f2fd" } }}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )
+    }
+  ], [allUsers]);
+
   const handleCloseEditDialog = () => {
     setEditDialogOpen(false);
     setSelectedRowData(null);
+  };
+
+  // ── Excel export ───────────────────────────────────────────────────────────
+  const handleDownloadExcel = () => {
+    if (!workData.length) {
+      setError("No data available to generate Excel");
+      return;
+    }
+
+    const formatDateForExcel = (dateStr: any) => {
+      if (!dateStr) return "";
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return String(dateStr);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      } catch (e) {
+        return String(dateStr);
+      }
+    };
+
+    const processedData = workData.map((row, i) => ({
+      "S.No": i + 1,
+      "Work Date": formatDateForExcel(row.Work_Dt),
+      "Staff": row.Emp_Name || "—",
+      "Project": row.Project_Name || "—",
+      "Task Type": getTaskTypeName(row),
+      "Task": row.Task_Name || "—",
+      "Time": row.Start_Time ? `${formatTime12Hour(row.Start_Time as string)} - ${formatTime12Hour(row.End_Time as string)}` : "—",
+      "Duration": calculateDuration(row.Start_Time as string, row.End_Time as string),
+      "Work Done": row.Work_Done || "No description",
+      "Status": row.Work_Status || "Pending"
+    })) as any[];
+
+    if (selectedUser && selectedUser !== "all") {
+      processedData.push({
+        "S.No": "",
+        "Work Date": "",
+        "Staff": "",
+        "Project": "",
+        "Task Type": "",
+        "Task": "",
+        "Time": "Total Duration:",
+        "Duration": totalDurationStr,
+        "Work Done": "",
+        "Status": ""
+      });
+    }
+
+    try {
+      const worksheet = XLSX.utils.json_to_sheet(processedData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Work Abstract");
+      XLSX.writeFile(workbook, `Work_Abstract_${fromDate}_to_${toDate}.xlsx`);
+    } catch (err) {
+      console.error("Error generating Excel:", err);
+      setError("Error generating Excel file");
+    }
   };
 
   // ── PDF export ───────────────────────────────────────────────────────────
@@ -668,26 +1021,25 @@ const WorkAbstract = () => {
 
     const rows = workData.map((row, i) => [
       String(i + 1),
-      row.Project_Name || "—",
-      formatScheduleDate(row.Sch_Start_Date),
-      formatScheduleDate(row.Sch_End_Date),
       formatDate(row.Work_Dt),
-      row.Task_Name || "—",
       row.Emp_Name || "—",
-      row.Work_Status || "Pending",
+      row.Project_Name || "—",
+      getTaskTypeName(row),
+      row.Task_Name || "—",
+      row.Start_Time
+        ? `${formatTime12Hour(row.Start_Time)} - ${formatTime12Hour(row.End_Time)}`
+        : "—",
+      calculateDuration(row.Start_Time, row.End_Time),
       row.Work_Done
         ? row.Work_Done.length > 500
           ? row.Work_Done.substring(0, 500) + "..."
           : row.Work_Done
         : "No description",
-      calculateDuration(row.Start_Time, row.End_Time),
-      row.Start_Time
-        ? `${formatTime12Hour(row.Start_Time)} - ${formatTime12Hour(row.End_Time)}`
-        : "—"
+      row.Work_Status || "Pending"
     ]);
 
     autoTable(doc, {
-      head: [["#", "Project", "Sch Start", "Sch End", "Work Date", "Task", "Staff", "Status", "Work Done", "Duration", "Time"]],
+      head: [["#", "Work Date", "Staff", "Project", "Task Type", "Task", "Time", "Duration", "Work Done", "Status"]],
       body: rows,
       startY: y + 5,
       theme: "grid",
@@ -696,16 +1048,15 @@ const WorkAbstract = () => {
       alternateRowStyles: { fillColor: [245, 245, 245] },
       columnStyles: {
         0: { cellWidth: 10, halign: "center" },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 18, halign: "center" },
-        3: { cellWidth: 18, halign: "center" },
-        4: { cellWidth: 18, halign: "center" },
-        5: { cellWidth: 25 },
-        6: { cellWidth: 20 },
-        7: { cellWidth: 15, halign: "center" },
-        8: { cellWidth: 50 },
-        9: { cellWidth: 15, halign: "center" },
-        10: { cellWidth: 25, halign: "center" }
+        1: { cellWidth: 15, halign: "center" },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 18 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 22, halign: "center" },
+        7: { cellWidth: 12, halign: "center" },
+        8: { cellWidth: 45 },
+        9: { cellWidth: 12, halign: "center" }
       },
       margin: { bottom: 20, left: 10, right: 10 },
       showHead: "everyPage",
@@ -730,353 +1081,256 @@ const WorkAbstract = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, minHeight: "100vh" }}>
-      {/* Header */}
-      {!isMobile && (
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: { xs: "flex-start", sm: "center" },
-            flexDirection: { xs: "column", sm: "row" },
-            mb: 2,
-            gap: { xs: 1.5, sm: 2 }
-          }}
-        >
-          <Typography variant="h6" fontWeight="bold">Work Abstract</Typography>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", width: "auto" }}>
-            <Button
-              variant="outlined"
-              onClick={handleResetFilters}
-              size="medium"
-              sx={{
-                borderRadius: "20px",
-                textTransform: "none",
-                flex: "none",
-              }}
-            >
-              Reset Filters
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<PictureAsPdfIcon />}
-              onClick={handleDownloadPDF}
-              disabled={loading || !workData.length}
-              size="medium"
-              sx={{
-                borderRadius: "20px",
-                textTransform: "none",
-                backgroundColor: "#dc3545",
-                flex: "none",
-                "&:hover": { backgroundColor: "#bb2d3b" }
-              }}
-            >
-              Download PDF
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<PrintIcon />}
-              onClick={() => window.print()}
-              disabled={loading || !workData.length}
-              size="medium"
-              sx={{
-                borderRadius: "20px",
-                textTransform: "none",
-                flex: "none",
-              }}
-            >
-              Print
-            </Button>
-          </Box>
-        </Box>
-      )}
-
-      {/* Filter Panel */}
-      <Paper elevation={2} sx={{ px: { xs: 0.5, sm: 2 }, py: { xs: 0.5, sm: 1 }, mb: { xs: 1, sm: 2 }, borderRadius: 2 }}>
-        <Grid container rowSpacing={{ xs: 0.5, sm: 1.5 }} columnSpacing={{ xs: 0.5, sm: 2 }} alignItems="flex-end">
-          {isMobile && (
-            <Grid size={{ xs: 12 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", px: 0.5, pt: 0.5 }}>
-                <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 0 }}>
-                  Work Abstract
-                </Typography>
-                <IconButton
-                  onClick={handleResetFilters}
-                  size="small"
-                  sx={{ padding: "4px", color: "#1976d2" }}
-                >
-                  <RefreshIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            </Grid>
-          )}
-          
-          {/* From Date */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
-              From Date <span style={{ color: "red" }}>*</span>
-            </Typography>
-            <TextField
-              type="date"
-              fullWidth
-              size="small"
-              value={fromDate}
-              onChange={(e) => {
-                setFromDate(e.target.value);
-                setIsFilterLoaded(false);
-                setWorkData([]);
-                setIsSearchPerformed(false);
-              }}
-              InputLabelProps={{ shrink: true }}
-              sx={isMobile ? { "& .MuiInputBase-input": { fontSize: "0.6rem", padding: "2px 4px" }, "& .MuiInputBase-root": { height: "24px" } } : {}}
-            />
-          </Grid>
-
-          {/* To Date */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
-              To Date <span style={{ color: "red" }}>*</span>
-            </Typography>
-            <TextField
-              type="date"
-              fullWidth
-              size="small"
-              value={toDate}
-              onChange={(e) => {
-                setToDate(e.target.value);
-                setIsFilterLoaded(false);
-                setWorkData([]);
-                setIsSearchPerformed(false);
-              }}
-              InputLabelProps={{ shrink: true }}
-              sx={isMobile ? { "& .MuiInputBase-input": { fontSize: "0.6rem", padding: "2px 4px" }, "& .MuiInputBase-root": { height: "24px" } } : {}}
-            />
-          </Grid>
-
-          {/* User Dropdown */}
-          <Grid size={{ xs: 3, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined, whiteSpace: isMobile ? "nowrap" : undefined }}>
-              User Data <span style={{ color: "red" }}>*</span>
-            </Typography>
-            <FormControl fullWidth size="small">
-              <Select
-                displayEmpty
-                value={selectedUser}
-                onChange={(e) => {
-                  setSelectedUser(e.target.value);
-                  setIsFilterLoaded(false);
-                  setWorkData([]);
-                  setIsSearchPerformed(false);
-                }}
-                disabled={loadingUsers}
-                renderValue={(selected) => {
-                  if (!selected) return "Select User";
-                  if (selected === "all") return "All Users";
-                  const userItem = allUsers.find((u) => String(u.Emp_Id) === selected);
-                  return userItem?.Emp_Name || selected;
-                }}
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, height: "24px" } : {}}
-              >
-                {canSeeAllUsers && (
-                  <MenuItem value="all">All Users</MenuItem>
-                )}
-                {allUsers
-                  .filter((u) => canSeeAllUsers || String(u.Emp_Id) === selectedUser)
-                  .map((u) => (
-                    <MenuItem key={u.Emp_Id} value={String(u.Emp_Id)}>
-                      {u.Emp_Name}
-                    </MenuItem>
-                  ))}
-              </Select>
-              {loadingUsers && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
-            </FormControl>
-          </Grid>
-
-          {/* Filter Button */}
-          <Grid size={{ xs: 1, sm: 4, md: 1 }}>
-            <Button
-              variant={isMobile ? "contained" : "outlined"}
-              fullWidth
-              startIcon={isMobile ? undefined : <FilterAltIcon />}
-              onClick={handleFilter}
-              disabled={!selectedUser || !fromDate || !toDate}
-              sx={{
-                borderRadius: isMobile ? "4px" : "20px",
-                textTransform: "none",
-                height: isMobile ? "24px" : "40px",
-                minWidth: isMobile ? "auto" : undefined,
-                px: isMobile ? 0 : undefined,
-                borderColor: !isMobile ? "#1976d2" : undefined,
-                backgroundColor: isMobile ? "#154360" : undefined,
-                color: isMobile ? "white" : "#1976d2",
-                "&:hover": { backgroundColor: isMobile ? "#1a5276" : undefined }
-              }}
-            >
-              {isMobile ? <MenuIcon fontSize="small" /> : "Filter"}
-            </Button>
-          </Grid>
-
-          {/* Project Dropdown */}
-          <Grid size={{ xs: 4, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
-              Project
-            </Typography>
-            <FormControl fullWidth size="small">
-              <Select
-                displayEmpty
-                value={selectedProject}
-                onChange={(e) => {
-                  setSelectedProject(e.target.value);
-                }}
-                disabled={!isFilterLoaded || loadingProjects || !selectedUser}
-                renderValue={(selected) => {
-                  if (!selected) return "All Project";
-                  const project = filteredProjects.find((p) => String(p.Project_Id) === selected);
-                  return project?.Project_Name || selected;
-                }}
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, height: "24px" } : {}}
-              >
-                <MenuItem value="">All Project</MenuItem>
-                {filteredProjects.map((p) => (
-                  <MenuItem key={p.Project_Id} value={String(p.Project_Id)}>
-                    {p.Project_Name}
-                  </MenuItem>
-                ))}
-              </Select>
-              {loadingProjects && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
-              {!loadingProjects && isFilterLoaded && filteredProjects.length === 0 && selectedUser && (
-                <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: "block" }}>
-                  No projects found
-                </Typography>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* Task Dropdown - Shows tasks based on selected project */}
-          <Grid size={{ xs: 4, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
-              Task
-            </Typography>
-            <FormControl fullWidth size="small">
-              <Select
-                displayEmpty
-                value={selectedTask}
-                onChange={(e) => setSelectedTask(e.target.value)}
-                disabled={!isFilterLoaded || loadingTasks || !selectedUser}
-                renderValue={(selected) => {
-                  if (!selected) return "All Tasks";
-                  const task = filteredTasks.find((t) => String(t.Task_Id) === selected);
-                  return task?.Task_Name || selected;
-                }}
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, height: "24px" } : {}}
-              >
-                <MenuItem value="">All Tasks</MenuItem>
-                {filteredTasks.map((t) => (
-                  <MenuItem key={t.Task_Id} value={String(t.Task_Id)}>
-                    {t.Task_Name}
-                  </MenuItem>
-                ))}
-              </Select>
-              {loadingTasks && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
-              {!loadingTasks && selectedProject && filteredTasks.length === 0 && (
-                <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: "block" }}>
-                  No tasks found for this project
-                </Typography>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* Status Dropdown */}
-          <Grid size={{ xs: 4, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0 : 0.5, display: "block", fontSize: isMobile ? "0.6rem" : undefined }}>
-              Status
-            </Typography>
-            <FormControl fullWidth size="small">
-              <Select
-                displayEmpty
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                disabled={!isFilterLoaded || loading || !selectedUser}
-                renderValue={(selected) => {
-                  if (!selected) return "All Status";
-                  if (selected === "In Progress") return "In Process";
-                  return selected;
-                }}
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, height: "24px" } : {}}
-              >
-                <MenuItem value="">All Status</MenuItem>
-                <MenuItem value="Completed">Completed</MenuItem>
-                <MenuItem value="In Progress">In Process</MenuItem>
-                <MenuItem value="Pending">Pending</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-
-          {/* Search Button */}
-          <Grid size={{ xs: 4, sm: 6, md: 1 }}>
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={loading ? <CircularProgress size={14} color="inherit" /> : (isMobile ? undefined : <SearchIcon />)}
-              endIcon={!loading && isMobile ? <SearchIcon fontSize="small" /> : undefined}
-              onClick={handleSearch}
-              disabled={loading || !isFilterLoaded || !fromDate || !toDate || !selectedUser}
-              sx={{
-                borderRadius: isMobile ? "4px" : "20px",
-                textTransform: "none",
-                height: isMobile ? "24px" : "40px",
-                fontSize: isMobile ? "0.6rem" : undefined,
-                fontWeight: "bold",
-                backgroundColor: isMobile ? "#154360" : "#1976d2",
-                "&:hover": { backgroundColor: isMobile ? "#1a5276" : "#1565c0" }
-              }}
-            >
-              Search
-            </Button>
-          </Grid>
-
-        </Grid>
-      </Paper>
-
-      {/* Results Table */}
-      <Paper sx={{ width: "100%", overflow: "hidden", borderRadius: 2, bgcolor: isMobile ? "transparent" : undefined, boxShadow: isMobile ? "none" : undefined }}>
-        {!isMobile && (
+    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, pt: { xs: 0.5, sm: 1, md: 1.5 }, minHeight: "100vh" }}>
+      {isMobile ? (
+        <Box>
+          {/* Mobile Header Toolbar */}
           <Box
             sx={{
-              p: { xs: 1, sm: 1.5 },
-              borderBottom: "1px solid #ddd",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              flexWrap: "wrap",
-              gap: 1
+              mb: 1.5,
+              px: 1.5,
+              py: 1,
+              bgcolor: "#fff",
+              borderRadius: 2,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+              border: "1px solid #e1cdb0"
             }}
           >
-            <Typography fontWeight="bold" variant="body1">
-              Work Abstract
-              {selectedUser === "all" && " - All Users"}
-              {selectedUser && selectedUser !== "all" && ` - ${allUsers.find(u => String(u.Emp_Id) === selectedUser)?.Emp_Name || ""}`}
-              {selectedProject && ` - ${allProjects.find((p) => String(p.Project_Id) === selectedProject)?.Project_Name || ""}`}
+            <Typography variant="subtitle2" fontWeight="bold" sx={{ color: "#333" }}>
+              Work Abstract{selectedUser === "all" ? " - All Users" : selectedUser ? ` - ${allUsers.find(u => String(u.Emp_Id) === selectedUser)?.Emp_Name || ""}` : ""}
             </Typography>
-            {loading && <CircularProgress size={20} />}
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <DashboardTopFilterBar
+                dialogOpen={filterDialogOpen}
+                onOpenDialog={() => setFilterDialogOpen(true)}
+                onCloseDialog={() => setFilterDialogOpen(false)}
+                onSearch={handleSearch}
+              >
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+                  {/* From Date */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      From Date <span style={{ color: "red" }}>*</span>
+                    </Typography>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={fromDate}
+                      onChange={(e) => {
+                        setFromDate(e.target.value);
+                        setIsFilterLoaded(false);
+                        setWorkData([]);
+                        setIsSearchPerformed(false);
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Box>
+
+                  {/* To Date */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      To Date <span style={{ color: "red" }}>*</span>
+                    </Typography>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={toDate}
+                      onChange={(e) => {
+                        setToDate(e.target.value);
+                        setIsFilterLoaded(false);
+                        setWorkData([]);
+                        setIsSearchPerformed(false);
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Box>
+
+                  {/* User Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block", whiteSpace: "nowrap" }}>
+                      User Data <span style={{ color: "red" }}>*</span>
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedUser}
+                        onChange={(e) => {
+                          setSelectedUser(e.target.value);
+                          setIsFilterLoaded(false);
+                          setWorkData([]);
+                          setIsSearchPerformed(false);
+                        }}
+                        disabled={loadingUsers}
+                        allOptionLabel={canSeeAllUsers ? "All Users" : "Select User"}
+                        allOptionValue={canSeeAllUsers ? "all" : ""}
+                        options={activeEmployees
+                          .filter((u) => canSeeAllUsers || String(u.Emp_Id) === selectedUser)
+                          .map((u) => ({
+                            label: u.Emp_Name,
+                            value: String(u.Emp_Id)
+                          }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingUsers && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Filter Button */}
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    startIcon={<FilterAltIcon />}
+                    onClick={handleFilter}
+                    disabled={!selectedUser || !fromDate || !toDate}
+                    sx={{
+                      borderRadius: "8px",
+                      textTransform: "none",
+                      height: "38px",
+                      backgroundColor: "#154360",
+                      "&:hover": { backgroundColor: "#1a5276" }
+                    }}
+                  >
+                    Filter Options
+                  </Button>
+
+                  {/* Project Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Project
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedProject}
+                        onChange={(e) => {
+                          setSelectedProject(e.target.value);
+                          setSelectedTaskType("");
+                          setSelectedTask("");
+                        }}
+                        disabled={!isFilterLoaded || loadingProjects || !selectedUser}
+                        allOptionLabel="All Project"
+                        allOptionValue=""
+                        options={filteredProjects.map((p) => ({
+                          label: p.Project_Name,
+                          value: String(p.Project_Id)
+                        }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingProjects && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Task Type Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Task Type
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedTaskType}
+                        onChange={(e) => setSelectedTaskType(e.target.value)}
+                        disabled={!isFilterLoaded || loadingTaskTypes || !selectedUser}
+                        allOptionLabel="All Task Types"
+                        allOptionValue=""
+                        options={filteredTaskTypes.map((t) => ({
+                          label: t.Task_Type,
+                          value: String(t.Task_Type_Id)
+                        }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingTaskTypes && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Task Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Task
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedTask}
+                        onChange={(e) => setSelectedTask(e.target.value)}
+                        disabled={!isFilterLoaded || loadingTasks || !selectedUser}
+                        allOptionLabel="All Tasks"
+                        allOptionValue=""
+                        options={filteredTasks.map((t) => ({
+                          label: t.Task_Name,
+                          value: String(t.Task_Id)
+                        }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingTasks && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Status Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Status
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        disabled={!isFilterLoaded || loading || !selectedUser}
+                        allOptionLabel="All Status"
+                        allOptionValue=""
+                        options={[
+                          { label: "Completed", value: "Completed" },
+                          { label: "In Process", value: "In Progress" },
+                          { label: "Pending", value: "Pending" }
+                        ]}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
+                  </Box>
+                </Box>
+              </DashboardTopFilterBar>
+              <IconButton
+                onClick={handleResetFilters}
+                size="small"
+                sx={{
+                  border: "1.5px solid #ccc",
+                  color: "#333",
+                  bgcolor: "#fff",
+                  width: 32,
+                  height: 32
+                }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Box>
           </Box>
-        )}
 
-        {error && (
-          <Alert
-            severity={workData.length ? "info" : "error"}
-            sx={{ m: { xs: 1, sm: 2 } }}
-            onClose={() => setError("")}
-          >
-            {error}
-          </Alert>
-        )}
+          {/* Stats Chips */}
+          <Box sx={{ display: "flex", gap: 1, mb: 1.5 }}>
+            <Chip
+              label={`Total Records: ${workData.length}`}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+            />
+            {selectedUser && selectedUser !== "all" && (
+              <Chip
+                label={`Total Duration: ${totalDurationStr}`}
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+              />
+            )}
+          </Box>
 
-        {isMobile ? (
-          <Box sx={{ px: 0, py: 1, maxHeight: "calc(100vh - 280px)", overflowY: "auto" }}>
-            {!workData.length && !loading ? (
-              <Box sx={{ py: 4, textAlign: "center" }}>
-                <Typography color="text.secondary">
+          {/* Cards or Empty State */}
+          <Box sx={{ px: 0, py: 0.5, maxHeight: "calc(100vh - 200px)", overflowY: "auto" }}>
+            {!workData.length ? (
+              <Paper sx={{ width: "100%", p: 4, textAlign: "center", borderRadius: 2, border: "1px solid #e1cdb0" }}>
+                <Typography color="text.secondary" variant="body2">
                   {!selectedUser
                     ? "Please select a user first"
                     : !isFilterLoaded
@@ -1085,100 +1339,111 @@ const WorkAbstract = () => {
                         ? "Click Search to load data"
                         : "No records found for the selected criteria"}
                 </Typography>
-              </Box>
+              </Paper>
             ) : (
               workData.map((row, index) => {
                 return (
                   <Paper
                     key={`${row.Work_Id}-${index}`}
                     variant="outlined"
-                    sx={{ mb: 1, p: 0.5, borderRadius: 2, borderColor: "#e1cdb0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}
+                    sx={{ mb: 1.5, p: 1, borderRadius: 2, borderColor: "#e1cdb0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", bgcolor: "#ffffff" }}
                   >
-                    {/* Project Name & Task */}
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 0.25 }}>
-                      <Box sx={{ flex: 1, pr: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Project Name</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.65rem", lineHeight: 1.1 }}>{row.Project_Name || "—"}</Typography>
-                      </Box>
-                      <Box sx={{ flex: 1, textAlign: "right", pl: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Task</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: "#1976d2", wordBreak: "break-word", fontSize: "0.65rem", lineHeight: 1.1 }}>{row.Task_Name || "—"}</Typography>
-                      </Box>
-                    </Box>
-
-                    {/* Staff & Status */}
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 0.25 }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Staff</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.65rem", lineHeight: 1.1, color: "#2c3e50", textTransform: "uppercase" }}>
-                          {row.Emp_Name || allUsers.find((e) => e.Emp_Id === row.Emp_Id)?.Emp_Name || "Not Assigned"}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: "right", flexShrink: 0 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Status</Typography>
-                        <Box sx={{ display: "inline-block" }}>
-                          <Chip label={row.Work_Status || "Pending"} size="small" sx={{ bgcolor: getStatusColor(row.Work_Status), color: "white", fontWeight: 600, height: "auto", minHeight: "16px", fontSize: "0.55rem", borderRadius: "4px", "& .MuiChip-label": { px: 0.5, py: 0.2 } }} />
+                    {/* S.No */}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5, borderBottom: "1px solid #f0f0f0", pb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: "bold", color: "#1976d2" }}>
+                        #{index + 1}
+                      </Typography>
+                      <Box sx={{ display: "inline-block" }}>
+                        <Box
+                          sx={{
+                            backgroundColor: getStatusColor(row.Work_Status as string),
+                            color: "white",
+                            px: 1,
+                            py: 0.25,
+                            borderRadius: "4px",
+                            fontSize: "0.65rem",
+                            fontWeight: "bold"
+                          }}
+                        >
+                          {row.Work_Status || "Pending"}
                         </Box>
                       </Box>
                     </Box>
 
-                    {/* Work Date */}
-                    <Box sx={{ mb: 0.25 }}>
-                      <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Work Date</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.65rem", lineHeight: 1.1, color: "#2c3e50" }}>
-                        {formatDate(row.Work_Dt) || "—"}
-                      </Typography>
+                    {/* Project Name & Task */}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
+                      <Box sx={{ flex: 1, pr: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Project Name</Typography>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.7rem", color: "#333" }}>{row.Project_Name || "—"}</Typography>
+                      </Box>
+                      <Box sx={{ flex: 1, textAlign: "right", pl: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Task</Typography>
+                        <Typography sx={{ fontWeight: 600, color: "#1976d2", fontSize: "0.7rem" }}>{row.Task_Name || "—"}</Typography>
+                      </Box>
                     </Box>
 
-                    {/* Schedule Start & Schedule End */}
-                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.25 }}>
+                    {/* Staff & Date */}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Schedule Start</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.65rem", lineHeight: 1.1, color: "#2c3e50" }}>
-                          {formatScheduleDate(row.Sch_Start_Date) || "—"}
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Staff</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {row.Emp_Name || allUsers.find((e) => e.Emp_Id === row.Emp_Id)?.Emp_Name || "Not Assigned"}
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: "right", flex: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Schedule End</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.65rem", lineHeight: 1.1, color: "#2c3e50" }}>
-                          {formatScheduleDate(row.Sch_End_Date) || "—"}
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Work Date</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {formatDate(row.Work_Dt as string) || "—"}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Schedule Start & Schedule End */}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Schedule Start</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {formatScheduleDate(row.Sch_Start_Date as string) || "—"}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: "right", flex: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Schedule End</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {formatScheduleDate(row.Sch_End_Date as string) || "—"}
                         </Typography>
                       </Box>
                     </Box>
 
                     {/* Duration & Time */}
-                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.25 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Duration</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.65rem", lineHeight: 1.1, color: "#2c3e50" }}>
-                          {calculateDuration(row.Start_Time, row.End_Time) || "—"}
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Duration</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50", fontWeight: 600 }}>
+                          {calculateDuration(row.Start_Time as string, row.End_Time as string) || "—"}
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: "right", flex: 1 }}>
-                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Time</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.65rem", lineHeight: 1.1, color: "#2c3e50" }}>
-                          {row.Start_Time ? `${formatTime12Hour(row.Start_Time)} – ${formatTime12Hour(row.End_Time)}` : "—"}
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Time</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {row.Start_Time ? `${formatTime12Hour(row.Start_Time as string)} – ${formatTime12Hour(row.End_Time as string)}` : "—"}
                         </Typography>
                       </Box>
                     </Box>
 
                     {/* Work Comment */}
-                    <Box sx={{ mt: 0.25 }}>
-                      <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Work Comment</Typography>
-                      <Box sx={{ fontSize: "0.65rem", color: "#2c3e50" }}>
-                        <ExpandableComment text={row.Work_Done || ""} />
-                      </Box>
+                    <Box sx={{ mb: 0.75, bgcolor: "#f8f9fa", p: 1, borderRadius: 1 }}>
+                      <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem", mb: 0.25 }}>Work Comment</Typography>
+                      <ExpandableComment text={row.Work_Done || ""} />
                     </Box>
 
                     {/* Actions */}
-                    <Box sx={{ textAlign: "center", mt: 0.5 }}>
-                      <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.2, fontWeight: 600, fontSize: "0.55rem" }}>Actions</Typography>
+                    <Box sx={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #f0f0f0", pt: 0.5 }}>
                       <IconButton
                         size="small"
-                        onClick={() => handleEditRow(row)}
+                        onClick={() => handleEditRow(row as any)}
                         sx={{ color: "#1976d2", padding: "4px" }}
                       >
-                        <EditIcon sx={{ fontSize: "1.1rem" }} />
+                        <EditIcon sx={{ fontSize: "1rem" }} />
                       </IconButton>
                     </Box>
                   </Paper>
@@ -1186,198 +1451,304 @@ const WorkAbstract = () => {
               })
             )}
           </Box>
-        ) : (
-        <TableContainer
-          sx={{
-            width: "100%",
-            maxHeight: { xs: "60vh", md: "calc(100vh - 280px)" },
-            overflowX: "auto",
-            overflowY: "auto",
-            WebkitOverflowScrolling: "touch",
-            "&::-webkit-scrollbar": { height: 6, width: 6 },
-            "&::-webkit-scrollbar-thumb": { backgroundColor: "#bbb", borderRadius: 3 }
-          }}
-        >
-          <Table
-            stickyHeader
-            size="small"
-            sx={{
-              minWidth: { xs: 900, sm: 900, md: "100%" },
-              tableLayout: "auto"
-            }}
-          >
-            <TableHead>
-              <TableRow>
-                <TableCell width={40} sx={{ whiteSpace: "nowrap", bgcolor: "#e9edf2" }}>#</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 130, bgcolor: "#e9edf2" }}>Project Name</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 110, bgcolor: "#e9edf2" }}>Schedule Start</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 110, bgcolor: "#e9edf2" }}>Schedule End</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 100, bgcolor: "#e9edf2" }}>Work Date</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 120, bgcolor: "#e9edf2" }}>Task</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 110, bgcolor: "#e9edf2" }}>Staff</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 90, bgcolor: "#e9edf2" }}>Status</TableCell>
-                <TableCell sx={{ minWidth: 200, bgcolor: "#e9edf2" }}>Work Comment</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 80, bgcolor: "#e9edf2" }}>Duration</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap", minWidth: 140, bgcolor: "#e9edf2" }}>Time</TableCell>
-                <TableCell width={50} align="center" sx={{ whiteSpace: "nowrap", bgcolor: "#e9edf2" }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-
-            <TableBody>
-              {!workData.length && !loading ? (
-                <TableRow>
-                  <TableCell colSpan={12} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                    {!selectedUser
-                      ? "Please select a user first"
-                      : !isFilterLoaded
-                        ? "1. Select date range → 2. Click Filter → 3. (Optional) Select Project / Task → 4. Click Search"
-                        : !isSearchPerformed
-                          ? "Click Search to load data"
-                          : "No records found for the selected criteria"}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                workData.map((row, index) => {
-                  const workDoneText = row.Work_Done || "";
-                  const needsTruncation = workDoneText.length > 500;
-                  const displayText = truncateText(row.Work_Done, 500);
-
-                  return (
-                    <TableRow key={`${row.Work_Id}-${index}`} hover>
-                      <TableCell>{index + 1}</TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={500} sx={{ whiteSpace: "nowrap" }}>
-                          {row.Project_Name || "—"}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                          {formatScheduleDate(row.Sch_Start_Date)}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                          {formatScheduleDate(row.Sch_End_Date)}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                          {formatDate(row.Work_Dt)}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={500} sx={{ whiteSpace: "nowrap" }}>
-                          {row.Task_Name || "—"}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                          {row.Emp_Name ||
-                            allUsers.find((e) => e.Emp_Id === row.Emp_Id)?.Emp_Name ||
-                            "—"}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Box
-                          sx={{
-                            backgroundColor: getStatusColor(row.Work_Status),
-                            color: "white",
-                            px: 1,
-                            py: 0.5,
-                            borderRadius: "4px",
-                            display: "inline-block",
-                            fontSize: "0.75rem",
-                            fontWeight: "bold",
-                            whiteSpace: "nowrap"
-                          }}
-                        >
-                          {row.Work_Status || "Pending"}
-                        </Box>
-                      </TableCell>
-
-                      <TableCell sx={{ maxWidth: { xs: 200, sm: 250, md: 300 } }}>
-                        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{ flex: 1, whiteSpace: "normal", wordBreak: "break-word" }}
-                          >
-                            {displayText}
-                          </Typography>
-                          {needsTruncation && (
-                            <Tooltip title="View full description">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleViewWorkDone(row.Work_Done)}
-                                sx={{ p: 0.5, flexShrink: 0 }}
-                              >
-                                <VisibilityIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </Box>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                          {calculateDuration(row.Start_Time, row.End_Time)}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={500} sx={{ whiteSpace: "nowrap" }}>
-                          {row.Start_Time
-                            ? `${formatTime12Hour(row.Start_Time)} – ${formatTime12Hour(row.End_Time)}`
-                            : "—"}
-                        </Typography>
-                      </TableCell>
-
-                      <TableCell align="center">
-                        <Tooltip title="Edit Work Comment">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEditRow(row)}
-                            sx={{ color: "#1976d2", "&:hover": { backgroundColor: "#e3f2fd" } }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+        </Box>
+      ) : (
+        <FilterableTable
+          dataArray={workData}
+          columns={columns}
+          EnableSerialNumber={true}
+          CellSize="small"
+          disablePagination={false}
+          headerTitle={`Work Abstract${selectedUser === "all" ? " - All Users" : selectedUser ? ` - ${allUsers.find(u => String(u.Emp_Id) === selectedUser)?.Emp_Name || ""}` : ""}`}
+          headerActions={
+            <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+              <Chip
+                label={`Total Records: ${workData.length}`}
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+              />
+              {selectedUser && selectedUser !== "all" && (
+                <Chip
+                  label={`Total Duration: ${totalDurationStr}`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                />
               )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        )}
+              
+              <DashboardTopFilterBar
+                dialogOpen={filterDialogOpen}
+                onOpenDialog={() => setFilterDialogOpen(true)}
+                onCloseDialog={() => setFilterDialogOpen(false)}
+                onSearch={handleSearch}
+              >
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+                  {/* From Date */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      From Date <span style={{ color: "red" }}>*</span>
+                    </Typography>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={fromDate}
+                      onChange={(e) => {
+                        setFromDate(e.target.value);
+                        setIsFilterLoaded(false);
+                        setWorkData([]);
+                        setIsSearchPerformed(false);
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Box>
 
-        {workData.length > 0 && (
-          <Box
-            sx={{
-              p: { xs: 1, sm: 2 },
-              borderTop: "1px solid #ddd",
-              display: "flex",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 1
-            }}
-          >
-            <Typography variant="body2" color="textSecondary">
-              Total Records: {workData.length}
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              {formatDateForDisplay(fromDate)} – {formatDateForDisplay(toDate)}
-            </Typography>
-          </Box>
-        )}
-      </Paper>
+                  {/* To Date */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      To Date <span style={{ color: "red" }}>*</span>
+                    </Typography>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={toDate}
+                      onChange={(e) => {
+                        setToDate(e.target.value);
+                        setIsFilterLoaded(false);
+                        setWorkData([]);
+                        setIsSearchPerformed(false);
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Box>
+
+                  {/* User Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block", whiteSpace: "nowrap" }}>
+                      User Data <span style={{ color: "red" }}>*</span>
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedUser}
+                        onChange={(e) => {
+                          setSelectedUser(e.target.value);
+                          setIsFilterLoaded(false);
+                          setWorkData([]);
+                          setIsSearchPerformed(false);
+                        }}
+                        disabled={loadingUsers}
+                        allOptionLabel={canSeeAllUsers ? "All Users" : "Select User"}
+                        allOptionValue={canSeeAllUsers ? "all" : ""}
+                        options={activeEmployees
+                          .filter((u) => canSeeAllUsers || String(u.Emp_Id) === selectedUser)
+                          .map((u) => ({
+                            label: u.Emp_Name,
+                            value: String(u.Emp_Id)
+                          }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingUsers && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Filter Button */}
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    startIcon={<FilterAltIcon />}
+                    onClick={handleFilter}
+                    disabled={!selectedUser || !fromDate || !toDate}
+                    sx={{
+                      borderRadius: "8px",
+                      textTransform: "none",
+                      height: "38px",
+                      backgroundColor: "#154360",
+                      "&:hover": { backgroundColor: "#1a5276" }
+                    }}
+                  >
+                    Filter Options
+                  </Button>
+
+                  {/* Project Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Project
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedProject}
+                        onChange={(e) => {
+                          setSelectedProject(e.target.value);
+                          setSelectedTaskType("");
+                          setSelectedTask("");
+                        }}
+                        disabled={!isFilterLoaded || loadingProjects || !selectedUser}
+                        allOptionLabel="All Project"
+                        allOptionValue=""
+                        options={filteredProjects.map((p) => ({
+                          label: p.Project_Name,
+                          value: String(p.Project_Id)
+                        }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingProjects && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Task Type Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Task Type
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedTaskType}
+                        onChange={(e) => setSelectedTaskType(e.target.value)}
+                        disabled={!isFilterLoaded || loadingTaskTypes || !selectedUser}
+                        allOptionLabel="All Task Types"
+                        allOptionValue=""
+                        options={filteredTaskTypes.map((t) => ({
+                          label: t.Task_Type,
+                          value: String(t.Task_Type_Id)
+                        }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingTaskTypes && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Task Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Task
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedTask}
+                        onChange={(e) => setSelectedTask(e.target.value)}
+                        disabled={!isFilterLoaded || loadingTasks || !selectedUser}
+                        allOptionLabel="All Tasks"
+                        allOptionValue=""
+                        options={filteredTasks.map((t) => ({
+                          label: t.Task_Name,
+                          value: String(t.Task_Id)
+                        }))}
+                        sx={{ height: "38px" }}
+                      />
+                      {loadingTasks && <CircularProgress size={12} sx={{ mt: 0.5 }} />}
+                    </FormControl>
+                  </Box>
+
+                  {/* Status Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Status
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        disabled={!isFilterLoaded || loading || !selectedUser}
+                        allOptionLabel="All Status"
+                        allOptionValue=""
+                        options={[
+                          { label: "Completed", value: "Completed" },
+                          { label: "In Process", value: "In Progress" },
+                          { label: "Pending", value: "Pending" }
+                        ]}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
+                  </Box>
+                </Box>
+              </DashboardTopFilterBar>
+
+              <Button
+                variant="outlined"
+                onClick={handleResetFilters}
+                size="small"
+                sx={{
+                  borderRadius: "20px",
+                  textTransform: "none",
+                  flex: "none",
+                  height: "36px",
+                  bgcolor: "#ffffff",
+                  borderColor: "#ccc",
+                  color: "#333",
+                  "&:hover": { bgcolor: "#f5f5f5", borderColor: "#bbb" }
+                }}
+              >
+                Reset Filters
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<TableViewIcon />}
+                onClick={handleDownloadExcel}
+                disabled={loading || !workData.length}
+                size="small"
+                sx={{
+                  borderRadius: "20px",
+                  textTransform: "none",
+                  backgroundColor: "#28a745",
+                  flex: "none",
+                  height: "36px",
+                  "&:hover": { backgroundColor: "#218838" }
+                }}
+              >
+                Excel
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={handleDownloadPDF}
+                disabled={loading || !workData.length}
+                size="small"
+                sx={{
+                  borderRadius: "20px",
+                  textTransform: "none",
+                  backgroundColor: "#dc3545",
+                  flex: "none",
+                  height: "36px",
+                  "&:hover": { backgroundColor: "#bb2d3b" }
+                }}
+              >
+                Download PDF
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<PrintIcon />}
+                onClick={() => window.print()}
+                disabled={loading || !workData.length}
+                size="small"
+                sx={{
+                  borderRadius: "20px",
+                  textTransform: "none",
+                  flex: "none",
+                  height: "36px",
+                  bgcolor: "#ffffff",
+                  borderColor: "#1976d2",
+                  color: "#1976d2",
+                  "&:hover": { bgcolor: "#f5f5f5" }
+                }}
+              >
+                Print
+              </Button>
+            </Box>
+          }
+          tableProps={{
+            sx: {
+              "& .MuiTableHead-root .MuiTableCell-root": { fontSize: "0.75rem", fontWeight: 600, padding: "8px 12px", backgroundColor: "#f8f9fa", borderBottom: "2px solid #e0e0e0", whiteSpace: "nowrap" },
+              "& .MuiTableBody-root .MuiTableCell-root": { fontSize: "0.75rem", padding: "8px 12px", borderBottom: "1px solid #f0f0f0", whiteSpace: "nowrap" },
+              "& .MuiTableBody-root .MuiTableRow-root:hover": { backgroundColor: "#f9f9f9" }
+            }
+          }}
+          showSearch={false}
+        />
+      )}
 
       {/* Work Done Detail Dialog */}
       <Dialog

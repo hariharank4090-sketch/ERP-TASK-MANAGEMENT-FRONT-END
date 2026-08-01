@@ -9,12 +9,16 @@ import {
   CircularProgress,
   FormControl,
   Select,
-  MenuItem
+  MenuItem,
+  TextField,
+  InputLabel
 } from "@mui/material";
-import { Edit, Delete } from "@mui/icons-material";
+import { Edit, Delete, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
 
 import DataTable, { createCol } from "../../../Components/dataTable";
+import SearchableSelect from "../../../Components/SearchableSelect";
+import TopFilterBar, { type StatusFilter } from "../../../Components/TopFilterBar";
 import { ProjectDialog } from "./Projects.from";
 import { 
   getProjectMaster, 
@@ -24,6 +28,10 @@ import {
   getCompanyDropdown,
   getProjectHeadDropdown
 } from "./Projects.api";
+import { getTaskDropdown, getEmployeeDropdown } from "../../Dashboard/All.api";
+import { gettasktype } from "../Tasktype/TaskType.api";
+import { getprojectschedule } from "../Project Schedule/Project Schedule.api";
+import { getProjectScheduleEmpWithStaffNames } from "../../Reports/Execution reports/ExecutionReports.api";
 import type { 
   projectData, 
   projectCreateInput, 
@@ -36,6 +44,27 @@ import type { PageProps } from "../../../routes/indexRouter";
 // Create a type that extends projectData and satisfies TableRowData requirements
 type TableCompatibleProjectData = projectData & {
   [key: string]: unknown; // Index signature to satisfy TableRowData
+};
+
+// Pure helpers defined outside component so they are always initialized
+const numEq = (a: any, b: any) => {
+  if (a === undefined || a === null || b === undefined || b === null) return false;
+  return Number(a) === Number(b);
+};
+
+const formatDate = (dateString: string | null) => {
+  if (!dateString || dateString.trim() === '') return '-';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return dateString || '-';
+  }
 };
 
 const ProjectMainPage: React.FC<PageProps> = ({
@@ -57,6 +86,33 @@ const ProjectMainPage: React.FC<PageProps> = ({
   const [error, setError] = useState<string | null>(null);
   
   const [filterStatus, setFilterStatus] = useState<"Active" | "Inactive">("Active");
+
+  // TopFilterBar state
+  const [, setTaskTypes] = useState<any[]>([]);
+  const [, setTasks] = useState<any[]>([]);
+  const [, setEmployees] = useState<any[]>([]);
+  const [projectSchedules, setProjectSchedules] = useState<any[]>([]);
+  const [projectEmpSchedules, setProjectEmpSchedules] = useState<any[]>([]);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+
+  const [companyIdFilter, setCompanyIdFilter] = useState<number | "ALL">("ALL");
+  const [projectHeadIdFilter, setProjectHeadIdFilter] = useState<number | "ALL">("ALL");
+  const [projectIdFilter, setProjectIdFilter] = useState<number | "ALL">("ALL");
+  const [taskTypeIdFilter, setTaskTypeIdFilter] = useState<number | "ALL">("ALL");
+  const [taskIdFilter, setTaskIdFilter] = useState<number | "ALL">("ALL");
+  const [employeeIdFilter, setEmployeeIdFilter] = useState<number | "ALL">("ALL");
+  const [projectIsActiveFilter, setProjectIsActiveFilter] = useState<StatusFilter>("ACTIVE");
+
+  const [appliedCompanyId, setAppliedCompanyId] = useState<number | "ALL">("ALL");
+  const [appliedProjectHeadId, setAppliedProjectHeadId] = useState<number | "ALL">("ALL");
+  const [appliedProjectId, setAppliedProjectId] = useState<number | "ALL">("ALL");
+  const [appliedTaskTypeId, setAppliedTaskTypeId] = useState<number | "ALL">("ALL");
+  const [appliedTaskId, setAppliedTaskId] = useState<number | "ALL">("ALL");
+  const [appliedEmployeeId, setAppliedEmployeeId] = useState<number | "ALL">("ALL");
+  const [startDateFilter, setStartDateFilter] = useState<string>("");
+  const [endDateFilter, setEndDateFilter] = useState<string>("");
+  const [appliedStartDate, setAppliedStartDate] = useState<string>("");
+  const [appliedEndDate, setAppliedEndDate] = useState<string>("");
 
   // Fetch Project List
   const fetchProjectList = useCallback(async () => {
@@ -100,62 +156,29 @@ const ProjectMainPage: React.FC<PageProps> = ({
   useEffect(() => {
     fetchProjectList();
     fetchDropdowns();
+
+    const loadFilterBarMasterData = async () => {
+      try {
+        const [tasksData, employeesData, typesData, psRes, empData] = await Promise.all([
+          getTaskDropdown(),
+          getEmployeeDropdown(),
+          gettasktype().catch(() => []),
+          getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
+          getProjectScheduleEmpWithStaffNames().catch(() => []),
+        ]);
+        setTasks(tasksData || []);
+        setEmployees(employeesData || []);
+        setTaskTypes(typesData || []);
+        setProjectSchedules(psRes?.data || []);
+        setProjectEmpSchedules(empData || []);
+      } catch (err) {
+        console.error("Error loading filter bar data", err);
+      }
+    };
+    loadFilterBarMasterData();
   }, [fetchProjectList, fetchDropdowns]);
 
-  // Format Date for display
-  const formatDate = useCallback((dateString: string | null) => {
-    if (!dateString || dateString.trim() === '') return '-';
-    
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return '-';
-      
-      return date.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch {
-      return dateString || '-';
-    }
-  }, []);
 
-  // Close all dialogs
-  const closeDialog = useCallback(() => {
-    setDialog({ createDialog: false, deleteDialog: false });
-    setSelectedId(null);
-    setProjectObj(null);
-  }, []);
-
-  // Edit Project
-  const handleEdit = useCallback((row: projectData) => {
-    console.log("Editing Project:", row);
-    
-    setSelectedId(row.Project_Id);
-    
-    const projectStatus = row.Project_Status ?? row.IsActive ?? 1;
-    
-    const editData: projectCreateInput = {
-      Project_Name: row.Project_Name || "",
-      Project_Desc: row.Project_Desc || null,
-      Company_Id: row.Company_Id || null,
-      Project_Head: row.Project_Head || null,
-      Est_Start_Dt: row.Est_Start_Dt || null,
-      Est_End_Dt: row.Est_End_Dt || null,
-      Project_Status: projectStatus,
-      IsActive: projectStatus
-    };
-    
-    console.log("Edit Project Data:", editData);
-    setProjectObj(editData);
-    setDialog(prev => ({ ...prev, createDialog: true }));
-  }, []);
-
-  // Delete Project
-  const handleDelete = useCallback((id: number) => {
-    setSelectedId(id);
-    setDialog(prev => ({ ...prev, deleteDialog: true }));
-  }, []);
 
   // Get project head display name
   const getProjectHeadDisplayName = useCallback((row: projectData): string => {
@@ -194,6 +217,169 @@ const ProjectMainPage: React.FC<PageProps> = ({
     
     return "Not Assigned";
   }, [companyOptions]);
+
+
+
+  // Filter projects based on search term & applied TopFilterBar filters
+  const filteredProjects = useMemo<TableCompatibleProjectData[]>(() => {
+    let filtered = projects;
+
+    // 1. Project Status filter from TopFilterBar or dropdown
+    if (projectIsActiveFilter === "INACTIVE" || filterStatus === "Inactive") {
+      filtered = filtered.filter(item => Number(item.Project_Status ?? item.IsActive ?? 0) === 0);
+    } else if (projectIsActiveFilter === "ACTIVE" || filterStatus === "Active") {
+      filtered = filtered.filter(item => Number(item.Project_Status ?? item.IsActive ?? 1) === 1);
+    }
+
+    // 2. Company filter
+    if (appliedCompanyId !== "ALL") {
+      filtered = filtered.filter(item => {
+        if (numEq(item.Company_Id, appliedCompanyId)) return true;
+        const dispName = getCompanyDisplayName(item);
+        if (dispName && String(dispName).toLowerCase() === String(appliedCompanyId).toLowerCase()) return true;
+        const matchingComp = companyOptions.find(c => numEq(c.value, appliedCompanyId) || (c.label && c.label.toLowerCase() === String(appliedCompanyId).toLowerCase()));
+        if (matchingComp && dispName && dispName.toLowerCase() === matchingComp.label.toLowerCase()) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // 3. Project Head filter
+    if (appliedProjectHeadId !== "ALL") {
+      filtered = filtered.filter(item => {
+        if (numEq(item.Project_Head, appliedProjectHeadId)) return true;
+        if (item.Project_Head_Name && String(item.Project_Head_Name).toLowerCase() === String(appliedProjectHeadId).toLowerCase()) return true;
+        const matchingHead = projectHeadOptions.find(h => numEq(h.value, appliedProjectHeadId));
+        if (matchingHead && item.Project_Head_Name && item.Project_Head_Name.toLowerCase() === matchingHead.label.toLowerCase()) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // 4. Project filter
+    if (appliedProjectId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Project_Id, appliedProjectId));
+    }
+
+    // 5. Employee filter (check if employee is assigned to project in schedules or project head)
+    if (appliedEmployeeId !== "ALL") {
+      filtered = filtered.filter(item => {
+        const isHead = numEq(item.Project_Head, appliedEmployeeId);
+        const inSchedule = projectEmpSchedules.some(
+          es => numEq(es.Project_Id ?? es.projectId, item.Project_Id) && numEq(es.Emp_Id ?? es.empId ?? es.Staff_Id, appliedEmployeeId)
+        );
+        return isHead || inSchedule;
+      });
+    }
+
+    // 6. Task Type filter (check if project has schedules with matching task type)
+    if (appliedTaskTypeId !== "ALL") {
+      filtered = filtered.filter(item => {
+        return projectSchedules.some(
+          ps => numEq(ps.Project_Id ?? ps.projectId, item.Project_Id) && numEq(ps.Task_Type_Id ?? ps.taskTypeId, appliedTaskTypeId)
+        );
+      });
+    }
+
+    // 8. Start Date & End Date range filter
+    if (appliedStartDate) {
+      filtered = filtered.filter(item => {
+        if (!item.Est_Start_Dt) return false;
+        const d = new Date(item.Est_Start_Dt).getTime();
+        const start = new Date(appliedStartDate).getTime();
+        return !isNaN(d) && !isNaN(start) && d >= start;
+      });
+    }
+
+    if (appliedEndDate) {
+      filtered = filtered.filter(item => {
+        if (!item.Est_End_Dt) return false;
+        const d = new Date(item.Est_End_Dt).getTime();
+        const end = new Date(appliedEndDate).getTime();
+        return !isNaN(d) && !isNaN(end) && d <= end;
+      });
+    }
+
+    // 8. Search term filter across all table columns (Project Name, Description, Company, Project Head, Start Date, End Date, Status)
+    if (!searchTerm.trim()) return filtered as TableCompatibleProjectData[];
+
+    const term = searchTerm.toLowerCase();
+    return filtered.filter((item) => {
+      const projectName = item.Project_Name?.toLowerCase() || '';
+      const projectDesc = item.Project_Desc?.toLowerCase() || '';
+      const companyName = getCompanyDisplayName(item).toLowerCase();
+      const projectHeadName = getProjectHeadDisplayName(item).toLowerCase();
+      const startDate = formatDate(item.Est_Start_Dt || null).toLowerCase();
+      const endDate = formatDate(item.Est_End_Dt || null).toLowerCase();
+      const statusText = ((item.Project_Status ?? item.IsActive) === 1 ? "active" : "inactive");
+      
+      return projectName.includes(term) || 
+             projectDesc.includes(term) || 
+             companyName.includes(term) ||
+             projectHeadName.includes(term) ||
+             startDate.includes(term) ||
+             endDate.includes(term) ||
+             statusText.includes(term);
+    }) as TableCompatibleProjectData[];
+  }, [
+    searchTerm,
+    projects,
+    getCompanyDisplayName,
+    getProjectHeadDisplayName,
+    filterStatus,
+    projectIsActiveFilter,
+    appliedCompanyId,
+    appliedProjectHeadId,
+    appliedProjectId,
+    appliedTaskTypeId,
+    appliedTaskId,
+    appliedEmployeeId,
+    projectSchedules,
+    projectEmpSchedules,
+    appliedStartDate,
+    appliedEndDate
+  ]);
+
+  // Close all dialogs
+  const closeDialog = useCallback(() => {
+    setDialog({ createDialog: false, deleteDialog: false });
+    setSelectedId(null);
+    setProjectObj(null);
+  }, []);
+
+  // Edit Project
+  const handleEdit = useCallback((row: projectData) => {
+    console.log("Editing Project:", row);
+    
+    setSelectedId(row.Project_Id);
+    
+    const projectStatus = row.Project_Status ?? row.IsActive ?? 1;
+    
+    const editData: projectCreateInput = {
+      Project_Name: row.Project_Name || "",
+      Project_Desc: row.Project_Desc || null,
+      Company_Id: row.Company_Id || null,
+      Project_Head: row.Project_Head || null,
+      Est_Start_Dt: row.Est_Start_Dt || null,
+      Est_End_Dt: row.Est_End_Dt || null,
+      Project_Status: projectStatus,
+      IsActive: projectStatus
+    };
+    
+    console.log("Edit Project Data:", editData);
+    setProjectObj(editData);
+    setDialog(prev => ({ ...prev, createDialog: true }));
+  }, []);
+
+  // Delete Project
+  const handleDelete = useCallback((id: number) => {
+    setSelectedId(id);
+    setDialog(prev => ({ ...prev, deleteDialog: true }));
+  }, []);
+
+
 
   // Save/Update Project
   const saveProject = useCallback(async () => {
@@ -264,31 +450,7 @@ const ProjectMainPage: React.FC<PageProps> = ({
     }
   }, [selectedId, loadingOn, loadingOff, closeDialog, fetchProjectList]);
 
-  // Filter projects based on search term
-  const filteredProjects = useMemo<TableCompatibleProjectData[]>(() => {
-    let filtered = projects;
 
-    if (filterStatus === "Active") {
-      filtered = filtered.filter(item => (item.Project_Status ?? item.IsActive) === 1);
-    } else if (filterStatus === "Inactive") {
-      filtered = filtered.filter(item => (item.Project_Status ?? item.IsActive) === 0);
-    }
-
-    if (!searchTerm.trim()) return filtered as TableCompatibleProjectData[];
-
-    const term = searchTerm.toLowerCase();
-    return filtered.filter((item) => {
-      const projectName = item.Project_Name?.toLowerCase() || '';
-      const projectDesc = item.Project_Desc?.toLowerCase() || '';
-      const companyName = getCompanyDisplayName(item).toLowerCase();
-      const projectHeadName = getProjectHeadDisplayName(item).toLowerCase();
-      
-      return projectName.includes(term) || 
-             projectDesc.includes(term) || 
-             companyName.includes(term) ||
-             projectHeadName.includes(term);
-    }) as TableCompatibleProjectData[];
-  }, [searchTerm, projects, getCompanyDisplayName, getProjectHeadDisplayName, filterStatus]);
 
   // Handle create new project
   const handleCreateNew = useCallback(() => {
@@ -347,16 +509,281 @@ const ProjectMainPage: React.FC<PageProps> = ({
         
 
          headerActions={
-          <FormControl size="small" sx={{ minWidth: 120, bgcolor: 'white', borderRadius: 1 }}>
-            <Select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as "Active" | "Inactive")}
-              displayEmpty
+          <Box display="flex" alignItems="center" gap={1}>
+             <TopFilterBar
+              onSearch={() => {
+                setAppliedCompanyId(companyIdFilter);
+                setAppliedProjectHeadId(projectHeadIdFilter);
+                setAppliedProjectId(projectIdFilter);
+                setAppliedTaskTypeId(taskTypeIdFilter);
+                setAppliedTaskId(taskIdFilter);
+                setAppliedEmployeeId(employeeIdFilter);
+                setAppliedStartDate(startDateFilter);
+                setAppliedEndDate(endDateFilter);
+              }}
+              dialogOpen={filterDialogOpen}
+              onOpenDialog={() => setFilterDialogOpen(true)}
+              onCloseDialog={() => setFilterDialogOpen(false)}
             >
-              <MenuItem value="Active">Active</MenuItem>
-              <MenuItem value="Inactive">Inactive</MenuItem>
-            </Select>
-          </FormControl>
+              {/* Project-specific column filter inputs */}
+              <Box display="flex" flexDirection="column" gap={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="project-name-dialog-filter-label">Project Name</InputLabel>
+                  <SearchableSelect
+                    labelId="project-name-dialog-filter-label"
+                    label="Project Name"
+                    value={projectIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setProjectIdFilter(val);
+
+                      if (val !== "ALL") {
+                        const selectedProj = projects.find(p => numEq(p.Project_Id, val));
+                        if (selectedProj) {
+                          // Resolve Company value key
+                          const compName = selectedProj.Company_Name || (selectedProj.Company_Id ? companyOptions.find(c => numEq(c.value, selectedProj.Company_Id))?.label : null);
+                          const compMatch = companyOptions.find(c => 
+                            numEq(c.value, selectedProj.Company_Id) || 
+                            (compName && c.label.toLowerCase() === compName.toLowerCase())
+                          );
+
+                          if (compMatch) {
+                            setCompanyIdFilter(compMatch.value);
+                          } else if (selectedProj.Company_Id != null) {
+                            setCompanyIdFilter(selectedProj.Company_Id);
+                          } else if (compName) {
+                            setCompanyIdFilter(compName as any);
+                          }
+
+                          // Resolve Project Head value key
+                          const headName = selectedProj.Project_Head_Name || (selectedProj.Project_Head ? projectHeadOptions.find(h => numEq(h.value, selectedProj.Project_Head))?.label : null);
+                          const headMatch = projectHeadOptions.find(h => 
+                            numEq(h.value, selectedProj.Project_Head) || 
+                            (headName && h.label.toLowerCase() === headName.toLowerCase())
+                          );
+
+                          if (headMatch) {
+                            setProjectHeadIdFilter(headMatch.value);
+                          } else if (selectedProj.Project_Head != null) {
+                            setProjectHeadIdFilter(selectedProj.Project_Head);
+                          } else if (headName) {
+                            setProjectHeadIdFilter(headName as any);
+                          }
+
+                          if (selectedProj.Est_Start_Dt) {
+                            setStartDateFilter(selectedProj.Est_Start_Dt.split('T')[0]);
+                          } else {
+                            setStartDateFilter("");
+                          }
+
+                          if (selectedProj.Est_End_Dt) {
+                            setEndDateFilter(selectedProj.Est_End_Dt.split('T')[0]);
+                          } else {
+                            setEndDateFilter("");
+                          }
+                        }
+                      } else {
+                        setCompanyIdFilter("ALL");
+                        setProjectHeadIdFilter("ALL");
+                        setStartDateFilter("");
+                        setEndDateFilter("");
+                      }
+                    }}
+                    options={projects.map(p => ({
+                      value: p.Project_Id,
+                      label: p.Project_Name
+                    }))}
+                    allOptionLabel="All Projects"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search project..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="project-company-filter-label">Company</InputLabel>
+                  <SearchableSelect
+                    labelId="project-company-filter-label"
+                    label="Company"
+                    value={companyIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setCompanyIdFilter(val);
+                    }}
+                    options={(() => {
+                      let list = companyOptions;
+                      if (projectIdFilter !== "ALL") {
+                        const sel = projects.find(p => numEq(p.Project_Id, projectIdFilter));
+                        if (sel) {
+                          const compName = sel.Company_Name || (sel.Company_Id ? companyOptions.find(c => numEq(c.value, sel.Company_Id))?.label : null);
+                          const matched = companyOptions.filter(c => 
+                            numEq(c.value, sel.Company_Id) || 
+                            (compName && c.label.toLowerCase() === compName.toLowerCase())
+                          );
+                          if (matched.length > 0) {
+                            list = matched;
+                          } else if (compName) {
+                            list = [{ value: (sel.Company_Id ?? compName) as any, label: compName }];
+                          }
+                        }
+                      }
+                      // Ensure current companyIdFilter value is present in list if not ALL
+                      if (companyIdFilter !== "ALL" && !list.some(c => c.value === companyIdFilter || numEq(c.value, companyIdFilter))) {
+                        const compName = String(companyIdFilter);
+                        list = [...list, { value: companyIdFilter, label: compName }];
+                      }
+                      return list;
+                    })()}
+                    allOptionLabel={projectIdFilter !== "ALL" ? undefined : "All Companies"}
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search company..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="project-head-filter-label">Project Head</InputLabel>
+                  <SearchableSelect
+                    labelId="project-head-filter-label"
+                    label="Project Head"
+                    value={projectHeadIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setProjectHeadIdFilter(val);
+                    }}
+                    options={(() => {
+                      let list = projectHeadOptions;
+                      if (projectIdFilter !== "ALL") {
+                        const sel = projects.find(p => numEq(p.Project_Id, projectIdFilter));
+                        if (sel) {
+                          const headName = sel.Project_Head_Name || (sel.Project_Head ? projectHeadOptions.find(h => numEq(h.value, sel.Project_Head))?.label : null);
+                          const matched = projectHeadOptions.filter(h => 
+                            numEq(h.value, sel.Project_Head) || 
+                            (headName && h.label.toLowerCase() === headName.toLowerCase())
+                          );
+                          if (matched.length > 0) {
+                            list = matched;
+                          } else if (headName) {
+                            list = [{ value: (sel.Project_Head ?? headName) as any, label: headName }];
+                          }
+                        }
+                      }
+                      if (projectHeadIdFilter !== "ALL" && !list.some(h => h.value === projectHeadIdFilter || numEq(h.value, projectHeadIdFilter))) {
+                        const headName = String(projectHeadIdFilter);
+                        list = [...list, { value: projectHeadIdFilter, label: headName }];
+                      }
+                      return list;
+                    })()}
+                    allOptionLabel={projectIdFilter !== "ALL" ? undefined : "All Project Heads"}
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search project head..."
+                  />
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Start Date"
+                  type="date"
+                  value={startDateFilter}
+                  onChange={(e) => {
+                    setStartDateFilter(e.target.value);
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+                <TextField
+                  size="small"
+                  label="End Date"
+                  type="date"
+                  value={endDateFilter}
+                  onChange={(e) => {
+                    setEndDateFilter(e.target.value);
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="project-status-dialog-filter-label">Status</InputLabel>
+                  <SearchableSelect
+                    labelId="project-status-dialog-filter-label"
+                    label="Status"
+                    value={projectIsActiveFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as StatusFilter;
+                      setProjectIsActiveFilter(val);
+                      if (val === "INACTIVE") setFilterStatus("Inactive");
+                      else setFilterStatus("Active");
+                    }}
+                    options={[
+                      { value: "ALL", label: "All Status" },
+                      { value: "ACTIVE", label: "Active Only", searchText: "Active Only" },
+                      { value: "INACTIVE", label: "Inactive Only", searchText: "Inactive Only" },
+                    ]}
+                    searchPlaceholder="Search status..."
+                  />
+                </FormControl>
+              </Box>
+            </TopFilterBar>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={() => {
+                  setSearchTerm("");
+                  setProjectIdFilter("ALL");
+                  setCompanyIdFilter("ALL");
+                  setProjectHeadIdFilter("ALL");
+                  setTaskTypeIdFilter("ALL");
+                  setTaskIdFilter("ALL");
+                  setEmployeeIdFilter("ALL");
+                  setStartDateFilter("");
+                  setEndDateFilter("");
+                  setProjectIsActiveFilter("ACTIVE");
+                  setFilterStatus("Active");
+
+                  setAppliedProjectId("ALL");
+                  setAppliedCompanyId("ALL");
+                  setAppliedProjectHeadId("ALL");
+                  setAppliedTaskTypeId("ALL");
+                  setAppliedTaskId("ALL");
+                  setAppliedEmployeeId("ALL");
+                  setAppliedStartDate("");
+                  setAppliedEndDate("");
+
+                  fetchProjectList();
+                  fetchDropdowns();
+                  toast.info("Page filters reset and refreshed");
+                }}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+              </IconButton>
+            </Tooltip>
+            <FormControl size="small" sx={{ minWidth: 120, bgcolor: 'white', borderRadius: 1 }}>
+              <Select
+                value={projectIsActiveFilter === "INACTIVE" ? "Inactive" : projectIsActiveFilter === "ALL" ? "All" : "Active"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "Inactive") {
+                    setFilterStatus("Inactive");
+                    setProjectIsActiveFilter("INACTIVE");
+                  } else {
+                    setFilterStatus("Active");
+                    setProjectIsActiveFilter("ACTIVE");
+                  }
+                }}
+                displayEmpty
+              >
+                <MenuItem value="Active">Active</MenuItem>
+                <MenuItem value="Inactive">Inactive</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
         }
         // Search and Create button props
         showSearch={true}

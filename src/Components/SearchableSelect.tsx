@@ -95,7 +95,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }
 
         if (actualSelected === allOptionValue || actualSelected === "" || actualSelected == null) {
-          return <span style={{ color: '#888' }}>{allOptionLabel}</span>;
+          return <span>{allOptionLabel}</span>;
         }
         const selectedOpt = options.find(opt => String(opt.value) === String(actualSelected));
         return selectedOpt ? selectedOpt.label : actualSelected;

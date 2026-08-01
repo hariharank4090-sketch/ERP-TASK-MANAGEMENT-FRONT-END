@@ -19,8 +19,6 @@ import {
   type SelectChangeEvent,
   Chip,
   Tooltip,
-  Card,
-  CardContent,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
@@ -299,8 +297,7 @@ interface AssignedTask {
 const CreditListPage: React.FC<CreditListPageProps> = ({
   title = "Today's Tasks",
 }) => {
-  const { token, currentCompany, isSwitchingCompany, user } = useAuth();
-  const isAdmin = user?.UserTypeId === 1 || user?.UserTypeId === 0;
+  const { token, currentCompany, isSwitchingCompany } = useAuth();
 
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -652,134 +649,73 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
             )}
 
             {!refreshing && !error && filteredPlans.length > 0 && (
-              isAdmin ? (
-                <TableContainer sx={{ mt: 1, maxHeight: { xs: "calc(100vh - 260px)", sm: 500 } }}>
-                  <Table size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell><strong>Task Name</strong></TableCell>
-                        <TableCell><strong>Time</strong></TableCell>
-                        <TableCell align="center"><strong>Action</strong></TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredPlans.map((plan) => {
-                        const uniqueKey = plan.Id || `${plan.Task_Id}_${plan.Emp_Id}_${getDateOnly(plan.Task_Assign_dt)}`;
-                        const todayplanDataObj = convertToTodayplanData(plan);
-                        const planRowKey = getAssignedTaskKey(todayplanDataObj);
+              <TableContainer sx={{ mt: 1, maxHeight: { xs: "calc(100vh - 260px)", sm: 500 } }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Task Name</strong></TableCell>
+                      <TableCell><strong>Time</strong></TableCell>
+                      <TableCell align="center"><strong>Action</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredPlans.map((plan) => {
+                      const uniqueKey = plan.Id || `${plan.Task_Id}_${plan.Emp_Id}_${getDateOnly(plan.Task_Assign_dt)}`;
+                      const todayplanDataObj = convertToTodayplanData(plan);
+                      const planRowKey = getAssignedTaskKey(todayplanDataObj);
 
-                        // ✅ Color computed inline from state — no refresh needed
-                        const bgColor = getTaskBgColor(todayplanDataObj, planRowKey, timerRunningKeys, hasWorkKeys);
-                        const textColor = getTaskTextColor(bgColor);
+                      // ✅ Color computed inline from state — no refresh needed
+                      const bgColor = getTaskBgColor(todayplanDataObj, planRowKey, timerRunningKeys, hasWorkKeys);
+                      const textColor = getTaskTextColor(bgColor);
 
-                        const startTime = formatTime(plan.Sch_Time);
-                        const endTime = formatTime(plan.EN_Time);
-                        const timeDisplay = startTime && endTime ? `${startTime} - ${endTime}` : startTime || endTime || "Time not set";
-                        const displayTaskName = plan.Task_Name || `Task ${plan.Task_Id}`;
+                      const startTime = formatTime(plan.Sch_Time);
+                      const endTime = formatTime(plan.EN_Time);
+                      const timeDisplay = startTime && endTime ? `${startTime} - ${endTime}` : startTime || endTime || "Time not set";
+                      const displayTaskName = plan.Task_Name || `Task ${plan.Task_Id}`;
 
-                        return (
-                          <TableRow
-                            key={uniqueKey}
-                            sx={{
-                              backgroundColor: bgColor,
-                              // ✅ Smooth transition — no re-mount, no refresh
-                              transition: "background-color 0.3s ease",
-                              "&:hover": { filter: "brightness(0.92)" },
-                            }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={600} color={textColor}>
-                                {displayTaskName}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Tooltip title={`Start: ${startTime || "Not set"} | End: ${endTime || "Not set"}`}>
-                                <Typography variant="body2" color={textColor}>{timeDisplay}</Typography>
-                              </Tooltip>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Button
-                                variant="contained"
-                                size="small"
-                                onClick={() => handleViewClick(plan)}
-                                sx={{
-                                  textTransform: "none",
-                                  borderRadius: 30,
-                                  backgroundColor: "rgba(255,255,255,0.25)",
-                                  color: textColor,
-                                  fontWeight: 700,
-                                  "&:hover": { backgroundColor: "rgba(255,255,255,0.4)" },
-                                }}
-                              >
-                                New
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : (
-                <Box sx={{ mt: 1, maxHeight: { xs: "calc(100vh - 260px)", sm: 500 }, overflowY: "auto", display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {filteredPlans.map((plan) => {
-                    const uniqueKey = plan.Id || `${plan.Task_Id}_${plan.Emp_Id}_${getDateOnly(plan.Task_Assign_dt)}`;
-                    const todayplanDataObj = convertToTodayplanData(plan);
-                    const planRowKey = getAssignedTaskKey(todayplanDataObj);
-
-                    const bgColor = getTaskBgColor(todayplanDataObj, planRowKey, timerRunningKeys, hasWorkKeys);
-                    const textColor = getTaskTextColor(bgColor);
-
-                    const startTime = formatTime(plan.Sch_Time);
-                    const endTime = formatTime(plan.EN_Time);
-                    const timeDisplay = startTime && endTime ? `${startTime} - ${endTime}` : startTime || endTime || "Time not set";
-                    const displayTaskName = plan.Task_Name || `Task ${plan.Task_Id}`;
-
-                    return (
-                      <Card 
-                        key={uniqueKey} 
-                        sx={{ 
-                          backgroundColor: bgColor, 
-                          transition: "background-color 0.3s ease",
-                          "&:hover": { filter: "brightness(0.92)" },
-                          border: '1px solid #e0e0e0',
-                          boxShadow: 1
-                        }}
-                      >
-                        <CardContent sx={{ pb: "16px !important", display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Box sx={{ pr: 2 }}>
-                            <Typography variant="body1" fontWeight={600} color={textColor} mb={0.5}>
+                      return (
+                        <TableRow
+                          key={uniqueKey}
+                          sx={{
+                            backgroundColor: bgColor,
+                            // ✅ Smooth transition — no re-mount, no refresh
+                            transition: "background-color 0.3s ease",
+                            "&:hover": { filter: "brightness(0.92)" },
+                          }}
+                        >
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={600} color={textColor}>
                               {displayTaskName}
                             </Typography>
+                          </TableCell>
+                          <TableCell>
                             <Tooltip title={`Start: ${startTime || "Not set"} | End: ${endTime || "Not set"}`}>
-                              <Typography variant="body2" color={textColor}>
-                                ⏱ {timeDisplay}
-                              </Typography>
+                              <Typography variant="body2" color={textColor}>{timeDisplay}</Typography>
                             </Tooltip>
-                          </Box>
-                          <Button
-                            variant="contained"
-                            size="small"
-                            onClick={() => handleViewClick(plan)}
-                            sx={{
-                              textTransform: "none",
-                              borderRadius: 30,
-                              backgroundColor: "rgba(255,255,255,0.25)",
-                              color: textColor,
-                              fontWeight: 700,
-                              minWidth: 'auto',
-                              px: 3,
-                              "&:hover": { backgroundColor: "rgba(255,255,255,0.4)" },
-                            }}
-                          >
-                            New
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </Box>
-              )
+                          </TableCell>
+                          <TableCell align="center">
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => handleViewClick(plan)}
+                              sx={{
+                                textTransform: "none",
+                                borderRadius: 30,
+                                backgroundColor: "rgba(255,255,255,0.25)",
+                                color: textColor,
+                                fontWeight: 700,
+                                "&:hover": { backgroundColor: "rgba(255,255,255,0.4)" },
+                              }}
+                            >
+                              New
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
           </Box>
         )}
