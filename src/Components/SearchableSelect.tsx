@@ -38,6 +38,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   MenuProps,
   onClose,
   renderValue: parentRenderValue,
+  disabled,
   ...rest
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -104,19 +105,22 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         ...MenuProps,
         autoFocus: false,
       }}
+      disabled={disabled}
       sx={{
         borderRadius: '8px',
         height: '38px',
         width: '100%',
-        backgroundColor: '#fff',
+        backgroundColor: disabled ? '#f3f4f6' : '#fff',
+        color: disabled ? '#9ca3af' : 'inherit',
+        pointerEvents: disabled ? 'none' : 'auto',
         '& .MuiOutlinedInput-notchedOutline': {
-          borderColor: '#d1d5db',
+          borderColor: disabled ? '#e5e7eb' : '#d1d5db',
         },
         '&:hover .MuiOutlinedInput-notchedOutline': {
-          borderColor: '#c99f65',
+          borderColor: disabled ? '#e5e7eb' : '#c99f65',
         },
         '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-          borderColor: '#c99f65',
+          borderColor: disabled ? '#e5e7eb' : '#c99f65',
         },
         ...rest.sx
       }}

@@ -38,6 +38,9 @@ export type TaskDropdown = {
 export type EmployeeDropdown = {
     Emp_Id: number;
     Emp_Name: string;
+    Department?: string;
+    BranchId?: string;
+    Designation?: string;
 };
 
 export type ProjectDropdown = {

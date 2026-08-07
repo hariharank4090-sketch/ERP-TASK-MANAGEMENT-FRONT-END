@@ -101,6 +101,7 @@ export interface FilterableTableProps {
 
   headerTitle?: string;
   headerActions?: React.ReactNode;
+  emptyMessage?: React.ReactNode | string;
 
   showMasterTableHeader?: boolean;
 
@@ -297,6 +298,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
   createButtonColor = "#c99f65",
   headerTitle,
   headerActions,
+  emptyMessage,
   showMasterTableHeader = false,
   rowsPerPageOptions = [10, 20, 50, 100, 200, 500],
   paginationProps,
@@ -365,16 +367,22 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
   const sortedData = sortData(dataArray);
   const paginatedData = sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
-  const RowComp: React.FC<{ row: TableRowData; index: number }> = ({ row, index }) => {
-    const [open, setOpen] = useState(false);
+  const [openRows, setOpenRows] = useState<Record<number, boolean>>({});
+
+  const toggleRow = (index: number) => {
+    setOpenRows((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const renderRow = (row: TableRowData, index: number) => {
+    const open = openRows[index] || false;
     const iconFontSize = "20px";
 
     return (
-      <Fragment>
+      <Fragment key={index}>
         <TableRow>
           {isExpendable && expandableComp && (
             <TableCell className="border-r border-gray-300 text-center align-top" sx={{ fontSize: `${bodyFontSizePx}px`, px: { xs: 0.5, sm: 1 } }}>
-              <IconButton size="small" onClick={() => setOpen((p) => !p)}>
+              <IconButton size="small" onClick={() => toggleRow(index)}>
                 {open ? <KeyboardArrowUp sx={{ fontSize: iconFontSize }} /> : <KeyboardArrowDown sx={{ fontSize: iconFontSize }} />}
               </IconButton>
             </TableCell>
@@ -432,6 +440,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
                   key={columnInd}
                   className={`border-r border-gray-300 ${horizAlign} ${vertAlign} ${tdClass(row, column.Field_Name, index)}`}
                   sx={cellSx}
+                  onClick={() => onClickFun ? onClickFun(row) : null}
                 >
                   {column.Cell({ row, Field_Name: column.Field_Name, index })}
                 </TableCell>
@@ -700,7 +709,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
 
           <TableBody>
             {paginatedData.length > 0 ? (
-              paginatedData.map((row, index) => <RowComp key={index} row={row} index={index} />)
+              paginatedData.map((row, index) => renderRow(row, index))
             ) : (
               <TableRow>
                 <TableCell
@@ -708,7 +717,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
                   align="center"
                   sx={{ padding: { xs: "24px 8px", sm: "40px" }, fontSize: `${responsiveBodyFont}px`, color: "#6c757d" }}
                 >
-                  No data available
+                  {emptyMessage || "No data available"}
                 </TableCell>
               </TableRow>
             )}

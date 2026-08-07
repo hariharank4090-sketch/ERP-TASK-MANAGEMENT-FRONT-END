@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from 'react';
 import {
   FormControl,
@@ -5,7 +6,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { FilterList } from '@mui/icons-material';
+import { FilterList, RotateLeft } from '@mui/icons-material';
 import SearchableSelect from './SearchableSelect';
 import AppDialog from './appDialog';
 
@@ -35,6 +36,7 @@ export interface DashboardTopFilterBarProps {
 
   // Actions
   onSearch: () => void;
+  onReset?: () => void;
 
   // Dialog state
   dialogOpen: boolean;
@@ -67,12 +69,86 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
   projectSchedules,
   workData,
   onSearch,
+  onReset,
   dialogOpen,
   onOpenDialog,
   onCloseDialog,
   numEq,
   children,
 }) => {
+  const employeeActiveProjectIds = React.useMemo(() => {
+    if (employeeIdFilter === "ALL") return null;
+    const pIds = new Set<number>();
+    
+    (projectEmpSchedules || []).forEach((empSch: any) => {
+      if (numEq && numEq(empSch.Emp_Id || empSch.empId, employeeIdFilter)) {
+        const sch = (projectSchedules || []).find((s: any) => numEq && numEq(s.Sch_Id || s.schId, empSch.Sch_Id || empSch.schId));
+        if (sch) {
+          const pId = sch.Project_Id || sch.project_id || sch.projectId;
+          if (pId != null) pIds.add(Number(pId));
+        }
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      if (numEq && numEq(w.Emp_Id, employeeIdFilter)) {
+        if (w.Project_Id != null) pIds.add(Number(w.Project_Id));
+      }
+    });
+
+    return pIds;
+  }, [employeeIdFilter, projectEmpSchedules, projectSchedules, workData, numEq]);
+
+  const employeeActiveTaskTypeIds = React.useMemo(() => {
+    if (employeeIdFilter === "ALL") return null;
+    const ttIds = new Set<number>();
+
+    (projectEmpSchedules || []).forEach((empSch: any) => {
+      if (numEq && numEq(empSch.Emp_Id || empSch.empId, employeeIdFilter)) {
+        const sch = (projectSchedules || []).find((s: any) => numEq && numEq(s.Sch_Id || s.schId, empSch.Sch_Id || empSch.schId));
+        if (sch) {
+          const schTaskId = sch.Task_Id || sch.taskId;
+          const task = (tasks || []).find((t: any) => numEq && numEq(t.Task_Id ?? t.value, schTaskId));
+          const ttId = sch.Task_Type_Id || sch.taskTypeId || task?.Task_Type_Id || task?.TaskTypeId || task?.taskTypeId;
+          if (ttId != null) ttIds.add(Number(ttId));
+        }
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      if (numEq && numEq(w.Emp_Id, employeeIdFilter)) {
+        const task = (tasks || []).find((t: any) => numEq && numEq(t.Task_Id ?? t.value, w.Task_Id));
+        const ttId = w.Task_Type_Id || task?.Task_Type_Id || task?.TaskTypeId || task?.taskTypeId;
+        if (ttId != null) ttIds.add(Number(ttId));
+      }
+    });
+
+    return ttIds;
+  }, [employeeIdFilter, projectEmpSchedules, projectSchedules, tasks, workData, numEq]);
+
+  const employeeActiveTaskIds = React.useMemo(() => {
+    if (employeeIdFilter === "ALL") return null;
+    const tIds = new Set<number>();
+
+    (projectEmpSchedules || []).forEach((empSch: any) => {
+      if (numEq && numEq(empSch.Emp_Id || empSch.empId, employeeIdFilter)) {
+        const sch = (projectSchedules || []).find((s: any) => numEq && numEq(s.Sch_Id || s.schId, empSch.Sch_Id || empSch.schId));
+        if (sch) {
+          const tId = sch.Task_Id || sch.taskId;
+          if (tId != null) tIds.add(Number(tId));
+        }
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      if (numEq && numEq(w.Emp_Id, employeeIdFilter)) {
+        if (w.Task_Id != null) tIds.add(Number(w.Task_Id));
+      }
+    });
+
+    return tIds;
+  }, [employeeIdFilter, projectEmpSchedules, projectSchedules, workData, numEq]);
+
   const handleApplyFilter = () => {
     onSearch();
     onCloseDialog();
@@ -119,7 +195,14 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
           labelId="project-id-filter-label"
           value={projectIdFilter}
           label="Project"
-          onChange={(e) => setProjectIdFilter && setProjectIdFilter(e.target.value as number | "ALL")}
+          onChange={(e) => {
+            const val = e.target.value as number | "ALL";
+            if (setProjectIdFilter) setProjectIdFilter(val);
+            if (val === "ALL") {
+              if (setTaskTypeIdFilter) setTaskTypeIdFilter("ALL");
+              if (setTaskIdFilter) setTaskIdFilter("ALL");
+            }
+          }}
           sx={{
             fontSize: "0.85rem",
             backgroundColor: "#fff",
@@ -127,10 +210,24 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
             "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
           }}
-          options={(projectsFilteredByIsActive || []).map((p: any) => ({
-            value: p.Project_Id ?? p.value,
-            label: p.Project_Name ?? p.label,
-          }))}
+          options={(projectsFilteredByIsActive || [])
+            .filter((p: any) => {
+              const pId = p.Project_Id ?? p.value;
+              if (employeeActiveProjectIds && !employeeActiveProjectIds.has(Number(pId))) return false;
+              if (taskIdFilter !== "ALL") {
+                const task = (tasks || []).find((t: any) => (numEq && numEq(t.Task_Id ?? t.value, taskIdFilter)));
+                if (task && !(numEq && numEq(task.Project_Id || task.project_id, pId))) return false;
+              }
+              if (taskTypeIdFilter !== "ALL") {
+                const taskType = (taskTypes || []).find((t: any) => (numEq && numEq(t.Task_Type_Id ?? t.value, taskTypeIdFilter)));
+                if (taskType && !(numEq && numEq(taskType.Project_Id, pId))) return false;
+              }
+              return true;
+            })
+            .map((p: any) => ({
+              value: p.Project_Id ?? p.value,
+              label: p.Project_Name ?? p.label,
+            }))}
           allOptionLabel="All Projects"
           allOptionValue="ALL"
           searchPlaceholder="Search projects..."
@@ -146,7 +243,13 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
           labelId="task-type-filter-label"
           value={taskTypeIdFilter}
           label="Task Type"
-          onChange={(e) => setTaskTypeIdFilter && setTaskTypeIdFilter(e.target.value as number | "ALL")}
+          onChange={(e) => {
+            const val = e.target.value as number | "ALL";
+            if (setTaskTypeIdFilter) setTaskTypeIdFilter(val);
+            if (val === "ALL") {
+              if (setTaskIdFilter) setTaskIdFilter("ALL");
+            }
+          }}
           sx={{
             fontSize: "0.85rem",
             backgroundColor: "#fff",
@@ -155,7 +258,17 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
           }}
           options={(taskTypes || [])
-            .filter((t: any) => projectIdFilter === "ALL" || (numEq && numEq(t.Project_Id, projectIdFilter)))
+            .filter((t: any) => {
+              const tId = t.Task_Type_Id ?? t.value;
+              const pId = t.Project_Id;
+              if (employeeActiveTaskTypeIds && !employeeActiveTaskTypeIds.has(Number(tId))) return false;
+              if (projectIdFilter !== "ALL" && !(numEq && numEq(pId, projectIdFilter))) return false;
+              if (taskIdFilter !== "ALL") {
+                const task = (tasks || []).find((tk: any) => (numEq && numEq(tk.Task_Id ?? tk.value, taskIdFilter)));
+                if (task && !(numEq && numEq(task.Task_Type_Id || task.TaskTypeId || task.taskTypeId, tId))) return false;
+              }
+              return true;
+            })
             .map((t: any) => ({
               value: t.Task_Type_Id ?? t.value,
               label: t.Task_Type ?? t.label,
@@ -175,7 +288,10 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
           labelId="task-filter-label"
           value={taskIdFilter}
           label="Task"
-          onChange={(e) => setTaskIdFilter && setTaskIdFilter(e.target.value as number | "ALL")}
+          onChange={(e) => {
+            const val = e.target.value as number | "ALL";
+            if (setTaskIdFilter) setTaskIdFilter(val);
+          }}
           sx={{
             fontSize: "0.85rem",
             backgroundColor: "#fff",
@@ -184,6 +300,11 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
           }}
           options={(tasks || [])
+            .filter((t: any) => {
+              const tId = t.Task_Id ?? t.value;
+              if (employeeActiveTaskIds && !employeeActiveTaskIds.has(Number(tId))) return false;
+              return true;
+            })
             .filter((t: any) => projectIdFilter === "ALL" || (numEq && numEq(t.Project_Id || t.project_id, projectIdFilter)))
             .filter((t: any) => taskTypeIdFilter === "ALL" || (numEq && numEq(t.Task_Type_Id || t.TaskTypeId || t.taskTypeId, taskTypeIdFilter)))
             .map((t: any) => ({
@@ -283,20 +404,42 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
         </IconButton>
       </Tooltip>
 
-      {/* Filter Dialog built using AppDialog component methods */}
-      <AppDialog
-        open={dialogOpen}
-        onClose={onCloseDialog}
-        title="Filter Options"
-        onSubmit={handleApplyFilter}
-        submitText="SEARCH"
-        closeText="CANCEL"
-        maxWidth="xs"
-        fullWidth
-        extraActions={null}
-      >
-        {children ? children : renderFilterInputs(true)}
-      </AppDialog>
+      {onReset && (
+        <Tooltip title="Reset Filters">
+          <IconButton
+            onClick={onReset}
+            sx={{
+              color: "#c99f65",
+              border: "1.5px solid #c99f65",
+              backgroundColor: "#ffffff",
+              width: 36,
+              height: 36,
+              padding: 0,
+              "&:hover": {
+                backgroundColor: "#fdf3e7",
+                border: "1.5px solid #b88a4f",
+              },
+              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+            }}
+          >
+            <RotateLeft sx={{ fontSize: 20, color: "#c99f65" }} />
+          </IconButton>
+        </Tooltip>
+      )}
+
+     <AppDialog
+  open={dialogOpen}
+  onClose={onCloseDialog}
+  title="Filter Options"
+  onSubmit={handleApplyFilter}
+  submitText="SEARCH"
+  closeText="CANCEL"
+  maxWidth="xs"
+  fullWidth
+  extraActions={null}
+>
+  {children ? children : renderFilterInputs(true)}
+</AppDialog>
     </>
   );
 };

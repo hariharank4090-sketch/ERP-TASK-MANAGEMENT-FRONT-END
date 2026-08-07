@@ -23,6 +23,16 @@ const schedulePlansAPI = "masters/projectSchedule/plans/dropdown";
 // Cache for task types to avoid multiple API calls
 let taskTypeCache: Record<number, string> | null = null;
 
+const parseSchType = (val: any): number | undefined => {
+  if (val == null) return undefined;
+  const str = String(val).trim().toLowerCase().replace(/^"|"$/g, '');
+  if (str === "1" || str === "onetime" || str === "one-time" || str === "one time") return 1;
+  if (str === "2" || str === "repetitive") return 2;
+  const num = Number(str);
+  if (!isNaN(num) && num !== 0) return num;
+  return undefined;
+};
+
 // Helper function to fetch and cache task types
 const getTaskTypeMap = async (): Promise<Record<number, string>> => {
   if (taskTypeCache) {
@@ -169,7 +179,7 @@ export const getprojectschedule = async (
           updateDate: item.updateDate || item.Update_Date,
           projectName: item.projectName || item.Project_Name,
           Project_Id: item.Project_Id || item.Project_Id,
-          schType: item.schType || item.Sch_Type || null,
+          schType: parseSchType(item.schType || item.Sch_Type || item.Sch_Type_Id || item.schTypeId),
           empCount: item.empCount || item.Emp_Count || item.EmployeeCount || item.Employee_Count || item.employeeCount || item.employee_count || item.assignedEmployees || 0,
           hasExtension: item.hasExtension || item.Has_Extension || 0,
 

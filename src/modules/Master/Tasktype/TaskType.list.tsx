@@ -316,8 +316,16 @@ const TaskTypeMainPage: React.FC<PageProps> = ({
                 setAppliedTaskTypeId(taskTypeIdFilter);
               }}
               dialogOpen={filterDialogOpen}
-              onOpenDialog={() => setFilterDialogOpen(true)}
-              onCloseDialog={() => setFilterDialogOpen(false)}
+              onOpenDialog={() => {
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setFilterDialogOpen(true);
+              }}
+              onCloseDialog={() => {
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setFilterDialogOpen(false);
+              }}
             >
               {/* Only Project, Task Type, and Status filters */}
               <Box display="flex" flexDirection="column" gap={2}>
@@ -334,10 +342,19 @@ const TaskTypeMainPage: React.FC<PageProps> = ({
                       // Reset task type filter when project changes
                       setTaskTypeIdFilter("ALL");
                     }}
-                    options={projectsList.map(p => ({
-                      value: p.Project_Id,
-                      label: p.Project_Name
-                    }))}
+                    options={(() => {
+                      let list = projectsList;
+                      if (taskTypeIdFilter !== "ALL") {
+                        const selTaskType = taskTypes.find(t => numEq(t.Task_Type_Id, taskTypeIdFilter));
+                        if (selTaskType) {
+                          list = projectsList.filter(p => numEq(p.Project_Id, selTaskType.Project_Id));
+                        }
+                      }
+                      return list.map(p => ({
+                        value: p.Project_Id,
+                        label: p.Project_Name
+                      }));
+                    })()}
                     allOptionLabel="All Projects"
                     allOptionValue="ALL"
                     searchPlaceholder="Search project..."

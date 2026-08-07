@@ -10,22 +10,16 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  Paper,
   TextField,
   Typography,
   CircularProgress,
   FormControl,
   Button,
-  Grid,
   IconButton,
-  Collapse,
   Tooltip,
   InputAdornment,
 } from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
@@ -35,6 +29,9 @@ import { fetchLink } from "../../../Components/customFetch";
 import TodayTaskDialog from "./Emp Scheduleform";
 import AppDialog from "../../../Components/appDialog";
 import SearchableSelect from "../../../Components/SearchableSelect";
+import TopFilterBar from "../../../Components/TopFilterBar";
+import DataTable, { type Column } from "../../../Components/dataTable";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { 
   getprojectschedule, 
   getprojectDropdown,
@@ -245,9 +242,11 @@ const EmpSchedulesMainPage: React.FC = () => {
 
   // Filter states - Same as Work Abstract
   const [selectedProject, setSelectedProject] = useState<string>("");
+  const [selectedTaskType, setSelectedTaskType] = useState<string>("");
   const [selectedTask, setSelectedTask] = useState<string>("");
   const [fromDate, setFromDate] = useState<string>(getTodayDate());
   const [toDate, setToDate] = useState<string>(getTodayDate());
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
   // Dialog state for delete
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -264,10 +263,12 @@ const EmpSchedulesMainPage: React.FC = () => {
   // Filtered dropdown states (based on date range)
   const [filteredProjects, setFilteredProjects] = useState<ProjectDropdown[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<taskDropdown[]>([]);
+  const [filteredTaskTypes, setFilteredTaskTypes] = useState<string[]>([]);
   
   // Date range specific data
   const [, setDateRangeProjects] = useState<ProjectDropdown[]>([]);
   const [dateRangeTasks, setDateRangeTasks] = useState<taskDropdown[]>([]);
+  const [dateRangeTaskTypes, setDateRangeTaskTypes] = useState<string[]>([]);
   
   // Loading states
   const [loadingProjects, setLoadingProjects] = useState(false);
@@ -412,47 +413,30 @@ const EmpSchedulesMainPage: React.FC = () => {
   // HANDLE ROW EXPAND/COLLAPSE
   // ─────────────────────────────────────────────────────────
 
-  const handleRowExpand = useCallback(async (row: ProjectScheduleDisplay) => {
-    // Create a new array with updated expanded state
-    const updatedSchedules = filteredSchedules.map(schedule => {
-      if (schedule.schId === row.schId && schedule.taskId === row.taskId) {
-        return {
-          ...schedule,
-          expanded: !schedule.expanded
-        };
-      }
-      return schedule;
-    });
+  const loadRowData = useCallback(async (row: ProjectScheduleDisplay) => {
+    // Set loading state
+    setFilteredSchedules(prev => 
+      prev.map(s => 
+        s.schId === row.schId && s.taskId === row.taskId ? { ...s, loadingWork: true } : s
+      )
+    );
     
-    setFilteredSchedules(updatedSchedules);
+    const workDetails = await fetchWorkDetails(row.schId, row);
     
-    // If expanding and no work details loaded yet, fetch them
-    const currentRow = updatedSchedules.find(s => s.schId === row.schId && s.taskId === row.taskId);
-    if (currentRow?.expanded && (!currentRow.workDetails || currentRow.workDetails.length === 0)) {
-      // Set loading state
-      setFilteredSchedules(prev => 
-        prev.map(s => 
-          s.schId === row.schId && s.taskId === row.taskId ? { ...s, loadingWork: true } : s
-        )
-      );
-      
-      const workDetails = await fetchWorkDetails(row.schId, row);
-      
-      // Update with fetched data and apply work date filter
-      setFilteredSchedules(prev => 
-        prev.map(s => 
-          s.schId === row.schId && s.taskId === row.taskId
-            ? { 
-                ...s, 
-                workDetails, 
-                filteredWorkDetails: filterWorkDetailsByDate(workDetails, workDateFilter),
-                loadingWork: false 
-              } 
-            : s
-        )
-      );
-    }
-  }, [filteredSchedules, fetchWorkDetails, workDateFilter, filterWorkDetailsByDate]);
+    // Update with fetched data and apply work date filter
+    setFilteredSchedules(prev => 
+      prev.map(s => 
+        s.schId === row.schId && s.taskId === row.taskId
+          ? { 
+              ...s, 
+              workDetails, 
+              filteredWorkDetails: filterWorkDetailsByDate(workDetails, workDateFilter),
+              loadingWork: false 
+            } 
+          : s
+      )
+    );
+  }, [fetchWorkDetails, workDateFilter, filterWorkDetailsByDate]);
 
   // ─────────────────────────────────────────────────────────
   // HANDLE EDIT WORK
@@ -607,6 +591,17 @@ const EmpSchedulesMainPage: React.FC = () => {
         setDateRangeProjects(projectsList);
         setFilteredProjects(projectsList);
         
+        // Extract unique task types from filtered schedules
+        const uniqueTaskTypes = new Set<string>();
+        filteredByDate.forEach((item) => {
+          if (item.taskType) {
+            uniqueTaskTypes.add(item.taskType);
+          }
+        });
+        const taskTypesList = Array.from(uniqueTaskTypes);
+        setDateRangeTaskTypes(taskTypesList);
+        setFilteredTaskTypes(taskTypesList);
+        
         // Extract unique tasks from filtered schedules
         const uniqueTasks = new Map();
         filteredByDate.forEach((item) => {
@@ -626,6 +621,7 @@ const EmpSchedulesMainPage: React.FC = () => {
         
         // Reset selections
         setSelectedProject("all");
+        setSelectedTaskType("");
         setSelectedTask("");
         setFilteredSchedules([]);
         // Reset work date filter to current date
@@ -648,32 +644,51 @@ const EmpSchedulesMainPage: React.FC = () => {
   };
 
   // ─────────────────────────────────────────────────────────
-  // RE-FILTER TASKS WHEN PROJECT CHANGES
+  // RE-FILTER TASKS & TASK TYPES WHEN DEPENDENCIES CHANGE
   // ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!isFilterLoaded) return;
 
+    let filtered = dateRangeTasks;
+    let filteredTypes = dateRangeTaskTypes;
+
     if (selectedProject && selectedProject !== "all") {
-      // Filter tasks by selected project from date range tasks
-      const tasksByProject = dateRangeTasks.filter(
-        (t) => {
-          // Find the schedule that has this task and the selected project
-          const scheduleWithTask = schedules.find(
-            s => String(s.taskId) === String(t.value) && String(s.Project_Id) === selectedProject
-          );
-          return !!scheduleWithTask;
-        }
-      );
-      setFilteredTasks(tasksByProject);
+      filtered = filtered.filter((t) => {
+        const scheduleWithTask = schedules.find(
+          s => String(s.taskId) === String(t.value) && String(s.Project_Id) === selectedProject
+        );
+        return !!scheduleWithTask;
+      });
       
-      if (selectedTask && !tasksByProject.some((t) => String(t.value) === selectedTask)) {
-        setSelectedTask("");
-      }
-    } else {
-      setFilteredTasks(dateRangeTasks);
+      filteredTypes = filteredTypes.filter((type) => {
+        const scheduleWithType = schedules.find(
+          s => s.taskType === type && String(s.Project_Id) === selectedProject
+        );
+        return !!scheduleWithType;
+      });
     }
-  }, [selectedProject, isFilterLoaded, dateRangeTasks, schedules, selectedTask]);
+
+    if (selectedTaskType) {
+      filtered = filtered.filter((t) => {
+        const scheduleWithTask = schedules.find(
+          s => String(s.taskId) === String(t.value) && s.taskType === selectedTaskType
+        );
+        return !!scheduleWithTask;
+      });
+    }
+
+    setFilteredTasks(filtered);
+    setFilteredTaskTypes(filteredTypes);
+    
+    if (selectedTask && !filtered.some((t) => String(t.value) === selectedTask)) {
+      setSelectedTask("");
+    }
+    
+    if (selectedTaskType && !filteredTypes.includes(selectedTaskType)) {
+      setSelectedTaskType("");
+    }
+  }, [selectedProject, selectedTaskType, isFilterLoaded, dateRangeTasks, dateRangeTaskTypes, schedules, selectedTask]);
 
   // ─────────────────────────────────────────────────────────
   // SEARCH BUTTON HANDLER
@@ -720,6 +735,11 @@ const EmpSchedulesMainPage: React.FC = () => {
         result = result.filter((item) => String(item.Project_Id) === selectedProject);
       }
       
+      // Filter by task type
+      if (selectedTaskType) {
+        result = result.filter((item) => item.taskType === selectedTaskType);
+      }
+      
       // Filter by task
       if (selectedTask) {
         result = result.filter((item) => String(item.taskId) === selectedTask);
@@ -762,6 +782,7 @@ const EmpSchedulesMainPage: React.FC = () => {
 
   const handleResetFilters = () => {
     setSelectedProject("");
+    setSelectedTaskType("");
     setSelectedTask("");
     setFromDate(getTodayDate());
     setToDate(getTodayDate());
@@ -814,13 +835,7 @@ const EmpSchedulesMainPage: React.FC = () => {
   // ROW CLICK HANDLER (for the main row click to open dialog)
   // ─────────────────────────────────────────────────────────
 
-  const handleRowClick = useCallback(async (row: projectscheduleData, event: React.MouseEvent) => {
-    // Prevent opening dialog when clicking on expand button
-    const target = event.target as HTMLElement;
-    if (target.closest('.expand-button')) {
-      return;
-    }
-    
+  const handleRowClick = useCallback(async (row: projectscheduleData) => {
     if (!row?.schId) {
       toast.error("Invalid schedule data");
       return;
@@ -1024,253 +1039,35 @@ const EmpSchedulesMainPage: React.FC = () => {
   };
 
   // ─────────────────────────────────────────────────────────
+  // DATA TABLE CONFIGURATION
+  // ─────────────────────────────────────────────────────────
+
+  const columns: Column[] = [
+    { ColumnHeader: "Schedule No.", Field_Name: "schNo", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{(row.schNo as string) || "-"}</> },
+    { ColumnHeader: "Schedule Date", Field_Name: "schDate", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{formatDateToDDMMYYYY(row.schDate)}</> },
+    { ColumnHeader: "Project Name", Field_Name: "projectName", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{(row.projectName as string) || "-"}</> },
+    { ColumnHeader: "Task Type", Field_Name: "taskType", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{(row.taskType as string) || "-"}</> },
+    { ColumnHeader: "Task Name", Field_Name: "taskName", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{(row.taskName as string) || "-"}</> },
+    { ColumnHeader: "Schedule Type", Field_Name: "schType", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{getScheduleTypeChip(row.schType as number)}</> },
+    { ColumnHeader: "Plan Type", Field_Name: "planType", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{(row.planType as string) || "-"}</> },
+    { ColumnHeader: "Schedule Period", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{`${formatDateToDDMMYYYY(row.schStartDate)} to ${formatDateToDDMMYYYY(row.schEndDate)}`}</> },
+    { ColumnHeader: "Est. Time", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{`${formatTimeTo12Hour(row.schEstStartTime as string)} — ${formatTimeTo12Hour(row.schEstEndTime as string)}`}</> },
+    { ColumnHeader: "Duration", Field_Name: "taskSchDuration", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{`${row.taskSchDuration || 0} hrs`}</> },
+    { ColumnHeader: "Status", Field_Name: "schStatus", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <>{getStatusChip(row.schStatus as number)}</> },
+    { ColumnHeader: "Timer Based", Field_Name: "taskSchTimerBased", align: "center", isVisible: 1, isCustomCell: true, Cell: ({ row }) => <Chip label={row.taskSchTimerBased === 1 ? "Yes" : "No"} size="small" color={row.taskSchTimerBased === 1 ? "primary" : "default"} variant="outlined" /> },
+  ];
+
+  // Expandable content wrapper moved to component scope
+
+  // ─────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────
 
   return (
-    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, background: "#f2f2f2", minHeight: "100vh" }}>
-      {/* Header */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: { xs: "flex-start", sm: "center" },
-          flexDirection: { xs: "column", sm: "row" },
-          mb: 2,
-          gap: { xs: 1.5, sm: 2 }
-        }}
-      >
-        <Typography variant="h6" fontWeight="bold">
-          Project Schedule Master
-        </Typography>
-      </Box>
+    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, minHeight: "100vh" }}>
 
-      {/* Filter Panel */}
-      <Paper elevation={2} sx={{ p: { xs: 1.5, sm: 2 }, mb: 2, borderRadius: 2 }}>
-        <Grid container spacing={{ xs: 1.5, sm: 2 }} alignItems="flex-end">
-          {/* From Date */}
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
-              From Date <span style={{ color: "red" }}>*</span>
-            </Typography>
-            <TextField
-              type="date"
-              fullWidth
-              size="small"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-          </Grid>
 
-          {/* To Date */}
-          <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
-              To Date <span style={{ color: "red" }}>*</span>
-            </Typography>
-            <TextField
-              type="date"
-              fullWidth
-              size="small"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-          </Grid>
-
-          {/* Filter Button */}
-          <Grid size={{ xs: 12, sm: 4, md: 1 }}>
-            <Button
-              variant="outlined"
-              fullWidth
-              startIcon={
-                loadingProjects || loadingTasks ? (
-                  <CircularProgress size={14} />
-                ) : (
-                  <FilterAltIcon />
-                )
-              }
-              onClick={handleFilter}
-              disabled={loadingProjects || loadingTasks || !fromDate || !toDate}
-              sx={{
-                borderRadius: "20px",
-                textTransform: "none",
-                height: "40px",
-                borderColor: "#1976d2",
-                color: "#1976d2"
-              }}
-            >
-              Filter
-            </Button>
-          </Grid>
-
-          {/* Project Dropdown */}
-          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
-              Project
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                displayEmpty
-                value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
-                disabled={!isFilterLoaded || loadingProjects}
-                renderValue={(selected: any) => {
-                  if (!selected) return "All Projects";
-                  if (selected === "all") return "All Projects";
-                  const project = filteredProjects.find(p => String(p.value) === selected);
-                  return project?.label || selected;
-                }}
-                searchPlaceholder="Search project..."
-                options={[
-                  { value: "all", label: "All Projects" },
-                  ...filteredProjects.map((p) => ({
-                    value: String(p.value),
-                    label: p.label
-                  }))
-                ]}
-              />
-              {!loadingProjects && !isFilterLoaded && (
-                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5 }}>
-                  Select date range and click Filter
-                </Typography>
-              )}
-              {isFilterLoaded && filteredProjects.length === 0 && !loadingProjects && (
-                <Typography variant="caption" color="warning.main" sx={{ mt: 0.5 }}>
-                  No projects found in selected date range
-                </Typography>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* Task Dropdown */}
-          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
-              Task
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                displayEmpty
-                value={selectedTask}
-                onChange={(e) => setSelectedTask(e.target.value)}
-                disabled={!isFilterLoaded || loadingTasks || !selectedProject}
-                renderValue={(selected: any) => {
-                  if (!selected) return "All Tasks";
-                  const task = filteredTasks.find(t => String(t.value) === selected);
-                  return task?.label || selected;
-                }}
-                searchPlaceholder="Search task..."
-                allOptionLabel="All Tasks"
-                allOptionValue=""
-                options={filteredTasks.map((t) => ({
-                  value: String(t.value),
-                  label: t.label
-                }))}
-              />
-              {loadingTasks && (
-                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5 }}>
-                  <CircularProgress size={12} sx={{ mr: 0.5 }} /> Loading…
-                </Typography>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* Search Button */}
-          <Grid size={{ xs: 12, sm: 6, md: 1 }}>
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <SearchIcon />}
-              onClick={handleSearch}
-              disabled={loading || !isFilterLoaded || !selectedProject || !fromDate || !toDate}
-              sx={{
-                borderRadius: "20px",
-                textTransform: "none",
-                height: "40px",
-                backgroundColor: "#1976d2",
-                "&:hover": { backgroundColor: "#1565c0" }
-              }}
-            >
-              Search
-            </Button>
-          </Grid>
-
-          {/* Reset Button */}
-          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-            <Button
-              variant="outlined"
-              fullWidth
-              onClick={handleResetFilters}
-              sx={{
-                borderRadius: "20px",
-                textTransform: "none",
-                height: "40px",
-              }}
-            >
-              Reset Filters
-            </Button>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Results Table */}
-      <Paper sx={{ width: "100%", overflow: "hidden" }}>
-        <Box
-          sx={{
-            p: { xs: 1, sm: 1.5 },
-            borderBottom: "1px solid #ddd",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 1
-          }}
-        >
-          <Typography fontWeight="bold" variant="body1">
-            Project Schedules{" "}
-            {selectedProject === "all" && "- All Projects"}
-            {selectedProject && selectedProject !== "all" &&
-              `- ${filteredProjects.find(p => String(p.value) === selectedProject)?.label || ""}`}
-          </Typography>
-          {loading && <CircularProgress size={20} />}
-        </Box>
-
-        {/* Work Date Filter Row - Without Clear Button and Current Date */}
-        {displayData.length > 0 && (
-          <Box
-            sx={{
-              p: { xs: 1, sm: 1.5 },
-              borderBottom: "1px solid #ddd",
-              backgroundColor: "#f5f5f5",
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 2,
-              flexWrap: "wrap"
-            }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              Filter Work Details by Date:
-            </Typography>
-            <TextField
-              type="date"
-              size="small"
-              value={workDateFilter}
-              onChange={handleWorkDateFilterChange}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CalendarTodayIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              sx={{ width: 200 }}
-            />
-          </Box>
-        )}
-
+      <Box sx={{ width: "100%", overflow: "hidden", background: "transparent", boxShadow: "none" }}>
         {error && (
           <Alert
             severity={displayData.length ? "info" : "error"}
@@ -1294,171 +1091,217 @@ const EmpSchedulesMainPage: React.FC = () => {
             }
           }}
         >
-          <Table
-            size="small"
-            sx={{
-              minWidth: {
-                xs: 1300,
-                sm: 1300,
-                md: "100%"
-              },
-              tableLayout: "auto"
-            }}
-          >
-            <TableHead>
-              <TableRow sx={{ backgroundColor: "#f8f9fa" }}>
-                <TableCell sx={{ ...thStyle, width: 50 }}></TableCell>
-                <TableCell sx={thStyle} width={40}>#</TableCell>
-                <TableCell sx={thStyle}>Schedule No.</TableCell>
-                <TableCell sx={thStyle}>Schedule Date</TableCell>
-                <TableCell sx={thStyle}>Project Name</TableCell>
-                <TableCell sx={thStyle}>Task Type</TableCell>
-                <TableCell sx={thStyle}>Task Name</TableCell>
-                <TableCell sx={thStyle} align="center">Schedule Type</TableCell>
-                <TableCell sx={thStyle} align="center">Plan Type</TableCell>
-                <TableCell sx={thStyle} align="center">Schedule Period</TableCell>
-                <TableCell sx={thStyle} align="center">Est. Time</TableCell>
-                <TableCell sx={thStyle} align="center">Duration</TableCell>
-                <TableCell sx={thStyle} align="center">Status</TableCell>
-                <TableCell sx={thStyle} align="center">Timer Based</TableCell>
-              </TableRow>
-            </TableHead>
+          <DataTable
+            headerTitle={`Project Schedules ${selectedProject === "all" ? "- All Projects" : (selectedProject && selectedProject !== "all" ? `- ${filteredProjects.find(p => String(p.value) === selectedProject)?.label || ""}` : "")}`}
+            headerActions={
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                {displayData.length > 0 && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, color: "#fff" }}>
+                      Filter Work Details by Date:
+                    </Typography>
+                    <TextField
+                      type="date"
+                      size="small"
+                      value={workDateFilter}
+                      onChange={handleWorkDateFilterChange}
+                      slotProps={{
+                        input: {
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <CalendarTodayIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        },
+                      }}
+                      sx={{ width: 170, backgroundColor: "#fff", borderRadius: 1 }}
+                    />
+                  </Box>
+                )}
 
-            <TableBody>
-              {!loading && displayData.length === 0 && !loadingProjects && !loadingTasks ? (
-                <TableRow>
-                  <TableCell colSpan={12} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                    {!isFilterLoaded
-                      ? "1. Select date range → 2. Click Filter → 3. Select Project → 4. Click Search"
-                      : !selectedProject
-                      ? "Please select a project to view schedules"
-                      : !isSearchPerformed
-                      ? "Click Search to load data"
-                      : "No records found for the selected criteria"}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                displayData.map((row, idx) => (
-                  <React.Fragment key={`${row.schId}-${row.taskId}-${idx}`}>
-                    {/* Main Row */}
-                    <TableRow
-                      onClick={(e) => handleRowClick(row, e)}
+                {loading && <CircularProgress size={20} />}
+
+                <TopFilterBar
+                  dialogOpen={filterDialogOpen}
+                  onOpenDialog={() => setFilterDialogOpen(true)}
+                  onCloseDialog={() => setFilterDialogOpen(false)}
+                  onSearch={() => {
+                    setFilterDialogOpen(false);
+                    handleSearch();
+                  }}
+                >
+                  <Box display="flex" flexDirection="column" gap={2}>
+                    <Box>
+                      <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                        From Date <span style={{ color: "red" }}>*</span>
+                      </Typography>
+                      <TextField
+                        type="date"
+                        fullWidth
+                        size="small"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                        To Date <span style={{ color: "red" }}>*</span>
+                      </Typography>
+                      <TextField
+                        type="date"
+                        fullWidth
+                        size="small"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </Box>
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      startIcon={
+                        loadingProjects || loadingTasks ? (
+                          <CircularProgress size={14} />
+                        ) : (
+                          <FilterAltIcon />
+                        )
+                      }
+                      onClick={handleFilter}
+                      disabled={loadingProjects || loadingTasks || !fromDate || !toDate}
                       sx={{
-                        cursor: "pointer",
-                        transition: "background-color 0.15s ease",
-                        "&:hover": { backgroundColor: "#e3f2fd" },
+                        borderRadius: "20px",
+                        textTransform: "none",
+                        height: "40px",
+                        borderColor: "#1976d2",
+                        color: "#1976d2"
                       }}
                     >
-                      <TableCell sx={tdStyle} className="expand-button">
-                        <IconButton
-                          aria-label="expand row"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRowExpand(row);
-                          }}
-                          className="expand-button"
-                          sx={{ p: 0.5 }}
-                        >
-                          {row.expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-                        </IconButton>
-                      </TableCell>
-                      <TableCell sx={tdStyle}>{idx + 1}</TableCell>
-                      <TableCell sx={tdStyle}>{row.schNo || "-"}</TableCell>
-                      <TableCell sx={tdStyle}>
-                        {formatDateToDDMMYYYY(row.schDate)}
-                      </TableCell>
-                      <TableCell sx={tdStyle}>{row.projectName || "-"}</TableCell>
-                      <TableCell sx={tdStyle}>{row.taskType || "-"}</TableCell>
-                      <TableCell sx={tdStyle}>{row.taskName || "-"}</TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        {getScheduleTypeChip((row as any).schType)}
-                      </TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        {row.planType || "-"}
-                      </TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        {formatDateToDDMMYYYY(row.schStartDate)} to{" "}
-                        {formatDateToDDMMYYYY(row.schEndDate)}
-                      </TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        {formatTimeTo12Hour(row.schEstStartTime)} —{" "}
-                        {formatTimeTo12Hour(row.schEstEndTime)}
-                      </TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        {row.taskSchDuration || 0} hrs
-                      </TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        {getStatusChip(row.schStatus)}
-                      </TableCell>
-                      <TableCell sx={tdStyle} align="center">
-                        <Chip
-                          label={row.taskSchTimerBased === 1 ? "Yes" : "No"}
-                          size="small"
-                          color={row.taskSchTimerBased === 1 ? "primary" : "default"}
-                          variant="outlined"
-                        />
-                      </TableCell>
-                    </TableRow>
+                      Load Projects & Tasks
+                    </Button>
 
-                    {/* Expandable Sub-table Row */}
-                    <TableRow>
-                      <TableCell 
-                        sx={{ 
-                          p: 0, 
-                          borderBottom: row.expanded ? "1px solid #e0e0e0" : "none" 
-                        }} 
-                        colSpan={12}
-                      >
-                        <Collapse in={row.expanded === true} timeout="auto" unmountOnExit>
-                          <Box sx={{ m: 2 }}>
-                            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
-                              Work Details for Schedule: {row.schNo}
-                              {workDateFilter && (
-                                <Typography component="span" variant="caption" sx={{ ml: 2, color: "#1976d2" }}>
-                                  (Filtered by date: {formatDateToDDMMYYYY(workDateFilter)})
-                                </Typography>
-                              )}
-                            </Typography>
-                            
-                            {row.loadingWork ? (
-                              <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-                                <CircularProgress size={30} />
-                              </Box>
-                            ) : (
-                              <Box sx={{ overflowX: "auto" }}>
-                                <Table size="small" sx={{ minWidth: 1100 }}>
-                                  <TableHead>
-                                    <TableRow sx={{ backgroundColor: "#e8f4f8" }}>
-                                      <TableCell sx={subThStyle}>#</TableCell>
-                                      <TableCell sx={subThStyle}>Project Name</TableCell>
-                                      <TableCell sx={subThStyle}>Schedule Start</TableCell>
-                                      <TableCell sx={subThStyle}>Schedule End</TableCell>
-                                      <TableCell sx={subThStyle}>Work Date</TableCell>
-                                      <TableCell sx={subThStyle}>Task</TableCell>
-                                      <TableCell sx={subThStyle}>Staff</TableCell>
-                                      <TableCell sx={subThStyle} align="center">Status</TableCell>
-                                      <TableCell sx={subThStyle}>Work Comment</TableCell>
-                                      <TableCell sx={subThStyle} align="center">Duration</TableCell>
-                                      <TableCell sx={subThStyle} align="center">Time</TableCell>
-                                      <TableCell sx={subThStyle} align="center">Actions</TableCell>
-                                    </TableRow>
-                                  </TableHead>
-                                  <TableBody>
-                                    {renderSubTableRows(row.workDetails, row)}
-                                  </TableBody>
-                                </Table>
-                              </Box>
-                            )}
-                          </Box>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  </React.Fragment>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                    <Box>
+                      <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                        Project
+                      </Typography>
+                      <FormControl fullWidth size="small">
+                        <SearchableSelect
+                          displayEmpty
+                          value={selectedProject}
+                          onChange={(e) => setSelectedProject(e.target.value)}
+                          disabled={!isFilterLoaded || loadingProjects}
+                          renderValue={(selected: any) => {
+                            if (!selected) return "All Projects";
+                            if (selected === "all") return "All Projects";
+                            const project = filteredProjects.find(p => String(p.value) === selected);
+                            return project?.label || selected;
+                          }}
+                          searchPlaceholder="Search project..."
+                          options={[
+                            { value: "all", label: "All Projects" },
+                            ...filteredProjects.map((p) => ({
+                              value: String(p.value),
+                              label: p.label
+                            }))
+                          ]}
+                        />
+                      </FormControl>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                        Task Type
+                      </Typography>
+                      <FormControl fullWidth size="small">
+                        <SearchableSelect
+                          displayEmpty
+                          value={selectedTaskType}
+                          onChange={(e) => setSelectedTaskType(e.target.value)}
+                          disabled={!isFilterLoaded || loadingProjects}
+                          renderValue={(selected: any) => {
+                            if (!selected) return "All Task Types";
+                            return selected;
+                          }}
+                          searchPlaceholder="Search task type..."
+                          allOptionLabel="All Task Types"
+                          allOptionValue=""
+                          options={filteredTaskTypes.map((t) => ({
+                            value: t,
+                            label: t
+                          }))}
+                        />
+                      </FormControl>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                        Task
+                      </Typography>
+                      <FormControl fullWidth size="small">
+                        <SearchableSelect
+                          displayEmpty
+                          value={selectedTask}
+                          onChange={(e) => setSelectedTask(e.target.value)}
+                          disabled={!isFilterLoaded || loadingTasks || !selectedProject}
+                          renderValue={(selected: any) => {
+                            if (!selected) return "All Tasks";
+                            const task = filteredTasks.find(t => String(t.value) === selected);
+                            return task?.label || selected;
+                          }}
+                          searchPlaceholder="Search task..."
+                          allOptionLabel="All Tasks"
+                          allOptionValue=""
+                          options={filteredTasks.map((t) => ({
+                            value: String(t.value),
+                            label: t.label
+                          }))}
+                        />
+                      </FormControl>
+                    </Box>
+                  </Box>
+                </TopFilterBar>
+
+                <Tooltip title="Reset Filters & Refresh">
+                  <IconButton
+                    onClick={() => {
+                      handleResetFilters();
+                      toast.info("Page filters reset and refreshed");
+                    }}
+                    sx={{
+                      backgroundColor: "#ffffff",
+                      border: "1.5px solid #000000",
+                      borderRadius: "50%",
+                      width: 36,
+                      height: 36,
+                      padding: 0,
+                      "&:hover": {
+                        backgroundColor: "#f5f5f5",
+                        border: "1.5px solid #000000",
+                      },
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <RefreshIcon sx={{ fontSize: 20, color: "#000000" }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            }
+            dataArray={displayData as any[]}
+            columns={columns}
+            isExpendable={true}
+            expandableComp={({ row }) => (
+              <ExpandableContentWrapper 
+                row={row} 
+                filteredSchedules={filteredSchedules} 
+                workDateFilter={workDateFilter} 
+                loadRowData={loadRowData} 
+                renderSubTableRows={renderSubTableRows} 
+              />
+            )}
+            onClickFun={(row) => handleRowClick(row as projectscheduleData)}
+            EnableSerialNumber={true}
+            initialPageCount={10}
+          />
         </Box>
 
         {displayData.length > 0 && (
@@ -1480,7 +1323,7 @@ const EmpSchedulesMainPage: React.FC = () => {
             </Typography>
           </Box>
         )}
-      </Paper>
+      </Box>
 
       {/* TodayTaskDialog - for adding/editing today's work */}
       <TodayTaskDialog
@@ -1534,14 +1377,6 @@ const EmpSchedulesMainPage: React.FC = () => {
 // TABLE CELL STYLES
 // ─────────────────────────────────────────────────────────────
 
-const thStyle = {
-  fontWeight: 700,
-  fontSize: "0.85rem",
-  backgroundColor: "#f8f9fa",
-  whiteSpace: "nowrap",
-  py: 1.2,
-};
-
 const subThStyle = {
   fontWeight: 600,
   fontSize: "0.75rem",
@@ -1554,5 +1389,64 @@ const tdStyle = {
   fontSize: "0.85rem",
   py: 1,
 };
+
+const ExpandableContentWrapper = React.memo(({ 
+  row, 
+  filteredSchedules, 
+  workDateFilter, 
+  loadRowData, 
+  renderSubTableRows 
+}: any) => {
+  const actualRow = filteredSchedules.find((s: any) => s.schId === row.schId && s.taskId === row.taskId) || row;
+
+  useEffect(() => {
+    if ((!actualRow.workDetails || actualRow.workDetails.length === 0) && !actualRow.loadingWork) {
+      loadRowData(actualRow);
+    }
+  }, [actualRow.schId, actualRow.taskId]); // Intentionally run only once per row identity
+
+  return (
+    <Box sx={{ m: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+        Work Details for Schedule: {actualRow.schNo}
+        {workDateFilter && (
+          <Typography component="span" variant="caption" sx={{ ml: 2, color: "#1976d2" }}>
+            (Filtered by date: {formatDateToDDMMYYYY(workDateFilter)})
+          </Typography>
+        )}
+      </Typography>
+      
+      {actualRow.loadingWork ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+          <CircularProgress size={30} />
+        </Box>
+      ) : (
+        <Box sx={{ overflowX: "auto" }}>
+          <Table size="small" sx={{ minWidth: 1100 }}>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: "#e8f4f8" }}>
+                <TableCell sx={subThStyle}>#</TableCell>
+                <TableCell sx={subThStyle}>Project Name</TableCell>
+                <TableCell sx={subThStyle}>Schedule Start</TableCell>
+                <TableCell sx={subThStyle}>Schedule End</TableCell>
+                <TableCell sx={subThStyle}>Work Date</TableCell>
+                <TableCell sx={subThStyle}>Task</TableCell>
+                <TableCell sx={subThStyle}>Staff</TableCell>
+                <TableCell sx={subThStyle} align="center">Status</TableCell>
+                <TableCell sx={subThStyle}>Work Comment</TableCell>
+                <TableCell sx={subThStyle} align="center">Duration</TableCell>
+                <TableCell sx={subThStyle} align="center">Time</TableCell>
+                <TableCell sx={subThStyle} align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {renderSubTableRows(actualRow.workDetails, actualRow)}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
+    </Box>
+  );
+});
 
 export default EmpSchedulesMainPage;

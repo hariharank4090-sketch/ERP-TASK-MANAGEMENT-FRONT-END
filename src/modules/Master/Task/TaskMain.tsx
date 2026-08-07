@@ -33,6 +33,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import {
   Edit,
@@ -48,6 +50,8 @@ import {
 import { toast } from "react-toastify";
 
 import DataTable, { createCol } from "../../../Components/dataTable";
+import SearchableSelect from "../../../Components/SearchableSelect";
+import TopFilterBar, { type StatusFilter } from "../../../Components/TopFilterBar";
 import { ProjectScheduleDialog } from "../Project Schedule/Project Scheduleform";
 import AssignTask from "../Assigntask.form/AssignTask.form";
 import { TaskDialog } from "./Taskform";
@@ -106,6 +110,12 @@ const debounce = <T extends (...args: any[]) => any>(fn: T, wait: number) => {
 };
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
+const numEq = (a: any, b: any) => {
+  if (a == null || b == null) return false;
+  if (a === "ALL" || b === "ALL") return true;
+  return Number(a) === Number(b);
+};
+
 const firstPosInt = (...vals: any[]): number | null => {
   for (const v of vals) {
     if (v === null || v === undefined || v === "" || v === 0) continue;
@@ -1066,6 +1076,20 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // TopFilterBar filter states - Only three filters
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [projectIdFilter, setProjectIdFilter] = useState<number | "ALL">("ALL");
+  const [taskTypeIdFilter, setTaskTypeIdFilter] = useState<number | "ALL">("ALL");
+  const [taskIdFilter, setTaskIdFilter] = useState<number | "ALL">("ALL");
+  const [projectIsActiveFilter, setProjectIsActiveFilter] = useState<StatusFilter>("ACTIVE");
+
+  const [filterStatus, setFilterStatus] = useState<"Active" | "Inactive">("Active");
+
+  // Applied filter states - Only three filters
+  const [appliedProjectId, setAppliedProjectId] = useState<number | "ALL">("ALL");
+  const [appliedTaskTypeId, setAppliedTaskTypeId] = useState<number | "ALL">("ALL");
+  const [appliedTaskId, setAppliedTaskId] = useState<number | "ALL">("ALL");
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [expandedRefreshKeys, setExpandedRefreshKeys] = useState<Record<number, number>>({});
 
@@ -1221,16 +1245,115 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const debouncedSetSearch = useMemo(() => debounce(setSearchTerm, 300), []);
   const handleSearchChange = useCallback((v: string) => debouncedSetSearch(v), [debouncedSetSearch]);
 
-  const filteredTasksList = useMemo(() => {
-    if (!searchTerm.trim()) return tasks;
-    const t = searchTerm.toLowerCase();
-    return tasks.filter(item =>
-      item?.Task_Name?.toLowerCase().includes(t) ||
-      (item?.Task_Desc && item.Task_Desc.toLowerCase().includes(t)) ||
-      item.projectName.toLowerCase().includes(t) ||
-      item.taskTypeName.toLowerCase().includes(t)
+  // Get filtered projects based on selected task type and task
+  const getFilteredProjectsForDropdown = useMemo(() => {
+    if (taskTypeIdFilter === "ALL" && taskIdFilter === "ALL") return taskProjects;
+    
+    const validProjectIds = new Set(
+      tasks
+        .filter(item => 
+          (taskTypeIdFilter === "ALL" || numEq(item.Task_Type_Id, taskTypeIdFilter)) &&
+          (taskIdFilter === "ALL" || numEq(item.Task_Id, taskIdFilter))
+        )
+        .map(item => item.Project_Id)
+        .filter(id => id !== null)
     );
-  }, [searchTerm, tasks]);
+    return taskProjects.filter(p => validProjectIds.has(p.Project_Id));
+  }, [taskProjects, tasks, taskTypeIdFilter, taskIdFilter]);
+
+  // Get filtered task types based on selected project and task
+  const getFilteredTaskTypesForDropdown = useMemo(() => {
+    if (projectIdFilter === "ALL" && taskIdFilter === "ALL") return taskGroups;
+    
+    const validTaskTypeIds = new Set(
+      tasks
+        .filter(item => 
+          (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
+          (taskIdFilter === "ALL" || numEq(item.Task_Id, taskIdFilter))
+        )
+        .map(item => item.Task_Type_Id)
+        .filter(id => id !== null)
+    );
+    return taskGroups.filter(tg => validTaskTypeIds.has(tg.Task_Type_Id));
+  }, [taskGroups, tasks, projectIdFilter, taskIdFilter]);
+
+  // Get filtered tasks based on selected project and task type
+  const getFilteredTasksForDropdown = useMemo(() => {
+    let filtered = tasks;
+    if (projectIdFilter !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Project_Id, projectIdFilter));
+    }
+    if (taskTypeIdFilter !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Task_Type_Id, taskTypeIdFilter));
+    }
+    return filtered;
+  }, [tasks, projectIdFilter, taskTypeIdFilter]);
+
+  // Reset any invalid filters when other filters change
+  useEffect(() => {
+    if (projectIdFilter !== "ALL") {
+      const isValid = getFilteredProjectsForDropdown.some(p => numEq(p.Project_Id, projectIdFilter));
+      if (!isValid) setProjectIdFilter("ALL");
+    }
+
+    if (taskTypeIdFilter !== "ALL") {
+      const isValid = getFilteredTaskTypesForDropdown.some(t => numEq(t.Task_Type_Id, taskTypeIdFilter));
+      if (!isValid) setTaskTypeIdFilter("ALL");
+    }
+
+    if (taskIdFilter !== "ALL") {
+      const isValid = getFilteredTasksForDropdown.some(t => numEq(t.Task_Id, taskIdFilter));
+      if (!isValid) setTaskIdFilter("ALL");
+    }
+  }, [
+    projectIdFilter, taskTypeIdFilter, taskIdFilter, tasks,
+    getFilteredProjectsForDropdown, getFilteredTaskTypesForDropdown, getFilteredTasksForDropdown
+  ]);
+
+  const filteredTasksList = useMemo(() => {
+    let filtered = tasks;
+
+    // 1. Status filter
+    if (projectIsActiveFilter === "INACTIVE" || filterStatus === "Inactive") {
+      filtered = filtered.filter(item => Number(item.Status ?? 0) === 0);
+    } else if (projectIsActiveFilter === "ACTIVE" || filterStatus === "Active") {
+      filtered = filtered.filter(item => Number(item.Status ?? 1) === 1);
+    }
+
+    // 2. Project filter
+    if (appliedProjectId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Project_Id, appliedProjectId));
+    }
+
+    // 3. Task Type filter
+    if (appliedTaskTypeId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Task_Type_Id, appliedTaskTypeId));
+    }
+
+    // 4. Task filter
+    if (appliedTaskId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Task_Id, appliedTaskId));
+    }
+
+    // 5. Search term filter
+    if (!searchTerm.trim()) return filtered;
+
+    const term = searchTerm.toLowerCase();
+    return filtered.filter(item =>
+      item?.Task_Name?.toLowerCase().includes(term) ||
+      (item?.Task_Desc && item.Task_Desc.toLowerCase().includes(term)) ||
+      item.projectName.toLowerCase().includes(term) ||
+      item.taskTypeName.toLowerCase().includes(term)
+    );
+  }, [
+    searchTerm, 
+    tasks,
+    projectIsActiveFilter,
+    filterStatus,
+    appliedProjectId,
+    appliedTaskTypeId,
+    appliedTaskId
+  ]);
 
   const closeAllDialogs = useCallback(() => {
     setScheduleDialogType(null); setSelectedScheduleId(null);
@@ -1675,6 +1798,127 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
       <DataTable
         headerTitle="Task Schedule Master"
         dataArray={filteredTasksList}
+        headerActions={
+          <Box display="flex" alignItems="center" gap={1}>
+            <TopFilterBar
+              onSearch={() => {
+                setAppliedProjectId(projectIdFilter);
+                setAppliedTaskTypeId(taskTypeIdFilter);
+                setAppliedTaskId(taskIdFilter);
+              }}
+              dialogOpen={filterDialogOpen}
+              onOpenDialog={() => {
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setTaskIdFilter(appliedTaskId);
+                setFilterDialogOpen(true);
+              }}
+              onCloseDialog={() => {
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setTaskIdFilter(appliedTaskId);
+                setFilterDialogOpen(false);
+              }}
+            >
+              <Box display="flex" flexDirection="column" gap={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="project-filter-label">Project</InputLabel>
+                  <SearchableSelect
+                    labelId="project-filter-label"
+                    label="Project"
+                    value={projectIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setProjectIdFilter(val);
+                    }}
+                    options={getFilteredProjectsForDropdown.map(p => ({
+                      value: p.Project_Id,
+                      label: p.Project_Name
+                    }))}
+                    allOptionLabel="All Projects"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search project..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="task-type-filter-label">Task Type</InputLabel>
+                  <SearchableSelect
+                    labelId="task-type-filter-label"
+                    label="Task Type"
+                    value={taskTypeIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setTaskTypeIdFilter(val);
+                    }}
+                    options={getFilteredTaskTypesForDropdown.map(t => ({
+                      value: t.Task_Type_Id,
+                      label: t.Task_Type
+                    }))}
+                    allOptionLabel="All Task Types"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search task type..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="task-filter-label">Task</InputLabel>
+                  <SearchableSelect
+                    labelId="task-filter-label"
+                    label="Task"
+                    value={taskIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setTaskIdFilter(val);
+                    }}
+                    options={getFilteredTasksForDropdown.map(t => ({
+                      value: t.Task_Id,
+                      label: t.Task_Name
+                    }))}
+                    allOptionLabel="All Tasks"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search task..."
+                  />
+                </FormControl>
+
+              </Box>
+            </TopFilterBar>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={() => {
+                  setSearchTerm("");
+                  setProjectIdFilter("ALL");
+                  setTaskTypeIdFilter("ALL");
+                  setTaskIdFilter("ALL");
+                  setProjectIsActiveFilter("ACTIVE");
+                  setFilterStatus("Active");
+
+                  setAppliedProjectId("ALL");
+                  setAppliedTaskTypeId("ALL");
+                  setAppliedTaskId("ALL");
+
+                  fetchAllData();
+                  fetchDropdownData();
+                  toast.info("Page filters reset and refreshed");
+                }}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+              </IconButton>
+            </Tooltip>
+
+          </Box>
+        }
         isExpendable={true}
         expandableComp={({ row }: { row: Record<string, unknown> }) => {
           const taskRow = row as unknown as TaskDisplay;

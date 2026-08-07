@@ -522,8 +522,28 @@ const ProjectMainPage: React.FC<PageProps> = ({
                 setAppliedEndDate(endDateFilter);
               }}
               dialogOpen={filterDialogOpen}
-              onOpenDialog={() => setFilterDialogOpen(true)}
-              onCloseDialog={() => setFilterDialogOpen(false)}
+              onOpenDialog={() => {
+                setCompanyIdFilter(appliedCompanyId);
+                setProjectHeadIdFilter(appliedProjectHeadId);
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setTaskIdFilter(appliedTaskId);
+                setEmployeeIdFilter(appliedEmployeeId);
+                setStartDateFilter(appliedStartDate);
+                setEndDateFilter(appliedEndDate);
+                setFilterDialogOpen(true);
+              }}
+              onCloseDialog={() => {
+                setCompanyIdFilter(appliedCompanyId);
+                setProjectHeadIdFilter(appliedProjectHeadId);
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setTaskIdFilter(appliedTaskId);
+                setEmployeeIdFilter(appliedEmployeeId);
+                setStartDateFilter(appliedStartDate);
+                setEndDateFilter(appliedEndDate);
+                setFilterDialogOpen(false);
+              }}
             >
               {/* Project-specific column filter inputs */}
               <Box display="flex" flexDirection="column" gap={2}>
@@ -540,32 +560,38 @@ const ProjectMainPage: React.FC<PageProps> = ({
                       if (val !== "ALL") {
                         const selectedProj = projects.find(p => numEq(p.Project_Id, val));
                         if (selectedProj) {
-                          // Resolve Company value key
-                          const compName = selectedProj.Company_Name || (selectedProj.Company_Id ? companyOptions.find(c => numEq(c.value, selectedProj.Company_Id))?.label : null);
+                          // Resolve Company value key with casing safety
+                          const resolvedCompanyId = selectedProj.Company_Id ?? (selectedProj as any).companyId ?? (selectedProj as any).CompanyId ?? (selectedProj as any).company_id;
+                          const resolvedCompanyName = selectedProj.Company_Name ?? (selectedProj as any).companyName ?? (selectedProj as any).CompanyName ?? (selectedProj as any).company_name;
+
+                          const compName = resolvedCompanyName || (resolvedCompanyId ? companyOptions.find(c => numEq(c.value, resolvedCompanyId))?.label : null) || (companyOptions.length > 0 ? companyOptions[0].label : null);
                           const compMatch = companyOptions.find(c => 
-                            numEq(c.value, selectedProj.Company_Id) || 
+                            numEq(c.value, resolvedCompanyId) || 
                             (compName && c.label.toLowerCase() === compName.toLowerCase())
                           );
 
                           if (compMatch) {
                             setCompanyIdFilter(compMatch.value);
-                          } else if (selectedProj.Company_Id != null) {
-                            setCompanyIdFilter(selectedProj.Company_Id);
+                          } else if (resolvedCompanyId != null) {
+                            setCompanyIdFilter(resolvedCompanyId);
                           } else if (compName) {
                             setCompanyIdFilter(compName as any);
                           }
 
-                          // Resolve Project Head value key
-                          const headName = selectedProj.Project_Head_Name || (selectedProj.Project_Head ? projectHeadOptions.find(h => numEq(h.value, selectedProj.Project_Head))?.label : null);
+                          // Resolve Project Head value key with casing safety
+                          const resolvedHeadId = selectedProj.Project_Head ?? (selectedProj as any).projectHead ?? (selectedProj as any).ProjectHead ?? (selectedProj as any).project_head;
+                          const resolvedHeadName = selectedProj.Project_Head_Name ?? (selectedProj as any).projectHeadName ?? (selectedProj as any).ProjectHeadName ?? (selectedProj as any).project_head_name;
+
+                          const headName = resolvedHeadName || (resolvedHeadId ? projectHeadOptions.find(h => numEq(h.value, resolvedHeadId))?.label : null);
                           const headMatch = projectHeadOptions.find(h => 
-                            numEq(h.value, selectedProj.Project_Head) || 
+                            numEq(h.value, resolvedHeadId) || 
                             (headName && h.label.toLowerCase() === headName.toLowerCase())
                           );
 
                           if (headMatch) {
                             setProjectHeadIdFilter(headMatch.value);
-                          } else if (selectedProj.Project_Head != null) {
-                            setProjectHeadIdFilter(selectedProj.Project_Head);
+                          } else if (resolvedHeadId != null) {
+                            setProjectHeadIdFilter(resolvedHeadId);
                           } else if (headName) {
                             setProjectHeadIdFilter(headName as any);
                           }
@@ -613,15 +639,18 @@ const ProjectMainPage: React.FC<PageProps> = ({
                       if (projectIdFilter !== "ALL") {
                         const sel = projects.find(p => numEq(p.Project_Id, projectIdFilter));
                         if (sel) {
-                          const compName = sel.Company_Name || (sel.Company_Id ? companyOptions.find(c => numEq(c.value, sel.Company_Id))?.label : null);
+                          const resolvedCompanyId = sel.Company_Id ?? (sel as any).companyId ?? (sel as any).CompanyId ?? (sel as any).company_id;
+                          const resolvedCompanyName = sel.Company_Name ?? (sel as any).companyName ?? (sel as any).CompanyName ?? (sel as any).company_name;
+
+                          const compName = resolvedCompanyName || (resolvedCompanyId ? companyOptions.find(c => numEq(c.value, resolvedCompanyId))?.label : null) || (companyOptions.length > 0 ? companyOptions[0].label : null);
                           const matched = companyOptions.filter(c => 
-                            numEq(c.value, sel.Company_Id) || 
+                            numEq(c.value, resolvedCompanyId) || 
                             (compName && c.label.toLowerCase() === compName.toLowerCase())
                           );
                           if (matched.length > 0) {
                             list = matched;
                           } else if (compName) {
-                            list = [{ value: (sel.Company_Id ?? compName) as any, label: compName }];
+                            list = [{ value: (resolvedCompanyId ?? compName) as any, label: compName }];
                           }
                         }
                       }
@@ -652,15 +681,18 @@ const ProjectMainPage: React.FC<PageProps> = ({
                       if (projectIdFilter !== "ALL") {
                         const sel = projects.find(p => numEq(p.Project_Id, projectIdFilter));
                         if (sel) {
-                          const headName = sel.Project_Head_Name || (sel.Project_Head ? projectHeadOptions.find(h => numEq(h.value, sel.Project_Head))?.label : null);
+                          const resolvedHeadId = sel.Project_Head ?? (sel as any).projectHead ?? (sel as any).ProjectHead ?? (sel as any).project_head;
+                          const resolvedHeadName = sel.Project_Head_Name ?? (sel as any).projectHeadName ?? (sel as any).ProjectHeadName ?? (sel as any).project_head_name;
+
+                          const headName = resolvedHeadName || (resolvedHeadId ? projectHeadOptions.find(h => numEq(h.value, resolvedHeadId))?.label : null);
                           const matched = projectHeadOptions.filter(h => 
-                            numEq(h.value, sel.Project_Head) || 
+                            numEq(h.value, resolvedHeadId) || 
                             (headName && h.label.toLowerCase() === headName.toLowerCase())
                           );
                           if (matched.length > 0) {
                             list = matched;
                           } else if (headName) {
-                            list = [{ value: (sel.Project_Head ?? headName) as any, label: headName }];
+                            list = [{ value: (resolvedHeadId ?? headName) as any, label: headName }];
                           }
                         }
                       }

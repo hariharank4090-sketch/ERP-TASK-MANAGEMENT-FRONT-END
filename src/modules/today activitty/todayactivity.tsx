@@ -24,7 +24,6 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloseIcon from "@mui/icons-material/Close";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import EditIcon from "@mui/icons-material/Edit";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import TableViewIcon from "@mui/icons-material/TableView";
 import * as XLSX from "xlsx";
 import {
@@ -32,6 +31,9 @@ import {
   getAllEmployees,
   getAllProjects,
   getAllTasks,
+  getBranchDropdown,
+  getTaskTypes,
+  getDesignationList,
 } from "../today activitty/todayactivity.api";
 import type {
   WorkMasterData,
@@ -43,7 +45,6 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import TodayTaskDialog from "../work master/TodayTaskDialog";
 import { useAuth } from "../../auth/authContext";
-import { fetchLink } from "../../Components/customFetch";
 import SearchableSelect from "../../Components/SearchableSelect";
 import DashboardTopFilterBar from "../../Components/TopFilterBar";
 import FilterableTable, { type Column } from "../../Components/dataTable";
@@ -212,6 +213,20 @@ const truncateText = (text: string | null, maxLength = 500): string => {
   return text.length <= maxLength ? text : text.substring(0, maxLength) + "...";
 };
 
+const compareStartTimes = (aStr: string | null, bStr: string | null): number => {
+  if (!aStr) return 1;
+  if (!bStr) return -1;
+  const parseToMinutes = (timeStr: string): number => {
+    let match = timeStr.match(/T(\d{2}):(\d{2})/);
+    if (!match) match = timeStr.match(/(\d{2}):(\d{2})/);
+    if (match && match[1] && match[2]) {
+      return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    }
+    return 0;
+  };
+  return parseToMinutes(aStr) - parseToMinutes(bStr);
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const ExpandableComment = ({ text }: { text: string }) => {
@@ -248,6 +263,19 @@ const WorkAbstract = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [fromDate, setFromDate] = useState<string>(getTodayDate());
   const [toDate, setToDate] = useState<string>(getTodayDate());
+  
+  // ── Applied filter state ──────────────────────────────────────────────────
+  const [appliedUser, setAppliedUser] = useState<string>("");
+  const [appliedProject, setAppliedProject] = useState<string>("");
+  const [appliedTask, setAppliedTask] = useState<string>("");
+  const [appliedStatus, setAppliedStatus] = useState<string>("");
+  const [appliedFromDate, setAppliedFromDate] = useState<string>(getTodayDate());
+  const [appliedToDate, setAppliedToDate] = useState<string>(getTodayDate());
+  const [appliedBranch, setAppliedBranch] = useState<string>("");
+  const [appliedDepartment, setAppliedDepartment] = useState<string>("");
+  const [appliedDesignation, setAppliedDesignation] = useState<string>("");
+  const [appliedTaskType, setAppliedTaskType] = useState<string>("");
+
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [filterDialogOpen, setFilterDialogOpen] = useState<boolean>(false);
 
@@ -261,7 +289,12 @@ const WorkAbstract = () => {
   const [allProjects, setAllProjects] = useState<ProjectDropdown[]>([]);
   const [allTasks, setAllTasks] = useState<TaskDropdown[]>([]);
   const [taskTypes, setTaskTypes] = useState<any[]>([]);
+  const [branchList, setBranchList] = useState<any[]>([]);
+  const [designationList, setDesignationList] = useState<any[]>([]);
   
+  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
+  const [selectedDesignation, setSelectedDesignation] = useState<string>("");
   const [selectedTaskType, setSelectedTaskType] = useState<string>("");
   const [dateRangeWorkData, setDateRangeWorkData] = useState<WorkMasterData[]>([]);
 
@@ -300,16 +333,94 @@ const WorkAbstract = () => {
   }, [fromDate, toDate, refreshTrigger]);
 
   const activeEmployees = useMemo(() => {
-    if (dateRangeWorkData.length === 0) return allUsers;
+    let employees = allUsers;
+    if (selectedBranch) {
+      employees = employees.filter(emp => String(emp.BranchId) === selectedBranch);
+    }
+    if (selectedDepartment) {
+      employees = employees.filter(emp => String(emp.Department) === selectedDepartment);
+    }
+    if (selectedDesignation) {
+      employees = employees.filter(emp => String(emp.Designation) === selectedDesignation);
+    }
+    if (dateRangeWorkData.length === 0) return employees;
     const uniqueEmpIds = new Set<number>();
     dateRangeWorkData.forEach(work => {
       if (work.Emp_Id) {
         uniqueEmpIds.add(Number(work.Emp_Id));
       }
     });
-    const active = allUsers.filter(u => uniqueEmpIds.has(Number(u.Emp_Id)));
-    return active.length > 0 ? active : allUsers;
-  }, [dateRangeWorkData, allUsers]);
+    const active = employees.filter(u => uniqueEmpIds.has(Number(u.Emp_Id)));
+    return active.length > 0 ? active : employees;
+  }, [dateRangeWorkData, allUsers, selectedBranch, selectedDepartment, selectedDesignation]);
+
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    allUsers.forEach((emp) => {
+      if (selectedBranch && String(emp.BranchId) !== selectedBranch) return;
+      if (emp.Department) depts.add(emp.Department);
+    });
+    return Array.from(depts).sort();
+  }, [allUsers, selectedBranch]);
+
+
+  const displayWorkData = useMemo(() => {
+    let data = [...workData];
+    // Sort chronological: Work_Dt calendar date asc, then Start_Time asc
+    data.sort((a, b) => {
+      const getDateOnlyString = (dateStr: any) => {
+        if (!dateStr) return "";
+        return dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.split(" ")[0];
+      };
+      const dateA = getDateOnlyString(a.Work_Dt);
+      const dateB = getDateOnlyString(b.Work_Dt);
+      
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      return compareStartTimes(a.Start_Time, b.Start_Time);
+    });
+    if (appliedBranch) {
+      data = data.filter((row) => {
+        const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+        return String(emp?.BranchId) === appliedBranch;
+      });
+    }
+    if (appliedDepartment) {
+      data = data.filter((row) => {
+        const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+        return String(emp?.Department) === appliedDepartment;
+      });
+    }
+    if (appliedDesignation) {
+      data = data.filter((row) => {
+        const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+        return String(emp?.Designation) === appliedDesignation;
+      });
+    }
+    if (appliedProject) {
+      data = data.filter((row) => String(row.Project_Id) === appliedProject);
+    }
+    if (appliedTask) {
+      data = data.filter((row) => String(row.Task_Id) === appliedTask);
+    }
+    if (appliedStatus) {
+      data = data.filter((row) => {
+        const status = row.Work_Status || "Pending";
+        return status.toLowerCase() === appliedStatus.toLowerCase();
+      });
+    }
+    if (appliedTaskType) {
+      data = data.filter((row) => {
+        const taskDef = allTasks.find(t => String(t.Task_Id) === String(row.Task_Id));
+        const rowTaskTypeId = (row as any).Task_Type_Id || (taskDef as any)?.Task_Type_Id || null;
+        const rowTaskTypeName = (row as any).Task_Type || (taskDef as any)?.Task_Type || "";
+        return String(rowTaskTypeId) === appliedTaskType || 
+               String(rowTaskTypeName).toLowerCase() === appliedTaskType.toLowerCase();
+      });
+    }
+    return data;
+  }, [workData, appliedBranch, appliedDepartment, appliedDesignation, appliedProject, appliedTask, appliedStatus, appliedTaskType, allUsers, allTasks]);
 
   const filteredProjects = useMemo(() => {
     let data = dateRangeWorkData;
@@ -448,7 +559,7 @@ const WorkAbstract = () => {
 
   const totalDurationStr = useMemo(() => {
     let totalMinutes = 0;
-    workData.forEach((row) => {
+    displayWorkData.forEach((row) => {
       totalMinutes += getDurationMinutes(row.Start_Time, row.End_Time);
     });
     if (totalMinutes === 0) return "0m";
@@ -456,7 +567,33 @@ const WorkAbstract = () => {
     const m = totalMinutes % 60;
     if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
     return `${m}m`;
-  }, [workData]);
+  }, [displayWorkData]);
+
+  const averageDurationInfo = useMemo(() => {
+    let totalMinutes = 0;
+    const uniqueDates = new Set<string>();
+    displayWorkData.forEach((row) => {
+      totalMinutes += getDurationMinutes(row.Start_Time, row.End_Time);
+      const ymd = toYMD(row.Work_Dt);
+      if (ymd) {
+        uniqueDates.add(ymd);
+      }
+    });
+
+    const daysCount = uniqueDates.size || 1;
+
+    const avgMinutes = Math.round(totalMinutes / daysCount);
+    let avgStr = "0m";
+    const h = Math.floor(avgMinutes / 60);
+    const m = avgMinutes % 60;
+    if (h > 0) {
+      avgStr = `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
+    } else if (m > 0) {
+      avgStr = `${m}m`;
+    }
+    return { avgStr, daysCount };
+  }, [displayWorkData]);
+
 
   // ── On mount: load all users, projects, tasks ─────────────────────────────────
   useEffect(() => {
@@ -466,15 +603,19 @@ const WorkAbstract = () => {
       setLoadingTasks(true);
       setLoadingTaskTypes(true);
       try {
-        const [usersData, projectsData, tasksData, taskTypesRes] = await Promise.all([
+        const [usersData, projectsData, tasksData, taskTypesRes, branchesData, designationsData] = await Promise.all([
           getAllEmployees(),
           getAllProjects(),
           getAllTasks(),
-          fetchLink({ address: "masters/taskType/", method: "GET" })
+          getTaskTypes(),
+          getBranchDropdown(),
+          getDesignationList()
         ]);
         setAllUsers(usersData);
         setAllProjects(projectsData);
         setAllTasks(tasksData);
+        setBranchList(branchesData || []);
+        setDesignationList(designationsData || []);
 
         let typeList: any[] = [];
         if ((taskTypesRes as any)?.data && Array.isArray((taskTypesRes as any).data)) typeList = (taskTypesRes as any).data;
@@ -494,6 +635,7 @@ const WorkAbstract = () => {
             defaultUser = loggedInEmp ? String(loggedInEmp.Emp_Id) : String(usersData[0].Emp_Id);
           }
           setSelectedUser(defaultUser);
+          setAppliedUser(defaultUser);
           setIsFilterLoaded(true);
           
           setLoading(true);
@@ -561,46 +703,72 @@ const WorkAbstract = () => {
     }
 
     setError("");
-    setWorkData([]);
-    setIsSearchPerformed(false);
+    
+    setLoadingUsers(true);
+    try {
+      const params: Record<string, string> = {
+        fromDate,
+        toDate
+      };
+      const response = await getEnrichedWorkMaster(params);
+      if (response.success) {
+        setDateRangeWorkData(response.data);
+      } else {
+        setDateRangeWorkData([]);
+      }
+    } catch (err) {
+      console.error("Error fetching date range data on filter:", err);
+      setDateRangeWorkData([]);
+    } finally {
+      setLoadingUsers(false);
+      setIsFilterLoaded(true);
+    }
+  };
+
+  const handleOpenFilterDialog = () => {
+    setFromDate(appliedFromDate);
+    setToDate(appliedToDate);
+    setSelectedUser(appliedUser);
+    setSelectedBranch(appliedBranch);
+    setSelectedDepartment(appliedDepartment);
+    setSelectedDesignation(appliedDesignation);
+    setSelectedProject(appliedProject);
+    setSelectedTask(appliedTask);
+    setSelectedStatus(appliedStatus);
+    setSelectedTaskType(appliedTaskType);
     setIsFilterLoaded(true);
+    setFilterDialogOpen(true);
+  };
+
+  const handleCloseFilterDialog = () => {
+    setFilterDialogOpen(false);
+    setFromDate(appliedFromDate);
+    setToDate(appliedToDate);
+    setSelectedUser(appliedUser);
+    setSelectedBranch(appliedBranch);
+    setSelectedDepartment(appliedDepartment);
+    setSelectedDesignation(appliedDesignation);
+    setSelectedProject(appliedProject);
+    setSelectedTask(appliedTask);
+    setSelectedStatus(appliedStatus);
+    setSelectedTaskType(appliedTaskType);
   };
 
   // ── Search button ────────────────────────────────────────────────────────
-  const handleSearch = async () => {
-    if (!fromDate || !toDate) {
-      setError("Please select both From Date and To Date");
-      return;
-    }
-    if (new Date(fromDate) > new Date(toDate)) {
-      setError("From Date cannot be greater than To Date");
-      return;
-    }
-    if (!selectedUser) {
-      setError("Please select a user first");
-      return;
-    }
-    if (!isFilterLoaded) {
-      setError("Please click the Filter button first");
-      return;
-    }
-
+  const fetchDataForParams = async (fDate: string, tDate: string, selUser: string) => {
     setLoading(true);
     setError("");
     setIsSearchPerformed(true);
 
     try {
       const params: Record<string, string> = {
-        fromDate,
-        toDate
+        fromDate: fDate,
+        toDate: tDate
       };
 
-      if (selectedUser !== "all") {
-        params.empId = selectedUser;
+      if (selUser !== "all") {
+        params.empId = selUser;
       }
-
-      if (selectedProject) params.projectId = selectedProject;
-      if (selectedTask) params.taskId = selectedTask;
 
       const response = await getEnrichedWorkMaster(params);
 
@@ -614,28 +782,11 @@ const WorkAbstract = () => {
         }));
 
         enriched = enriched.filter((row) =>
-          isInDateRange(row.Work_Dt, fromDate, toDate)
+          isInDateRange(row.Work_Dt, fDate, tDate)
         );
 
-        if (selectedUser !== "all") {
-          enriched = enriched.filter((row) => String(row.Emp_Id) === selectedUser);
-        }
-
-        if (selectedStatus) {
-          enriched = enriched.filter((row) => {
-            const status = row.Work_Status || "Pending";
-            return status.toLowerCase() === selectedStatus.toLowerCase();
-          });
-        }
-
-        if (selectedTaskType) {
-          enriched = enriched.filter((row) => {
-            const taskDef = allTasks.find(t => String(t.Task_Id) === String(row.Task_Id));
-            const rowTaskTypeId = (row as any).Task_Type_Id || (taskDef as any)?.Task_Type_Id || null;
-            const rowTaskTypeName = (row as any).Task_Type || (taskDef as any)?.Task_Type || "";
-            return String(rowTaskTypeId) === selectedTaskType || 
-                   String(rowTaskTypeName).toLowerCase() === selectedTaskType.toLowerCase();
-          });
+        if (selUser !== "all") {
+          enriched = enriched.filter((row) => String(row.Emp_Id) === selUser);
         }
 
         setWorkData(enriched);
@@ -654,8 +805,38 @@ const WorkAbstract = () => {
     }
   };
 
+  // ── Search button ────────────────────────────────────────────────────────
+  const handleSearch = async () => {
+    if (!fromDate || !toDate) {
+      setError("Please select both From Date and To Date");
+      return;
+    }
+    if (new Date(fromDate) > new Date(toDate)) {
+      setError("From Date cannot be greater than To Date");
+      return;
+    }
+    if (!selectedUser) {
+      setError("Please select a user first");
+      return;
+    }
+
+    // Sync applied values from pending values
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setAppliedUser(selectedUser);
+    setAppliedBranch(selectedBranch);
+    setAppliedDepartment(selectedDepartment);
+    setAppliedDesignation(selectedDesignation);
+    setAppliedProject(selectedProject);
+    setAppliedTask(selectedTask);
+    setAppliedStatus(selectedStatus);
+    setAppliedTaskType(selectedTaskType);
+
+    await fetchDataForParams(fromDate, toDate, selectedUser);
+  };
+
   // ── Reset ────────────────────────────────────────────────────────────────
-  const handleResetFilters = () => {
+  const handleResetFilters = async () => {
     let defaultUser = "";
     if (allUsers && allUsers.length > 0) {
       if (canSeeAllUsers) {
@@ -670,16 +851,30 @@ const WorkAbstract = () => {
       }
     }
     setSelectedUser(defaultUser);
+    setSelectedBranch("");
+    setSelectedDepartment("");
+    setSelectedDesignation("");
     setSelectedProject("");
     setSelectedTask("");
     setSelectedStatus("");
     setSelectedTaskType("");
     setFromDate(getTodayDate());
     setToDate(getTodayDate());
-    setWorkData([]);
+
+    setAppliedUser(defaultUser);
+    setAppliedBranch("");
+    setAppliedDepartment("");
+    setAppliedDesignation("");
+    setAppliedProject("");
+    setAppliedTask("");
+    setAppliedStatus("");
+    setAppliedTaskType("");
+    setAppliedFromDate(getTodayDate());
+    setAppliedToDate(getTodayDate());
+
     setError("");
-    setIsFilterLoaded(false);
-    setIsSearchPerformed(false);
+    setIsFilterLoaded(true);
+    await fetchDataForParams(getTodayDate(), getTodayDate(), defaultUser);
   };
 
   // ── Work-done detail dialog ──────────────────────────────────────────────
@@ -775,6 +970,49 @@ const WorkAbstract = () => {
           {String(row.Emp_Name || allUsers.find((e) => e.Emp_Id === row.Emp_Id)?.Emp_Name || "—")}
         </Typography>
       )
+    },
+    {
+      Field_Name: "BranchName",
+      ColumnHeader: "Branch",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => {
+        const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+        const branch = branchList.find((b) => String(b.BranchId) === String(emp?.BranchId));
+        return (
+          <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+            {branch?.BranchName || "—"}
+          </Typography>
+        );
+      }
+    },
+    {
+      Field_Name: "DepartmentName",
+      ColumnHeader: "Department",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => {
+        const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+        return (
+          <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+            {emp?.Department || "—"}
+          </Typography>
+        );
+      }
+    },
+    {
+      Field_Name: "DesignationName",
+      ColumnHeader: "Designation",
+      isVisible: 1,
+      isCustomCell: true,
+      Cell: ({ row }) => {
+        const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+        return (
+          <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+            {emp?.Designation || "—"}
+          </Typography>
+        );
+      }
     },
     {
       Field_Name: "Project_Name",
@@ -914,7 +1152,7 @@ const WorkAbstract = () => {
 
   // ── Excel export ───────────────────────────────────────────────────────────
   const handleDownloadExcel = () => {
-    if (!workData.length) {
+    if (!displayWorkData.length) {
       setError("No data available to generate Excel");
       return;
     }
@@ -933,29 +1171,54 @@ const WorkAbstract = () => {
       }
     };
 
-    const processedData = workData.map((row, i) => ({
-      "S.No": i + 1,
-      "Work Date": formatDateForExcel(row.Work_Dt),
-      "Staff": row.Emp_Name || "—",
-      "Project": row.Project_Name || "—",
-      "Task Type": getTaskTypeName(row),
-      "Task": row.Task_Name || "—",
-      "Time": row.Start_Time ? `${formatTime12Hour(row.Start_Time as string)} - ${formatTime12Hour(row.End_Time as string)}` : "—",
-      "Duration": calculateDuration(row.Start_Time as string, row.End_Time as string),
-      "Work Done": row.Work_Done || "No description",
-      "Status": row.Work_Status || "Pending"
-    })) as any[];
+    const processedData = displayWorkData.map((row, i) => {
+      const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+      const branch = branchList.find((b) => String(b.BranchId) === String(emp?.BranchId));
+      return {
+        "S.No": i + 1,
+        "Work Date": formatDateForExcel(row.Work_Dt),
+        "Staff": row.Emp_Name || "—",
+        "Branch": branch?.BranchName || "—",
+        "Department": emp?.Department || "—",
+        "Designation": emp?.Designation || "—",
+        "Project": row.Project_Name || "—",
+        "Task Type": getTaskTypeName(row),
+        "Task": row.Task_Name || "—",
+        "Time": row.Start_Time ? `${formatTime12Hour(row.Start_Time as string)} - ${formatTime12Hour(row.End_Time as string)}` : "—",
+        "Duration": calculateDuration(row.Start_Time as string, row.End_Time as string),
+        "Work Done": row.Work_Done || "No description",
+        "Status": row.Work_Status || "Pending"
+      };
+    }) as any[];
 
-    if (selectedUser && selectedUser !== "all") {
+    if (appliedUser && appliedUser !== "all") {
       processedData.push({
         "S.No": "",
         "Work Date": "",
         "Staff": "",
+        "Branch": "",
+        "Department": "",
+        "Designation": "",
         "Project": "",
         "Task Type": "",
         "Task": "",
         "Time": "Total Duration:",
         "Duration": totalDurationStr,
+        "Work Done": "",
+        "Status": ""
+      });
+      processedData.push({
+        "S.No": "",
+        "Work Date": "",
+        "Staff": "",
+        "Branch": "",
+        "Department": "",
+        "Designation": "",
+        "Project": "",
+        "Task Type": "",
+        "Task": "",
+        "Time": "Avg Duration/Day:",
+        "Duration": averageDurationInfo.avgStr,
         "Work Done": "",
         "Status": ""
       });
@@ -974,7 +1237,7 @@ const WorkAbstract = () => {
 
   // ── PDF export ───────────────────────────────────────────────────────────
   const handleDownloadPDF = () => {
-    if (!workData.length) {
+    if (!displayWorkData.length) {
       setError("No data available to generate PDF");
       return;
     }
@@ -996,10 +1259,10 @@ const WorkAbstract = () => {
     let y = 38;
     const filterParts: string[] = [];
     
-    if (selectedUser === "all") {
+    if (appliedUser === "all") {
       filterParts.push("User: All Users");
-    } else if (selectedUser) {
-      const selectedUserObj = allUsers.find(e => String(e.Emp_Id) === selectedUser);
+    } else if (appliedUser) {
+      const selectedUserObj = allUsers.find(e => String(e.Emp_Id) === appliedUser);
       if (selectedUserObj) filterParts.push(`User: ${selectedUserObj.Emp_Name}`);
     }
 
@@ -1015,48 +1278,97 @@ const WorkAbstract = () => {
       doc.text(`Filters: ${filterParts.join(", ")}`, 14, y);
       y += 6;
     }
-    doc.text(`Total Records: ${workData.length}`, 14, y);
+    doc.text(`Total Records: ${displayWorkData.length}`, 14, y);
     y += 6;
+    if (appliedUser && appliedUser !== "all") {
+      doc.text(`Total Duration: ${totalDurationStr}`, 14, y);
+      y += 6;
+      doc.text(`Avg Duration/Day: ${averageDurationInfo.avgStr}`, 14, y);
+      y += 6;
+    }
     doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, y);
 
-    const rows = workData.map((row, i) => [
-      String(i + 1),
-      formatDate(row.Work_Dt),
-      row.Emp_Name || "—",
-      row.Project_Name || "—",
-      getTaskTypeName(row),
-      row.Task_Name || "—",
-      row.Start_Time
-        ? `${formatTime12Hour(row.Start_Time)} - ${formatTime12Hour(row.End_Time)}`
-        : "—",
-      calculateDuration(row.Start_Time, row.End_Time),
-      row.Work_Done
-        ? row.Work_Done.length > 500
-          ? row.Work_Done.substring(0, 500) + "..."
-          : row.Work_Done
-        : "No description",
-      row.Work_Status || "Pending"
-    ]);
+    const rows = displayWorkData.map((row, i) => {
+      const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+      const branch = branchList.find((b) => String(b.BranchId) === String(emp?.BranchId));
+      return [
+        String(i + 1),
+        formatDate(row.Work_Dt),
+        row.Emp_Name || "—",
+        branch?.BranchName || "—",
+        emp?.Department || "—",
+        emp?.Designation || "—",
+        row.Project_Name || "—",
+        getTaskTypeName(row),
+        row.Task_Name || "—",
+        row.Start_Time
+          ? `${formatTime12Hour(row.Start_Time)} - ${formatTime12Hour(row.End_Time)}`
+          : "—",
+        calculateDuration(row.Start_Time, row.End_Time),
+        row.Work_Done
+          ? row.Work_Done.length > 500
+            ? row.Work_Done.substring(0, 500) + "..."
+            : row.Work_Done
+          : "No description",
+        row.Work_Status || "Pending"
+      ];
+    });
+
+    if (appliedUser && appliedUser !== "all") {
+      rows.push([
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Total Duration:",
+        totalDurationStr,
+        "",
+        ""
+      ]);
+      rows.push([
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Avg Duration/Day:",
+        averageDurationInfo.avgStr,
+        "",
+        ""
+      ]);
+    }
 
     autoTable(doc, {
-      head: [["#", "Work Date", "Staff", "Project", "Task Type", "Task", "Time", "Duration", "Work Done", "Status"]],
+      head: [["#", "Work Date", "Staff", "Branch", "Department", "Designation", "Project", "Task Type", "Task", "Time", "Duration", "Work Done", "Status"]],
       body: rows,
       startY: y + 5,
       theme: "grid",
-      styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
+      styles: { fontSize: 6.0, cellPadding: 1.2, overflow: "linebreak" },
       headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: "bold", halign: "center" },
       alternateRowStyles: { fillColor: [245, 245, 245] },
       columnStyles: {
-        0: { cellWidth: 10, halign: "center" },
-        1: { cellWidth: 15, halign: "center" },
-        2: { cellWidth: 18 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 18 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 22, halign: "center" },
-        7: { cellWidth: 12, halign: "center" },
-        8: { cellWidth: 45 },
-        9: { cellWidth: 12, halign: "center" }
+        0: { cellWidth: 7, halign: "center" },
+        1: { cellWidth: 12, halign: "center" },
+        2: { cellWidth: 14 },
+        3: { cellWidth: 14 },
+        4: { cellWidth: 14 },
+        5: { cellWidth: 14 },
+        6: { cellWidth: 16 },
+        7: { cellWidth: 14 },
+        8: { cellWidth: 16 },
+        9: { cellWidth: 18, halign: "center" },
+        10: { cellWidth: 8, halign: "center" },
+        11: { cellWidth: 30 },
+        12: { cellWidth: 8, halign: "center" }
       },
       margin: { bottom: 20, left: 10, right: 10 },
       showHead: "everyPage",
@@ -1067,7 +1379,7 @@ const WorkAbstract = () => {
           doc.setFontSize(8);
           doc.setTextColor(150);
           doc.text(
-            `Page ${i} of ${n}  |  Total Records: ${workData.length}`,
+            `Page ${i} of ${n}  |  Total Records: ${displayWorkData.length}`,
             doc.internal.pageSize.width / 2,
             doc.internal.pageSize.height - 10,
             { align: "center" }
@@ -1100,14 +1412,15 @@ const WorkAbstract = () => {
             }}
           >
             <Typography variant="subtitle2" fontWeight="bold" sx={{ color: "#333" }}>
-              Work Abstract{selectedUser === "all" ? " - All Users" : selectedUser ? ` - ${allUsers.find(u => String(u.Emp_Id) === selectedUser)?.Emp_Name || ""}` : ""}
+              Work Abstract{appliedUser === "all" ? " - All Users" : appliedUser ? ` - ${allUsers.find(u => String(u.Emp_Id) === appliedUser)?.Emp_Name || ""}` : ""}
             </Typography>
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
               <DashboardTopFilterBar
                 dialogOpen={filterDialogOpen}
-                onOpenDialog={() => setFilterDialogOpen(true)}
-                onCloseDialog={() => setFilterDialogOpen(false)}
+                onOpenDialog={handleOpenFilterDialog}
+                onCloseDialog={handleCloseFilterDialog}
                 onSearch={handleSearch}
+                onReset={handleResetFilters}
               >
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
                   {/* From Date */}
@@ -1123,8 +1436,6 @@ const WorkAbstract = () => {
                       onChange={(e) => {
                         setFromDate(e.target.value);
                         setIsFilterLoaded(false);
-                        setWorkData([]);
-                        setIsSearchPerformed(false);
                       }}
                       InputLabelProps={{ shrink: true }}
                     />
@@ -1143,11 +1454,105 @@ const WorkAbstract = () => {
                       onChange={(e) => {
                         setToDate(e.target.value);
                         setIsFilterLoaded(false);
-                        setWorkData([]);
-                        setIsSearchPerformed(false);
                       }}
                       InputLabelProps={{ shrink: true }}
                     />
+                  </Box>
+
+                  {/* Branch Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Branch
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedBranch}
+                        onChange={(e) => {
+                          setSelectedBranch(e.target.value);
+                        }}
+                        allOptionLabel="All Branches"
+                        allOptionValue=""
+                        options={(() => {
+                          if (selectedUser && selectedUser !== "all") {
+                            const emp = allUsers.find((e) => String(e.Emp_Id) === selectedUser);
+                            if (emp && emp.BranchId) {
+                              const b = branchList.find((x) => String(x.BranchId) === String(emp.BranchId));
+                              if (b) return [{ label: b.BranchName, value: String(b.BranchId) }];
+                            }
+                            return [];
+                          }
+                          return branchList.map((b) => ({
+                            label: b.BranchName,
+                            value: String(b.BranchId)
+                          }));
+                        })()}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
+                  </Box>
+
+                  {/* Department Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Department
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedDepartment}
+                        onChange={(e) => {
+                          setSelectedDepartment(e.target.value);
+                        }}
+                        allOptionLabel="All Departments"
+                        allOptionValue=""
+                        options={(() => {
+                          if (selectedUser && selectedUser !== "all") {
+                            const emp = allUsers.find((e) => String(e.Emp_Id) === selectedUser);
+                            if (emp && emp.Department) {
+                              return [{ label: emp.Department, value: emp.Department }];
+                            }
+                            return [];
+                          }
+                          return uniqueDepartments.map((d) => ({
+                            label: d,
+                            value: d
+                          }));
+                        })()}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
+                  </Box>
+
+                  {/* Designation Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Designation
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedDesignation}
+                        onChange={(e) => {
+                          setSelectedDesignation(e.target.value);
+                        }}
+                        allOptionLabel="All Designations"
+                        allOptionValue=""
+                        options={(() => {
+                          if (selectedUser && selectedUser !== "all") {
+                            const emp = allUsers.find((e) => String(e.Emp_Id) === selectedUser);
+                            if (emp && emp.Designation && emp.Designation !== "-") {
+                              return [{ label: emp.Designation, value: emp.Designation }];
+                            }
+                            return [];
+                          }
+                          return designationList
+                            .filter((d) => d.Designation && d.Designation !== "-")
+                            .map((d) => ({
+                              label: d.Designation,
+                              value: d.Designation
+                            }));
+                        })()}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
                   </Box>
 
                   {/* User Dropdown */}
@@ -1161,14 +1566,19 @@ const WorkAbstract = () => {
                         onChange={(e) => {
                           setSelectedUser(e.target.value);
                           setIsFilterLoaded(false);
-                          setWorkData([]);
-                          setIsSearchPerformed(false);
                         }}
                         disabled={loadingUsers}
                         allOptionLabel={canSeeAllUsers ? "All Users" : "Select User"}
                         allOptionValue={canSeeAllUsers ? "all" : ""}
                         options={activeEmployees
-                          .filter((u) => canSeeAllUsers || String(u.Emp_Id) === selectedUser)
+                          .filter((u) => {
+                            if (selectedUser && String(u.Emp_Id) === selectedUser) return true;
+                            if (!canSeeAllUsers && String(u.Emp_Id) !== selectedUser) return false;
+                            if (selectedBranch && String(u.BranchId) !== selectedBranch) return false;
+                            if (selectedDepartment && String(u.Department) !== selectedDepartment) return false;
+                            if (selectedDesignation && String(u.Designation) !== selectedDesignation) return false;
+                            return true;
+                          })
                           .map((u) => ({
                             label: u.Emp_Name,
                             value: String(u.Emp_Id)
@@ -1290,45 +1700,41 @@ const WorkAbstract = () => {
                   </Box>
                 </Box>
               </DashboardTopFilterBar>
-              <IconButton
-                onClick={handleResetFilters}
-                size="small"
-                sx={{
-                  border: "1.5px solid #ccc",
-                  color: "#333",
-                  bgcolor: "#fff",
-                  width: 32,
-                  height: 32
-                }}
-              >
-                <RefreshIcon fontSize="small" />
-              </IconButton>
             </Box>
           </Box>
 
           {/* Stats Chips */}
           <Box sx={{ display: "flex", gap: 1, mb: 1.5 }}>
             <Chip
-              label={`Total Records: ${workData.length}`}
+              label={`Total Records: ${displayWorkData.length}`}
               size="small"
               color="primary"
               variant="outlined"
               sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
             />
-            {selectedUser && selectedUser !== "all" && (
-              <Chip
-                label={`Total Duration: ${totalDurationStr}`}
-                size="small"
-                color="primary"
-                variant="outlined"
-                sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
-              />
+            {appliedUser && appliedUser !== "all" && (
+              <>
+                <Chip
+                  label={`Total Duration: ${totalDurationStr}`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                />
+                <Chip
+                  label={`Avg Duration/Day: ${averageDurationInfo.avgStr}`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                />
+              </>
             )}
           </Box>
 
           {/* Cards or Empty State */}
           <Box sx={{ px: 0, py: 0.5, maxHeight: "calc(100vh - 200px)", overflowY: "auto" }}>
-            {!workData.length ? (
+            {!displayWorkData.length ? (
               <Paper sx={{ width: "100%", p: 4, textAlign: "center", borderRadius: 2, border: "1px solid #e1cdb0" }}>
                 <Typography color="text.secondary" variant="body2">
                   {!selectedUser
@@ -1341,7 +1747,7 @@ const WorkAbstract = () => {
                 </Typography>
               </Paper>
             ) : (
-              workData.map((row, index) => {
+              displayWorkData.map((row, index) => {
                 return (
                   <Paper
                     key={`${row.Work_Id}-${index}`}
@@ -1394,6 +1800,42 @@ const WorkAbstract = () => {
                         <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Work Date</Typography>
                         <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
                           {formatDate(row.Work_Dt as string) || "—"}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Branch & Department (Mobile Card) */}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Branch</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {(() => {
+                            const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+                            const branch = branchList.find((b) => String(b.BranchId) === String(emp?.BranchId));
+                            return branch?.BranchName || "—";
+                          })()}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: "right", flex: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Department</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {(() => {
+                            const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+                            return emp?.Department || "—";
+                          })()}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Designation (Mobile Card) */}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: "block", fontSize: "0.55rem" }}>Designation</Typography>
+                        <Typography sx={{ fontSize: "0.7rem", color: "#2c3e50" }}>
+                          {(() => {
+                            const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
+                            return emp?.Designation || "—";
+                          })()}
                         </Typography>
                       </Box>
                     </Box>
@@ -1454,36 +1896,46 @@ const WorkAbstract = () => {
         </Box>
       ) : (
         <FilterableTable
-          dataArray={workData}
+          dataArray={displayWorkData}
           columns={columns}
           EnableSerialNumber={true}
           CellSize="small"
           disablePagination={false}
-          headerTitle={`Work Abstract${selectedUser === "all" ? " - All Users" : selectedUser ? ` - ${allUsers.find(u => String(u.Emp_Id) === selectedUser)?.Emp_Name || ""}` : ""}`}
+          headerTitle={`Work Abstract${appliedUser === "all" ? " - All Users" : appliedUser ? ` - ${allUsers.find(u => String(u.Emp_Id) === appliedUser)?.Emp_Name || ""}` : ""}`}
           headerActions={
             <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
               <Chip
-                label={`Total Records: ${workData.length}`}
+                label={`Total Records: ${displayWorkData.length}`}
                 size="small"
                 color="primary"
                 variant="outlined"
                 sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
               />
-              {selectedUser && selectedUser !== "all" && (
-                <Chip
-                  label={`Total Duration: ${totalDurationStr}`}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
-                />
+              {appliedUser && appliedUser !== "all" && (
+                <>
+                  <Chip
+                    label={`Total Duration: ${totalDurationStr}`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                  />
+                  <Chip
+                    label={`Avg Duration/Day: ${averageDurationInfo.avgStr}`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                  />
+                </>
               )}
               
               <DashboardTopFilterBar
                 dialogOpen={filterDialogOpen}
-                onOpenDialog={() => setFilterDialogOpen(true)}
-                onCloseDialog={() => setFilterDialogOpen(false)}
+                onOpenDialog={handleOpenFilterDialog}
+                onCloseDialog={handleCloseFilterDialog}
                 onSearch={handleSearch}
+                onReset={handleResetFilters}
               >
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
                   {/* From Date */}
@@ -1499,8 +1951,6 @@ const WorkAbstract = () => {
                       onChange={(e) => {
                         setFromDate(e.target.value);
                         setIsFilterLoaded(false);
-                        setWorkData([]);
-                        setIsSearchPerformed(false);
                       }}
                       InputLabelProps={{ shrink: true }}
                     />
@@ -1519,11 +1969,105 @@ const WorkAbstract = () => {
                       onChange={(e) => {
                         setToDate(e.target.value);
                         setIsFilterLoaded(false);
-                        setWorkData([]);
-                        setIsSearchPerformed(false);
                       }}
                       InputLabelProps={{ shrink: true }}
                     />
+                  </Box>
+
+                  {/* Branch Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Branch
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedBranch}
+                        onChange={(e) => {
+                          setSelectedBranch(e.target.value);
+                        }}
+                        allOptionLabel="All Branches"
+                        allOptionValue=""
+                        options={(() => {
+                          if (selectedUser && selectedUser !== "all") {
+                            const emp = allUsers.find((e) => String(e.Emp_Id) === selectedUser);
+                            if (emp && emp.BranchId) {
+                              const b = branchList.find((x) => String(x.BranchId) === String(emp.BranchId));
+                              if (b) return [{ label: b.BranchName, value: String(b.BranchId) }];
+                            }
+                            return [];
+                          }
+                          return branchList.map((b) => ({
+                            label: b.BranchName,
+                            value: String(b.BranchId)
+                          }));
+                        })()}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
+                  </Box>
+
+                  {/* Department Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Department
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedDepartment}
+                        onChange={(e) => {
+                          setSelectedDepartment(e.target.value);
+                        }}
+                        allOptionLabel="All Departments"
+                        allOptionValue=""
+                        options={(() => {
+                          if (selectedUser && selectedUser !== "all") {
+                            const emp = allUsers.find((e) => String(e.Emp_Id) === selectedUser);
+                            if (emp && emp.Department) {
+                              return [{ label: emp.Department, value: emp.Department }];
+                            }
+                            return [];
+                          }
+                          return uniqueDepartments.map((d) => ({
+                            label: d,
+                            value: d
+                          }));
+                        })()}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
+                  </Box>
+
+                  {/* Designation Dropdown */}
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+                      Designation
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <SearchableSelect
+                        value={selectedDesignation}
+                        onChange={(e) => {
+                          setSelectedDesignation(e.target.value);
+                        }}
+                        allOptionLabel="All Designations"
+                        allOptionValue=""
+                        options={(() => {
+                          if (selectedUser && selectedUser !== "all") {
+                            const emp = allUsers.find((e) => String(e.Emp_Id) === selectedUser);
+                            if (emp && emp.Designation && emp.Designation !== "-") {
+                              return [{ label: emp.Designation, value: emp.Designation }];
+                            }
+                            return [];
+                          }
+                          return designationList
+                            .filter((d) => d.Designation && d.Designation !== "-")
+                            .map((d) => ({
+                              label: d.Designation,
+                              value: d.Designation
+                            }));
+                        })()}
+                        sx={{ height: "38px" }}
+                      />
+                    </FormControl>
                   </Box>
 
                   {/* User Dropdown */}
@@ -1537,14 +2081,19 @@ const WorkAbstract = () => {
                         onChange={(e) => {
                           setSelectedUser(e.target.value);
                           setIsFilterLoaded(false);
-                          setWorkData([]);
-                          setIsSearchPerformed(false);
                         }}
                         disabled={loadingUsers}
                         allOptionLabel={canSeeAllUsers ? "All Users" : "Select User"}
                         allOptionValue={canSeeAllUsers ? "all" : ""}
                         options={activeEmployees
-                          .filter((u) => canSeeAllUsers || String(u.Emp_Id) === selectedUser)
+                          .filter((u) => {
+                            if (selectedUser && String(u.Emp_Id) === selectedUser) return true;
+                            if (!canSeeAllUsers && String(u.Emp_Id) !== selectedUser) return false;
+                            if (selectedBranch && String(u.BranchId) !== selectedBranch) return false;
+                            if (selectedDepartment && String(u.Department) !== selectedDepartment) return false;
+                            if (selectedDesignation && String(u.Designation) !== selectedDesignation) return false;
+                            return true;
+                          })
                           .map((u) => ({
                             label: u.Emp_Name,
                             value: String(u.Emp_Id)
@@ -1665,30 +2214,12 @@ const WorkAbstract = () => {
                     </FormControl>
                   </Box>
                 </Box>
-              </DashboardTopFilterBar>
-
-              <Button
-                variant="outlined"
-                onClick={handleResetFilters}
-                size="small"
-                sx={{
-                  borderRadius: "20px",
-                  textTransform: "none",
-                  flex: "none",
-                  height: "36px",
-                  bgcolor: "#ffffff",
-                  borderColor: "#ccc",
-                  color: "#333",
-                  "&:hover": { bgcolor: "#f5f5f5", borderColor: "#bbb" }
-                }}
-              >
-                Reset Filters
-              </Button>
+               </DashboardTopFilterBar>
               <Button
                 variant="contained"
                 startIcon={<TableViewIcon />}
                 onClick={handleDownloadExcel}
-                disabled={loading || !workData.length}
+                disabled={loading || !displayWorkData.length}
                 size="small"
                 sx={{
                   borderRadius: "20px",
@@ -1705,7 +2236,7 @@ const WorkAbstract = () => {
                 variant="contained"
                 startIcon={<PictureAsPdfIcon />}
                 onClick={handleDownloadPDF}
-                disabled={loading || !workData.length}
+                disabled={loading || !displayWorkData.length}
                 size="small"
                 sx={{
                   borderRadius: "20px",
@@ -1722,7 +2253,7 @@ const WorkAbstract = () => {
                 variant="contained"
                 startIcon={<PrintIcon />}
                 onClick={() => window.print()}
-                disabled={loading || !workData.length}
+                disabled={loading || !displayWorkData.length}
                 size="small"
                 sx={{
                   borderRadius: "20px",

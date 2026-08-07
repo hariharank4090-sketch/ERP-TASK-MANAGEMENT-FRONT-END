@@ -31,6 +31,7 @@ import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../../auth/authContext";
 import SearchableSelect from "../../../Components/SearchableSelect";
+import TopFilterBar from "../../../Components/TopFilterBar";
 
 import type { PageProps } from "../../../routes/indexRouter";
 import { 
@@ -187,6 +188,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [hasSearched, setHasSearched] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
   // Check if current user can see "All Users" option
   const { user } = useAuth();
@@ -1150,323 +1152,305 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                 </Button>
               </Tooltip>
             )}
-            <Tooltip title="Refresh">
-              <IconButton onClick={handleRefresh} disabled={isLoading} size={isMobile ? "small" : "medium"} sx={{ padding: isMobile ? "2px" : undefined }}>
-                <Refresh fontSize={isMobile ? "small" : "medium"} />
+            <TopFilterBar
+              onSearch={() => {
+                handleSearchButtonClick();
+                setFilterDialogOpen(false);
+              }}
+              dialogOpen={filterDialogOpen}
+              onOpenDialog={() => setFilterDialogOpen(true)}
+              onCloseDialog={() => setFilterDialogOpen(false)}
+            >
+              <Box display="flex" flexDirection="column" gap={2}>
+                {/* Project Status Filter */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    Project Status
+                  </Typography>
+                  <SearchableSelect
+                    displayEmpty
+                    value={projectStatusFilter}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      setProjectStatusFilter(e.target.value);
+                      setSelectedProjectId(null); // Reset selected project when status changes
+                    }}
+                    renderValue={(selected: any) => {
+                      if (selected === "1") return "Active";
+                      if (selected === "0") return "Inactive";
+                      return "All";
+                    }}
+                    searchPlaceholder="Search Status..."
+                    allOptionLabel="All"
+                    allOptionValue=""
+                    options={[
+                      { value: "1", label: "Active" },
+                      { value: "0", label: "Inactive" }
+                    ]}
+                  />
+                </FormControl>
+
+                {/* Project Filter */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    Select Project
+                  </Typography>
+                  <SearchableSelect
+                    displayEmpty
+                    value={selectedProjectId ? selectedProjectId.toString() : "all"}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const value = e.target.value;
+                      handleProjectChange(value === "all" || value === "" ? null : Number(value));
+                    }}
+                    renderValue={(selected: any) => {
+                      if (!selected || selected === "") return <em>Select Project</em>;
+                      if (selected === "all") return "All Projects";
+                      const projectItem = projects.find((p) => p.Project_Id.toString() === selected);
+                      return projectItem?.Project_Name || selected;
+                    }}
+                    searchPlaceholder="Search Project..."
+                    allOptionLabel="All Projects"
+                    allOptionValue="all"
+                    options={projects
+                      .filter(project => {
+                        if (projectStatusFilter !== "") {
+                          if (project.IsActive?.toString() !== projectStatusFilter) {
+                            return false;
+                          }
+                        }
+                        const pId = Number(project.Project_Id);
+                        if (!canSeeAllUsers) {
+                          if (isLoadingUserProjects || userAssignedProjectIds === null) return false;
+                          return userAssignedProjectIds.has(pId);
+                        }
+                        if (selectedUserId || selectedTaskId || selectedTaskTypeId) {
+                          return allowedProjectIds.has(pId);
+                        }
+                        return true;
+                      })
+                      .map((project) => ({
+                      value: project.Project_Id.toString(),
+                      label: project.Project_Name
+                    }))}
+                  />
+                </FormControl>
+
+                {/* Task Type Filter */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    Task Type
+                  </Typography>
+                  <SearchableSelect
+                    displayEmpty
+                    value={selectedTaskTypeId ? selectedTaskTypeId.toString() : "all"}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const value = e.target.value;
+                      handleTaskTypeChange(value === "all" || value === "" ? null : Number(value));
+                    }}
+                    disabled={isLoadingTaskTypes}
+                    renderValue={(selected: any) => {
+                      if (!selected || selected === "") return <em>Select Task Type</em>;
+                      if (selected === "all") return "All Task Types";
+                      const typeItem = projectTaskTypes.find((t) => t.Task_Type_Id.toString() === selected);
+                      return typeItem?.Task_Type || selected;
+                    }}
+                    searchPlaceholder="Search Task Type..."
+                    allOptionLabel="All Task Types"
+                    allOptionValue="all"
+                    options={projectTaskTypes
+                      .filter(type => !selectedProjectId || type.Project_Id === selectedProjectId)
+                      .filter(type => {
+                        if (!canSeeAllUsers) {
+                          if (isLoadingUserProjects || userAssignedTaskTypeIds === null) return false;
+                          return userAssignedTaskTypeIds.has(Number(type.Task_Type_Id));
+                        }
+                        if (selectedUserId || selectedTaskId) {
+                          return allowedTaskTypeIds.has(Number(type.Task_Type_Id));
+                        }
+                        return true;
+                      })
+                      .map((type) => ({
+                      value: type.Task_Type_Id.toString(),
+                      label: type.Task_Type
+                    }))}
+                  />
+                  {isLoadingTaskTypes && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+                      <CircularProgress size={12} />
+                      <Typography variant="caption" color="textSecondary">
+                        Loading task types...
+                      </Typography>
+                    </Box>
+                  )}
+                </FormControl>
+
+                {/* Task Filter */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    Task
+                  </Typography>
+                  <SearchableSelect
+                    displayEmpty
+                    value={selectedTaskId ? selectedTaskId.toString() : "all"}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const value = e.target.value;
+                      handleTaskChange(value === "all" || value === "" ? null : Number(value));
+                    }}
+                    disabled={isLoadingProjectTasks}
+                    renderValue={(selected: any) => {
+                      if (!selected || selected === "") return <em>Select Task</em>;
+                      if (selected === "all") return "All Tasks";
+                      const taskItem = projectTasks.find((t) => t.Task_Id.toString() === selected);
+                      return taskItem?.Task_Name || selected;
+                    }}
+                    searchPlaceholder="Search Task..."
+                    allOptionLabel="All Tasks"
+                    allOptionValue="all"
+                    options={projectTasks
+                      .filter((task) => !selectedProjectId || task.Project_Id === selectedProjectId)
+                      .filter((task) => !selectedTaskTypeId || task.Task_Type_Id === selectedTaskTypeId)
+                      .filter((task) => {
+                        if (!canSeeAllUsers) {
+                          if (isLoadingUserProjects || userAssignedTaskIds === null) return false;
+                          return userAssignedTaskIds.has(Number(task.Task_Id));
+                        }
+                        if (selectedUserId || selectedTaskTypeId) {
+                          return allowedTaskIds.has(Number(task.Task_Id));
+                        }
+                        return true;
+                      })
+                      .map((task) => ({
+                      value: task.Task_Id.toString(),
+                      label: task.Task_Name
+                    }))}
+                  />
+                  {isLoadingProjectTasks && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+                      <CircularProgress size={12} />
+                      <Typography variant="caption" color="textSecondary">
+                        Loading tasks...
+                      </Typography>
+                    </Box>
+                  )}
+                </FormControl>
+
+                {/* User Filter */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    User
+                  </Typography>
+                  <SearchableSelect
+                    displayEmpty
+                    value={selectedUserId?.toString() || ""}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const value = e.target.value;
+                      handleUserChange(value ? Number(value) : null);
+                    }}
+                    renderValue={(selected: any) => {
+                      if (!selected || selected === "") {
+                        return canSeeAllUsers ? "All Users" : <em>Select User</em>;
+                      }
+                      if (selected === "all") return "All Users";
+                      const userItem = userOptions.find((u) => u.User_Id.toString() === selected);
+                      return userItem?.User_Name || selected;
+                    }}
+                    searchPlaceholder="Search User..."
+                    allOptionLabel={canSeeAllUsers ? "All Users" : undefined}
+                    allOptionValue=""
+                    options={userOptions
+                      .filter((u) => {
+                        if (!canSeeAllUsers) {
+                          return mappedEmpIds.has(String(u.User_Id));
+                        }
+                        if (selectedProjectId || selectedTaskTypeId || selectedTaskId) {
+                          return allowedUserIds.has(u.User_Id);
+                        }
+                        return true;
+                      })
+                      .map((u) => ({
+                      value: u.User_Id.toString(),
+                      label: u.User_Name
+                    }))}
+                  />
+                  {isLoadingUsers && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+                      <CircularProgress size={12} />
+                      <Typography variant="caption" color="textSecondary">
+                        Loading assigned users...
+                      </Typography>
+                    </Box>
+                  )}
+                </FormControl>
+
+                {/* Work Status Filter */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    Work Status
+                  </Typography>
+                  <SearchableSelect
+                    displayEmpty
+                    value={selectedWorkStatus}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      handleWorkStatusChange(e.target.value);
+                    }}
+                    renderValue={(selected: any) => selected || "All Statuses"}
+                    searchPlaceholder="Search Status..."
+                    allOptionLabel="All Statuses"
+                    allOptionValue=""
+                    options={workStatusOptions.map((status) => ({
+                      value: status,
+                      label: status || "All Statuses"
+                    }))}
+                  />
+                </FormControl>
+
+                {/* Search Text */}
+                <FormControl size="small" fullWidth>
+                  <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                    Search
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Search..."
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormControl>
+              </Box>
+            </TopFilterBar>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={() => {
+                  handleRefresh();
+                  toast.info("Page filters reset and refreshed");
+                }}
+                disabled={isLoading}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
               </IconButton>
             </Tooltip>
           </Box>
         </Box>
-        
-        <Grid container spacing={0.5}>
-          {/* Project Status Filter */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Project Status
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, "& .MuiOutlinedInput-notchedOutline": { padding: 0 } } : {}}
-                displayEmpty
-                value={projectStatusFilter}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  setProjectStatusFilter(e.target.value);
-                  setSelectedProjectId(null); // Reset selected project when status changes
-                }}
-                renderValue={(selected: any) => {
-                  if (selected === "1") return "Active";
-                  if (selected === "0") return "Inactive";
-                  return "All";
-                }}
-                searchPlaceholder="Search Status..."
-                allOptionLabel="All"
-                allOptionValue=""
-                options={[
-                  { value: "1", label: "Active" },
-                  { value: "0", label: "Inactive" }
-                ]}
-              />
-            </FormControl>
-          </Grid>
-
-          {/* Project Filter */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Select Project
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" }, "& .MuiOutlinedInput-notchedOutline": { padding: 0 } } : {}}
-                displayEmpty
-                value={selectedProjectId ? selectedProjectId.toString() : "all"}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  const value = e.target.value;
-                  handleProjectChange(value === "all" || value === "" ? null : Number(value));
-                }}
-                renderValue={(selected: any) => {
-                  if (!selected || selected === "") return <em>Select Project</em>;
-                  if (selected === "all") return "All Projects";
-                  const projectItem = projects.find((p) => p.Project_Id.toString() === selected);
-                  return projectItem?.Project_Name || selected;
-                }}
-                searchPlaceholder="Search Project..."
-                allOptionLabel="All Projects"
-                allOptionValue="all"
-                options={projects
-                  .filter(project => {
-                    if (projectStatusFilter !== "") {
-                      if (project.IsActive?.toString() !== projectStatusFilter) {
-                        return false;
-                      }
-                    }
-                    const pId = Number(project.Project_Id);
-                    if (!canSeeAllUsers) {
-                      if (isLoadingUserProjects || userAssignedProjectIds === null) return false;
-                      return userAssignedProjectIds.has(pId);
-                    }
-                    if (selectedUserId || selectedTaskId || selectedTaskTypeId) {
-                      return allowedProjectIds.has(pId);
-                    }
-                    return true;
-                  })
-                  .map((project) => ({
-                  value: project.Project_Id.toString(),
-                  label: project.Project_Name
-                }))}
-              />
-            </FormControl>
-          </Grid>
-
-          {/* Task Type Filter */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Task Type
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
-                displayEmpty
-                value={selectedTaskTypeId ? selectedTaskTypeId.toString() : "all"}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  const value = e.target.value;
-                  handleTaskTypeChange(value === "all" || value === "" ? null : Number(value));
-                }}
-                disabled={isLoadingTaskTypes}
-                renderValue={(selected: any) => {
-                  if (!selected || selected === "") return <em>Select Task Type</em>;
-                  if (selected === "all") return "All Task Types";
-                  const typeItem = projectTaskTypes.find((t) => t.Task_Type_Id.toString() === selected);
-                  return typeItem?.Task_Type || selected;
-                }}
-                searchPlaceholder="Search Task Type..."
-                allOptionLabel="All Task Types"
-                allOptionValue="all"
-                options={projectTaskTypes
-                  .filter(type => !selectedProjectId || type.Project_Id === selectedProjectId)
-                  .filter(type => {
-                    if (!canSeeAllUsers) {
-                      if (isLoadingUserProjects || userAssignedTaskTypeIds === null) return false;
-                      return userAssignedTaskTypeIds.has(Number(type.Task_Type_Id));
-                    }
-                    if (selectedUserId || selectedTaskId) {
-                      return allowedTaskTypeIds.has(Number(type.Task_Type_Id));
-                    }
-                    return true;
-                  })
-                  .map((type) => ({
-                  value: type.Task_Type_Id.toString(),
-                  label: type.Task_Type
-                }))}
-              />
-              {isLoadingTaskTypes && (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                  <CircularProgress size={12} />
-                  <Typography variant="caption" color="textSecondary">
-                    Loading task types...
-                  </Typography>
-                </Box>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* Task Filter */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Task
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
-                displayEmpty
-                value={selectedTaskId ? selectedTaskId.toString() : "all"}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  const value = e.target.value;
-                  handleTaskChange(value === "all" || value === "" ? null : Number(value));
-                }}
-                disabled={isLoadingProjectTasks}
-                renderValue={(selected: any) => {
-                  if (!selected || selected === "") return <em>Select Task</em>;
-                  if (selected === "all") return "All Tasks";
-                  const taskItem = projectTasks.find((t) => t.Task_Id.toString() === selected);
-                  return taskItem?.Task_Name || selected;
-                }}
-                searchPlaceholder="Search Task..."
-                allOptionLabel="All Tasks"
-                allOptionValue="all"
-                options={projectTasks
-                  .filter((task) => !selectedProjectId || task.Project_Id === selectedProjectId)
-                  .filter((task) => !selectedTaskTypeId || task.Task_Type_Id === selectedTaskTypeId)
-                  .filter((task) => {
-                    if (!canSeeAllUsers) {
-                      if (isLoadingUserProjects || userAssignedTaskIds === null) return false;
-                      return userAssignedTaskIds.has(Number(task.Task_Id));
-                    }
-                    if (selectedUserId || selectedTaskTypeId) {
-                      return allowedTaskIds.has(Number(task.Task_Id));
-                    }
-                    return true;
-                  })
-                  .map((task) => ({
-                  value: task.Task_Id.toString(),
-                  label: task.Task_Name
-                }))}
-              />
-              {isLoadingProjectTasks && (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                  <CircularProgress size={12} />
-                  <Typography variant="caption" color="textSecondary">
-                    Loading tasks...
-                  </Typography>
-                </Box>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* User Filter */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              User
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
-                displayEmpty
-                value={selectedUserId?.toString() || ""}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  const value = e.target.value;
-                  handleUserChange(value ? Number(value) : null);
-                }}
-                renderValue={(selected: any) => {
-                  if (!selected || selected === "") {
-                    return canSeeAllUsers ? "All Users" : <em>Select User</em>;
-                  }
-                  if (selected === "all") return "All Users";
-                  const userItem = userOptions.find((u) => u.User_Id.toString() === selected);
-                  return userItem?.User_Name || selected;
-                }}
-                searchPlaceholder="Search User..."
-                allOptionLabel={canSeeAllUsers ? "All Users" : undefined}
-                allOptionValue=""
-                options={userOptions
-                  .filter((u) => {
-                    if (!canSeeAllUsers) {
-                      return mappedEmpIds.has(String(u.User_Id));
-                    }
-                    if (selectedProjectId || selectedTaskTypeId || selectedTaskId) {
-                      return allowedUserIds.has(u.User_Id);
-                    }
-                    return true;
-                  })
-                  .map((u) => ({
-                  value: u.User_Id.toString(),
-                  label: u.User_Name
-                }))}
-              />
-              {isLoadingUsers && (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                  <CircularProgress size={12} />
-                  <Typography variant="caption" color="textSecondary">
-                    Loading assigned users...
-                  </Typography>
-                </Box>
-              )}
-            </FormControl>
-          </Grid>
-
-          {/* Work Status Filter */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Work Status
-            </Typography>
-            <FormControl fullWidth size="small">
-              <SearchableSelect
-                sx={isMobile ? { "& .MuiSelect-select": { fontSize: "0.6rem", padding: "2px 4px" } } : {}}
-                displayEmpty
-                value={selectedWorkStatus}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  handleWorkStatusChange(e.target.value);
-                }}
-                renderValue={(selected: any) => selected || "All Statuses"}
-                searchPlaceholder="Search Status..."
-                allOptionLabel="All Statuses"
-                allOptionValue=""
-                options={workStatusOptions.map((status) => ({
-                  value: status,
-                  label: status || "All Statuses"
-                }))}
-              />
-            </FormControl>
-          </Grid>
-
-          {/* Search Field & Button */}
-          <Grid size={{ xs: 4, sm: 4, md: 2 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, mb: isMobile ? 0.2 : 1, display: "block", fontSize: isMobile ? "0.55rem" : undefined, visibility: isMobile ? "hidden" : "visible" }}>
-              Search
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {!isMobile && (
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Search..."
-                  value={searchTerm}
-                  onChange={handleSearchChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              )}
-              <Button 
-                variant="contained" 
-                color="primary" 
-                onClick={handleSearchButtonClick}
-                sx={{
-                  borderRadius: isMobile ? "4px" : 1,
-                  textTransform: "none",
-                  height: isMobile ? "22px" : "40px",
-                  width: isMobile ? "100%" : "auto",
-                  minWidth: isMobile ? "auto" : "40px",
-                  px: isMobile ? 0 : undefined,
-                  backgroundColor: isMobile ? "#154360" : undefined,
-                  "&:hover": { backgroundColor: isMobile ? "#1a5276" : undefined }
-                }}
-              >
-                {isMobile ? (
-                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
-                    <Typography sx={{ fontSize: "0.6rem", fontWeight: 500 }}>Search</Typography>
-                    <SearchIcon sx={{ fontSize: "0.8rem" }} />
-                  </Box>
-                ) : (
-                  <SearchIcon />
-                )}
-              </Button>
-            </Box>
-          </Grid>
-        </Grid>
 
         {/* Active Filters Display */}
         {renderActiveFilters()}

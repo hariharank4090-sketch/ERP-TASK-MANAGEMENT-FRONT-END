@@ -1,4 +1,3 @@
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
@@ -261,7 +260,7 @@ const calculateDurationFromTimes = (startStr: string | undefined, endStr: string
   const [sH, sM] = start.split(":").map(Number);
   const [eH, eM] = end.split(":").map(Number);
   
-  let startMins = sH * 60 + sM;
+  const startMins = sH * 60 + sM;  // ✅ FIXED: changed from let to const
   let endMins = eH * 60 + eM;
   
   if (endMins < startMins) endMins += 24 * 60; // handle overnight shifts
@@ -1399,7 +1398,7 @@ const TaskExpandedComponent: React.FC<{
   const handleEditTask = useCallback(async (task: TaskDisplay) => {
     setSelectedTask(task);
 
-    let rawIds: any = task.Paramet_Ids;
+    const rawIds: any = task.Paramet_Ids;  // ✅ FIXED: changed from let to const
     let parametIds: number[] = [];
     if (Array.isArray(rawIds)) {
       parametIds = rawIds.flatMap((id: any) => typeof id === "string" ? id.split(",").map(Number) : Number(id));
@@ -1410,7 +1409,7 @@ const TaskExpandedComponent: React.FC<{
     }
     parametIds = parametIds.filter(n => !isNaN(n) && n > 0);
 
-    let rawDataTypes: any = task.Paramet_Data_Types;
+    const rawDataTypes: any = task.Paramet_Data_Types;  // ✅ FIXED: changed from let to const
     let parametDataTypes: (string | null)[] = [];
     if (Array.isArray(rawDataTypes)) {
       parametDataTypes = rawDataTypes.flatMap((dt: any) => typeof dt === "string" ? dt.split(",") : dt);
@@ -1418,7 +1417,7 @@ const TaskExpandedComponent: React.FC<{
       parametDataTypes = rawDataTypes.split(",");
     }
 
-    let rawDisplayNames: any = task.Para_Display_Names;
+    const rawDisplayNames: any = task.Para_Display_Names;  // ✅ FIXED: changed from let to const
     let paraDisplayNames: string[] = [];
     if (Array.isArray(rawDisplayNames)) {
       paraDisplayNames = rawDisplayNames.flatMap((dn: any) => typeof dn === "string" ? dn.split(",") : dn);
@@ -1649,7 +1648,7 @@ const TaskExpandedComponent: React.FC<{
         );
 
       const scheduleStart = row.schStartDate ? row.schStartDate.split('T')[0] : null;
-      const scheduleEnd   = row.schEndDate   ? row.schEndDate.split('T')[0]   : null;
+      const scheduleEnd   = row.schEndDate ? row.schEndDate.split('T')[0] : null;
 
       setCorrectionData({
         schId:       row.schId,
@@ -2942,6 +2941,41 @@ const All = () => {
   // Filter dialog state
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
+  // ── Open dialog: sync pending values FROM applied values ─────────────────
+  const handleOpenFilterDialog = useCallback(() => {
+    // Sync pending values with applied values so dialog shows current filter state
+    setProjectIdFilter(appliedProjectId);
+    setTaskTypeIdFilter(appliedTaskTypeId);
+    setTaskIdFilter(appliedTaskId);
+    setEmployeeIdFilter(appliedEmployeeId);
+    setFilterDialogOpen(true);
+  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId]);
+
+  // ── Close dialog: revert pending values to applied values ─────────────────
+  const handleCloseFilterDialog = useCallback(() => {
+    setFilterDialogOpen(false);
+    // Revert pending filter values back to the last applied values
+    setProjectIdFilter(appliedProjectId);
+    setTaskTypeIdFilter(appliedTaskTypeId);
+    setTaskIdFilter(appliedTaskId);
+    setEmployeeIdFilter(appliedEmployeeId);
+  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId]);
+
+  // ── Reset all filters to defaults ─────────────────────────────────────────
+  const handleResetFilters = useCallback(() => {
+    setProjectIsActiveFilter("ACTIVE");
+    setProjectIdFilter("ALL");
+    setTaskTypeIdFilter("ALL");
+    setTaskIdFilter("ALL");
+    setEmployeeIdFilter("ALL");
+    setAppliedProjectId("ALL");
+    setAppliedTaskTypeId("ALL");
+    setAppliedTaskId("ALL");
+    setAppliedEmployeeId("ALL");
+    setFilterDialogOpen(false);
+  }, []);
+
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -2987,8 +3021,9 @@ const All = () => {
                   setAppliedEmployeeId(employeeIdFilter);
                 }}
                 dialogOpen={filterDialogOpen}
-                onOpenDialog={() => setFilterDialogOpen(true)}
-                onCloseDialog={() => setFilterDialogOpen(false)}
+                onOpenDialog={handleOpenFilterDialog}
+                onCloseDialog={handleCloseFilterDialog}
+                onReset={handleResetFilters}
                 numEq={numEq}
               />
             }

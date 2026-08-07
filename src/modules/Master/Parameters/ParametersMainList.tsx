@@ -5,12 +5,16 @@ import {
   Alert,
   Box,
   Typography,
-  CircularProgress
+  CircularProgress,
+  FormControl,
+  InputLabel
 } from "@mui/material";
-import { Edit, Delete } from "@mui/icons-material";
+import { Edit, Delete, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
 
 import DataTable, { createCol } from "../../../Components/dataTable";
+import TopFilterBar from "../../../Components/TopFilterBar";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import { ParameterDialog } from "./ParametersForm";
 import { 
   getParametersWithDatatypeNames,
@@ -45,6 +49,17 @@ const ParameterMainPage: React.FC<PageProps> = ({
   const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(false);
   const [datatypeOptions, setDatatypeOptions] = useState<datatypeDropdown[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [dataTypeFilter, setDataTypeFilter] = useState<number | "ALL">("ALL");
+  const [parameterFilter, setParameterFilter] = useState<number | "ALL">("ALL");
+  const [appliedDataType, setAppliedDataType] = useState<number | "ALL">("ALL");
+  const [appliedParameter, setAppliedParameter] = useState<number | "ALL">("ALL");
+
+  const numEq = (a: any, b: any) => {
+    if (a == null || b == null) return false;
+    return Number(a) === Number(b);
+  };
 
   /** Fetch All Data */
   const fetchAllData = async () => {
@@ -186,19 +201,74 @@ const ParameterMainPage: React.FC<PageProps> = ({
     return "Not Assigned";
   };
 
+  const uniqueParameters = useMemo(() => {
+    const map = new Map();
+    parameters.forEach(p => {
+      if (p.Paramet_Id && p.Paramet_Name) {
+        map.set(Number(p.Paramet_Id), p.Paramet_Name);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ Paramet_Id: id, Paramet_Name: name }));
+  }, [parameters]);
+
+  const getFilteredDataTypesForDropdown = useMemo(() => {
+    if (parameterFilter === "ALL") return datatypeOptions;
+    const validDataTypes = new Set(
+      parameters
+        .filter(item => numEq(item.Paramet_Id, parameterFilter))
+        .map(item => Number(item.Paramet_Data_Type))
+        .filter(id => !isNaN(id) && id !== 0)
+    );
+    return datatypeOptions.filter(dt => validDataTypes.has(dt.Para_Data_Type_Id));
+  }, [datatypeOptions, parameters, parameterFilter]);
+
+  const getFilteredParametersForDropdown = useMemo(() => {
+    if (dataTypeFilter === "ALL") return uniqueParameters;
+    const validParameters = new Set(
+      parameters
+        .filter(item => numEq(item.Paramet_Data_Type, dataTypeFilter))
+        .map(item => Number(item.Paramet_Id))
+    );
+    return uniqueParameters.filter(p => validParameters.has(p.Paramet_Id));
+  }, [uniqueParameters, parameters, dataTypeFilter]);
+
+  useEffect(() => {
+    if (dataTypeFilter !== "ALL") {
+      const isValid = getFilteredDataTypesForDropdown.some(dt => numEq(dt.Para_Data_Type_Id, dataTypeFilter));
+      if (!isValid) setDataTypeFilter("ALL");
+    }
+
+    if (parameterFilter !== "ALL") {
+      const isValid = getFilteredParametersForDropdown.some(p => numEq(p.Paramet_Id, parameterFilter));
+      if (!isValid) setParameterFilter("ALL");
+    }
+  }, [dataTypeFilter, parameterFilter, parameters, getFilteredDataTypesForDropdown, getFilteredParametersForDropdown]);
+
   // Filter data based on search term
   const filteredParameters = useMemo(() => {
-    if (!searchTerm.trim()) return parameters;
+    let filtered = parameters;
+    
+    // Data Type filter
+    if (appliedDataType !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Paramet_Data_Type, appliedDataType));
+    }
+
+    // Parameter filter
+    if (appliedParameter !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Paramet_Id, appliedParameter));
+    }
+
+    if (!searchTerm.trim()) return filtered;
 
     const term = searchTerm.toLowerCase();
-    return parameters.filter((item) => {
+    return filtered.filter((item) => {
       const parameterName = item.Paramet_Name?.toLowerCase() || '';
       const datatypeName = getDatatypeDisplayName(item).toLowerCase();
       
       return parameterName.includes(term) || datatypeName.includes(term);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, parameters, datatypeOptions]);
+  }, [searchTerm, parameters, datatypeOptions, appliedDataType, appliedParameter]);
 
   // Check if data is loading
   const isDataLoading = isLoading || isLoadingDropdowns;
@@ -233,6 +303,97 @@ const ParameterMainPage: React.FC<PageProps> = ({
           setDialog({ ...dialog, createDialog: true });
         }}
         createButtonColor="#c99f65"
+        headerActions={
+          <Box display="flex" alignItems="center" gap={1}>
+            <TopFilterBar
+              onSearch={() => {
+                setAppliedDataType(dataTypeFilter);
+                setAppliedParameter(parameterFilter);
+              }}
+              dialogOpen={filterDialogOpen}
+              onOpenDialog={() => {
+                setDataTypeFilter(appliedDataType);
+                setParameterFilter(appliedParameter);
+                setFilterDialogOpen(true);
+              }}
+              onCloseDialog={() => {
+                setDataTypeFilter(appliedDataType);
+                setParameterFilter(appliedParameter);
+                setFilterDialogOpen(false);
+              }}
+            >
+              <Box display="flex" flexDirection="column" gap={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="parameter-filter-label">Parameter Name</InputLabel>
+                  <SearchableSelect
+                    labelId="parameter-filter-label"
+                    label="Parameter Name"
+                    value={parameterFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setParameterFilter(val);
+                    }}
+                    options={getFilteredParametersForDropdown.map(p => ({
+                      value: p.Paramet_Id,
+                      label: p.Paramet_Name
+                    }))}
+                    allOptionLabel="All Parameters"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search parameter..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="data-type-filter-label">Data Type</InputLabel>
+                  <SearchableSelect
+                    labelId="data-type-filter-label"
+                    label="Data Type"
+                    value={dataTypeFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setDataTypeFilter(val);
+                    }}
+                    options={getFilteredDataTypesForDropdown.map(d => ({
+                      value: d.Para_Data_Type_Id,
+                      label: d.Para_Display_Name
+                    }))}
+                    allOptionLabel="All Data Types"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search data type..."
+                  />
+                </FormControl>
+              </Box>
+            </TopFilterBar>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={() => {
+                  setSearchTerm("");
+                  setDataTypeFilter("ALL");
+                  setParameterFilter("ALL");
+                  setAppliedDataType("ALL");
+                  setAppliedParameter("ALL");
+                  
+                  fetchAllData();
+                  toast.info("Page filters reset and refreshed");
+                }}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        }
         showMasterTableHeader={false}
         // isLoading={isDataLoading}
         columns={[

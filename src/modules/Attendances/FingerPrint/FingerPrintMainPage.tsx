@@ -33,7 +33,6 @@ import {
   Divider,
   Stack,
   FormControl,
-  InputLabel,
   Select,
   type SelectChangeEvent,
   useTheme,
@@ -83,6 +82,7 @@ import {
 } from "date-fns";
 import DataTable, { createCol } from "../../../Components/dataTable";
 import { AttendanceFilterDialog } from "./AttendanceFilterDialog";
+import TopFilterBar from "../../../Components/TopFilterBar";
 import {
   getFingerprintAttendance,
   getTodayAttendance,
@@ -109,10 +109,6 @@ import type {
 import { emptyDateRange, StatusLabels } from "./variables";
 import type { PageProps } from "../../../routes/indexRouter";
 import { useAuth } from "../../../auth/authContext";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import type { PickerValue } from "@mui/x-date-pickers/internals";
 
 // Convert AttendanceResult to TableRowData by adding index signature
 interface TableRowData extends Record<string, unknown> {
@@ -2148,6 +2144,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     correctionDialog: false,
   });
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+  const [topFilterOpen, setTopFilterOpen] = useState(false);
   const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardRow[]>([]);
@@ -2159,6 +2156,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
   const [punchRecords, setPunchRecords] = useState<PunchRecord[]>([]);
   const [isLoadingPunchDetails, setIsLoadingPunchDetails] = useState(false);
 
+  // Parent state values (applied filters)
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
   const [empSearchTerm, setEmpSearchTerm] = useState("");
   const [appliedEmployee, setAppliedEmployee] = useState<string>("");
@@ -2169,6 +2167,12 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
   const [appliedDepartment, setAppliedDepartment] = useState<string>("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [appliedBranch, setAppliedBranch] = useState<string>("");
+
+  // Temporary state for filter dialog (copies of parent values)
+  const [tempFilterObj, setTempFilterObj] = useState<DateRangeParams>(emptyDateRange);
+  const [tempSelectedEmployee, setTempSelectedEmployee] = useState<string>("");
+  const [tempSelectedDepartment, setTempSelectedDepartment] = useState<string>("");
+  const [tempSelectedBranch, setTempSelectedBranch] = useState<string>("");
 
   const filteredRecords = useMemo(() => {
     let result = attendanceRecords;
@@ -2259,146 +2263,27 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     return filtered.length > 0 ? filtered : branchList;
   }, [branchList, employeeOptions, selectedEmployee]);
 
-
-
-  const handleDepartmentChange = (event: SelectChangeEvent) => {
-    setSelectedDepartment(event.target.value);
-  };
-
-  const [selectedReport, setSelectedReport] = useState<string>("individual");
-  const [isLoadingMonthly, setIsLoadingMonthly] = useState(false);
-
-  const [cumulativeDialog, setCumulativeDialog] = useState(false);
-  const [cumulativeSelectedEmps, setCumulativeSelectedEmps] = useState<
-    string[]
-  >([]);
-  const [cumulativeSearchTerm, setCumulativeSearchTerm] = useState("");
-  const [isLoadingCumulative, setIsLoadingCumulative] = useState(false);
-
-  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
-
-  const [mobilePage, setMobilePage] = useState(0);
-  const [mobileRowsPerPage, setMobileRowsPerPage] = useState(10);
-
-  const handleMobilePageChange = (_event: unknown, newPage: number) => {
-    setMobilePage(newPage);
-  };
-
-  const handleMobileRowsPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setMobileRowsPerPage(parseInt(event.target.value, 10));
-    setMobilePage(0);
-  };
-
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  const handleSyncFingerprint = async () => {
-    if (!filterObj.startDate || !filterObj.endDate) {
-      toast.warning("Please select a From Date and To Date to sync.");
-      return;
+  // Helper function to convert value to Date
+  const convertToDate = (value: any): Date | null => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value === "object" && "toDate" in value) {
+      return (value as any).toDate();
     }
-
-    setIsSyncing(true);
-    try {
-      const sDate = filterObj.startDate.split("T")[0];
-      const eDate = filterObj.endDate.split("T")[0];
-      const response = await syncFingerprintAttendance(sDate, eDate, loadingOn, loadingOff);
-      if (response && response.success) {
-        toast.success(response.message || "Fingerprint data synced successfully");
-        fetchAttendanceRecords(filterObj);
-      } else {
-        toast.error(response?.message || "Failed to sync fingerprint data");
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-      toast.error("An error occurred during sync");
-    } finally {
-      setIsSyncing(false);
-    }
+    return new Date(value as any);
   };
 
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const isTablet = useMediaQuery(theme.breakpoints.down("md"));
-
-  const normalizeGender = (gender: string): "Male" | "Female" => {
+  // ── Normalize Gender ──
+  const normalizeGender = useCallback((gender: string): "Male" | "Female" => {
     if (!gender) return "Male";
     const normalized = gender.toLowerCase();
     if (normalized === "male" || normalized === "m") return "Male";
     if (normalized === "female" || normalized === "f") return "Female";
     return "Male";
-  };
+  }, []);
 
-  const extractUniqueEmployees = (records: AttendanceResult[]) =>
-    records.reduce((acc: Array<{ id: string; name: string }>, record) => {
-      if (!acc.some((emp) => emp.id === record.fingerPrintEmpId)) {
-        acc.push({ id: record.fingerPrintEmpId, name: record.username });
-      }
-      return acc;
-    }, []);
-
-  const getDepartmentDisplayName = useCallback(
-    (deptValue: string) => {
-      if (!departmentList || departmentList.length === 0) return deptValue;
-      const found = departmentList.find((d) => d.value === deptValue);
-      return found ? found.label : deptValue;
-    },
-    [departmentList],
-  );
-
-  const fetchAttendanceRecords = useCallback(
-    async (params: DateRangeParams) => {
-      try {
-        setIsLoadingRecords(true);
-        if (loadingOn) loadingOn();
-
-        const records = await getFingerprintAttendance(
-          params,
-          loadingOn,
-          loadingOff,
-        );
-
-        let finalRecords = records;
-        if (!showAllTabs) {
-          if (myFingerPrintId) {
-            finalRecords = records.filter(
-              (r) => r.fingerPrintEmpId?.trim().toLowerCase() === myFingerPrintId.trim().toLowerCase()
-            );
-          } else {
-            finalRecords = [];
-          }
-        }
-
-        setAttendanceRecords(finalRecords);
-        setError(null);
-
-        const stats = await getAttendanceStats(
-          params.startDate,
-          params.endDate,
-          loadingOn,
-          loadingOff,
-        );
-        setStatsData(stats[0] || null);
-        processDashboardData(finalRecords);
-        setEmployeeList(extractUniqueEmployees(finalRecords));
-      } catch (error) {
-        console.error("Error fetching attendance records:", error);
-        setError("Failed to load attendance records");
-        toast.error("Failed to load attendance records");
-      } finally {
-        setIsLoadingRecords(false);
-        if (loadingOff) loadingOff();
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      loadingOn,
-      loadingOff,
-      showAllTabs,
-      myFingerPrintId,
-    ],
-  );
-
-  const processDashboardData = (records: AttendanceResult[]) => {
+  // ── Process Dashboard Data ──
+  const processDashboardData = useCallback((records: AttendanceResult[]) => {
     type EmpMeta = { gender: "Male" | "Female"; statuses: Set<string> };
     const deptEmpMap = new Map<string, Map<string, EmpMeta>>();
 
@@ -2473,7 +2358,203 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     });
 
     setDashboardData(rows);
+  }, [normalizeGender]);
+
+  // ── Fetch Attendance Records ──
+  const fetchAttendanceRecords = useCallback(
+    async (params: DateRangeParams) => {
+      try {
+        setIsLoadingRecords(true);
+        if (loadingOn) loadingOn();
+
+        const records = await getFingerprintAttendance(
+          params,
+          loadingOn,
+          loadingOff,
+        );
+
+        let finalRecords = records;
+        if (!showAllTabs) {
+          if (myFingerPrintId) {
+            finalRecords = records.filter(
+              (r) => r.fingerPrintEmpId?.trim().toLowerCase() === myFingerPrintId.trim().toLowerCase()
+            );
+          } else {
+            finalRecords = [];
+          }
+        }
+
+        setAttendanceRecords(finalRecords);
+        setError(null);
+
+        const stats = await getAttendanceStats(
+          params.startDate,
+          params.endDate,
+          loadingOn,
+          loadingOff,
+        );
+        setStatsData(stats[0] || null);
+        processDashboardData(finalRecords);
+        
+        const uniqueEmployees = finalRecords.reduce((acc: Array<{ id: string; name: string }>, record) => {
+          if (!acc.some((emp) => emp.id === record.fingerPrintEmpId)) {
+            acc.push({ id: record.fingerPrintEmpId, name: record.username });
+          }
+          return acc;
+        }, []);
+        setEmployeeList(uniqueEmployees);
+      } catch (error) {
+        console.error("Error fetching attendance records:", error);
+        setError("Failed to load attendance records");
+        toast.error("Failed to load attendance records");
+      } finally {
+        setIsLoadingRecords(false);
+        if (loadingOff) loadingOff();
+      }
+    },
+    [loadingOn, loadingOff, showAllTabs, myFingerPrintId, processDashboardData],
+  );
+
+  // ── Temp state handlers for filter dialog ──
+
+  // Open dialog: copy parent values to temp state
+  const handleOpenFilterDialog = useCallback(() => {
+    setTempFilterObj({ ...filterObj });
+    setTempSelectedEmployee(selectedEmployee);
+    setTempSelectedDepartment(selectedDepartment);
+    setTempSelectedBranch(selectedBranch);
+    setTopFilterOpen(true);
+  }, [filterObj, selectedEmployee, selectedDepartment, selectedBranch]);
+
+  // Cancel: reset temp state to parent values and close
+  const handleCancelFilterDialog = useCallback(() => {
+    setTopFilterOpen(false);
+    setTempFilterObj({ ...filterObj });
+    setTempSelectedEmployee(selectedEmployee);
+    setTempSelectedDepartment(selectedDepartment);
+    setTempSelectedBranch(selectedBranch);
+  }, [filterObj, selectedEmployee, selectedDepartment, selectedBranch]);
+
+  // Search: apply temp values to parent state and refresh data
+  const handleSearchFilters = useCallback(() => {
+    setFilterObj({ ...tempFilterObj });
+    setSelectedEmployee(tempSelectedEmployee);
+    setSelectedDepartment(tempSelectedDepartment);
+    setSelectedBranch(tempSelectedBranch);
+    setAppliedEmployee(tempSelectedEmployee);
+    setAppliedDepartment(tempSelectedDepartment);
+    setAppliedBranch(tempSelectedBranch);
+    setTopFilterOpen(false);
+    fetchAttendanceRecords(tempFilterObj);
+  }, [tempFilterObj, tempSelectedEmployee, tempSelectedDepartment, tempSelectedBranch, fetchAttendanceRecords]);
+
+  // Reset all filters - sets from date and to date to today's date
+  const handleResetFilters = useCallback(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const resetFilter = { startDate: today, endDate: today };
+    setTempFilterObj(resetFilter);
+    setTempSelectedEmployee("");
+    setTempSelectedDepartment("");
+    setTempSelectedBranch("");
+    setFilterObj(resetFilter);
+    setSelectedEmployee("");
+    setSelectedDepartment("");
+    setSelectedBranch("");
+    setAppliedEmployee("");
+    setAppliedDepartment("");
+    setAppliedBranch("");
+    setTopFilterOpen(false);
+    fetchAttendanceRecords(resetFilter);
+    toast.info("Page filters reset and refreshed");
+  }, [fetchAttendanceRecords]);
+
+  // ── Temp change handlers ──
+  const handleTempDateChange = (field: "startDate" | "endDate", value: any) => {
+    const dateValue = convertToDate(value);
+    if (dateValue) {
+      const updatedFilter = { ...tempFilterObj, [field]: format(dateValue, "yyyy-MM-dd") };
+      setTempFilterObj(updatedFilter);
+    } else {
+      const updatedFilter = { ...tempFilterObj, [field]: "" };
+      setTempFilterObj(updatedFilter);
+    }
   };
+
+  const handleTempEmployeeChange = (event: SelectChangeEvent) => {
+    setTempSelectedEmployee(event.target.value);
+  };
+
+  const handleTempDepartmentChange = (event: SelectChangeEvent) => {
+    setTempSelectedDepartment(event.target.value);
+  };
+
+  const handleTempBranchChange = (event: SelectChangeEvent) => {
+    setTempSelectedBranch(event.target.value);
+  };
+
+  const [selectedReport, setSelectedReport] = useState<string>("individual");
+  const [isLoadingMonthly, setIsLoadingMonthly] = useState(false);
+
+  const [cumulativeDialog, setCumulativeDialog] = useState(false);
+  const [cumulativeSelectedEmps, setCumulativeSelectedEmps] = useState<
+    string[]
+  >([]);
+  const [cumulativeSearchTerm, setCumulativeSearchTerm] = useState("");
+  const [isLoadingCumulative, setIsLoadingCumulative] = useState(false);
+
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+
+  const [mobilePage, setMobilePage] = useState(0);
+  const [mobileRowsPerPage, setMobileRowsPerPage] = useState(10);
+
+  const handleMobilePageChange = (_event: unknown, newPage: number) => {
+    setMobilePage(newPage);
+  };
+
+  const handleMobileRowsPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setMobileRowsPerPage(parseInt(event.target.value, 10));
+    setMobilePage(0);
+  };
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncFingerprint = async () => {
+    if (!filterObj.startDate || !filterObj.endDate) {
+      toast.warning("Please select a From Date and To Date to sync.");
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const sDate = filterObj.startDate.split("T")[0];
+      const eDate = filterObj.endDate.split("T")[0];
+      const response = await syncFingerprintAttendance(sDate, eDate, loadingOn, loadingOff);
+      if (response && response.success) {
+        toast.success(response.message || "Fingerprint data synced successfully");
+        fetchAttendanceRecords(filterObj);
+      } else {
+        toast.error(response?.message || "Failed to sync fingerprint data");
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
+      toast.error("An error occurred during sync");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isTablet = useMediaQuery(theme.breakpoints.down("md"));
+
+  const getDepartmentDisplayName = useCallback(
+    (deptValue: string) => {
+      if (!departmentList || departmentList.length === 0) return deptValue;
+      const found = departmentList.find((d) => d.value === deptValue);
+      return found ? found.label : deptValue;
+    },
+    [departmentList],
+  );
 
   const fetchPunchDetails = useCallback(
     async (employee: AttendanceResult) => {
@@ -2676,7 +2757,14 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       );
       setStatsData(stats[0] || null);
       processDashboardData(finalRecords);
-      setEmployeeList(extractUniqueEmployees(finalRecords));
+      
+      const uniqueEmployees = finalRecords.reduce((acc: Array<{ id: string; name: string }>, record) => {
+        if (!acc.some((emp) => emp.id === record.fingerPrintEmpId)) {
+          acc.push({ id: record.fingerPrintEmpId, name: record.username });
+        }
+        return acc;
+      }, []);
+      setEmployeeList(uniqueEmployees);
     } catch (error) {
       console.error("Error fetching today's attendance:", error);
       setError("Failed to load today's attendance");
@@ -2685,8 +2773,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       setIsLoadingRecords(false);
       if (loadingOff) loadingOff();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingOn, loadingOff, showAllTabs, myFingerPrintId]);
+  }, [loadingOn, loadingOff, showAllTabs, myFingerPrintId, processDashboardData]);
 
   const fetchEmployeeSummary = useCallback(
     async (empId: string) => {
@@ -2873,7 +2960,14 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       );
       setStatsData(stats[0] || null);
       processDashboardData(records);
-      setEmployeeList(extractUniqueEmployees(records));
+      
+      const uniqueEmployees = records.reduce((acc: Array<{ id: string; name: string }>, record) => {
+        if (!acc.some((emp) => emp.id === record.fingerPrintEmpId)) {
+          acc.push({ id: record.fingerPrintEmpId, name: record.username });
+        }
+        return acc;
+      }, []);
+      setEmployeeList(uniqueEmployees);
     } catch (error) {
       console.error("Error downloading monthly data:", error);
       toast.error(
@@ -2883,7 +2977,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       setIsLoadingMonthly(false);
       if (loadingOff) loadingOff();
     }
-  }, [loadingOn, loadingOff, getDepartmentDisplayName, filterObj, employeeOptions, branchList]);
+  }, [loadingOn, loadingOff, getDepartmentDisplayName, filterObj, employeeOptions, branchList, processDashboardData]);
 
   const handleMonthlyClick = () => {
     downloadMonthlyData();
@@ -2894,27 +2988,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
     fetchTodayAttendance();
     fetchDefaultLeaves();
   }, [fetchDropdowns, fetchTodayAttendance, fetchDefaultLeaves]);
-
-  // Helper function to convert PickerValue to Date
-  const convertToDate = (value: PickerValue): Date | null => {
-    if (!value) return null;
-    if (value instanceof Date) return value;
-    if (typeof value === "object" && "toDate" in value) {
-      return (value as any).toDate();
-    }
-    return new Date(value as any);
-  };
-
-  const handleDateChange = (field: "startDate" | "endDate", value: PickerValue) => {
-    const dateValue = convertToDate(value);
-    if (dateValue) {
-      const updatedFilter = { ...filterObj, [field]: format(dateValue, "yyyy-MM-dd") };
-      setFilterObj(updatedFilter);
-    } else {
-      const updatedFilter = { ...filterObj, [field]: "" };
-      setFilterObj(updatedFilter);
-    }
-  };
 
   const closeDialog = () => {
     setDialog({
@@ -2933,10 +3006,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-  };
-
-  const handleEmployeeChange = (event: SelectChangeEvent) => {
-    setSelectedEmployee(event.target.value);
   };
 
   const handleReportClick = (reportType: string) => {
@@ -3068,8 +3137,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       ];
       const wsRows = Array.from(empMap.values()).map((row, index) => {
         const workingDays = totalDays - totalSundaysInMonth;
-        // If absent is not correctly populated by backend, you can dynamically calculate it as:
-        // const calculatedAbsent = Math.max(0, workingDays - row.present - row.approvedLeave);
         return {
           SNo: index + 1,
           "Employee ID": row.employeeId,
@@ -3306,9 +3373,9 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
         const dateStr = format(day, "yyyy-MM-dd");
         const record = records.find(r => {
           if (!r.LogDate) return false;
-          // LogDate might be ISO string or other format, safe parse:
           try {
             return format(new Date(r.LogDate), "yyyy-MM-dd") === dateStr;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           } catch (e) {
             return r.LogDate.startsWith(dateStr);
           }
@@ -3362,8 +3429,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
       const ws = XLSX.utils.json_to_sheet(exportData, { header: wsHeaders });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Individual Report");
-      
-
       
       XLSX.writeFile(
         wb,
@@ -3598,116 +3663,156 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
           </Box>
         )}
 
-        {isMobile ? (
-          <Box display="flex" alignItems="center" gap={0.5} flexWrap="nowrap" sx={{ flex: 1, minWidth: 0 }}>
-            <Box display="flex" alignItems="center" gap={0.5} sx={{ flex: 1, minWidth: 0 }}>
-              <Box display="flex" alignItems="center" sx={{ flex: 1, minWidth: 0, border: "1px solid #bdbdbd", borderRadius: "15px", height: 29, bgcolor: "white", px: 0.75, boxSizing: "border-box" }}>
-                <Typography sx={{ fontSize: "0.55rem", color: "text.secondary", mr: 0.25 }}>From</Typography>
-                <Box
-                  component="input"
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <TopFilterBar
+            dialogOpen={topFilterOpen}
+            onOpenDialog={handleOpenFilterDialog}
+            onCloseDialog={handleCancelFilterDialog}
+            onSearch={handleSearchFilters}
+          >
+            <Box display="flex" flexDirection="column" gap={2}>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                  From Date <span style={{ color: "red" }}>*</span>
+                </Typography>
+                <TextField
                   type="date"
-                  value={filterObj.startDate ? filterObj.startDate.split("T")[0] : ""}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleDateChange("startDate", e.target.value ? new Date(e.target.value) : null)}
-                  sx={{
-                    fontSize: "0.6rem",
-                    padding: 0,
-                    border: "none",
-                    outline: "none",
-                    background: "transparent",
-                    color: "#333",
-                    flex: 1,
-                    minWidth: 0,
-                    "&::-webkit-calendar-picker-indicator": {
-                      marginLeft: 0,
-                      padding: 0,
-                    },
-                  }}
+                  fullWidth
+                  size="small"
+                  value={tempFilterObj.startDate ? tempFilterObj.startDate.split("T")[0] : ""}
+                  onChange={(e) => handleTempDateChange("startDate", e.target.value ? new Date(e.target.value) : null)}
+                  slotProps={{ inputLabel: { shrink: true } }}
                 />
               </Box>
-              <Box display="flex" alignItems="center" sx={{ flex: 1, minWidth: 0, border: "1px solid #bdbdbd", borderRadius: "15px", height: 29, bgcolor: "white", px: 0.75, boxSizing: "border-box" }}>
-                <Typography sx={{ fontSize: "0.55rem", color: "text.secondary", mr: 0.25 }}>To</Typography>
-                <Box
-                  component="input"
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                  To Date <span style={{ color: "red" }}>*</span>
+                </Typography>
+                <TextField
                   type="date"
-                  value={filterObj.endDate ? filterObj.endDate.split("T")[0] : ""}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleDateChange("endDate", e.target.value ? new Date(e.target.value) : null)}
-                  sx={{
-                    fontSize: "0.6rem",
-                    padding: 0,
-                    border: "none",
-                    outline: "none",
-                    background: "transparent",
-                    color: "#333",
-                    flex: 1,
-                    minWidth: 0,
-                    "&::-webkit-calendar-picker-indicator": {
-                      marginLeft: 0,
-                      padding: 0,
-                    },
-                  }}
+                  fullWidth
+                  size="small"
+                  value={tempFilterObj.endDate ? tempFilterObj.endDate.split("T")[0] : ""}
+                  onChange={(e) => handleTempDateChange("endDate", e.target.value ? new Date(e.target.value) : null)}
+                  slotProps={{ inputLabel: { shrink: true } }}
                 />
               </Box>
+
+              {activeTab !== 0 && (
+                <>
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                      Employee
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <Select
+                        value={tempSelectedEmployee}
+                        onChange={handleTempEmployeeChange}
+                        MenuProps={{ autoFocus: false }}
+                      >
+                        <ListSubheader sx={{ pt: 1, pb: 1, zIndex: 2, bgcolor: 'background.paper', lineHeight: 'normal' }}>
+                          <TextField
+                            size="small"
+                            autoFocus
+                            placeholder="Search employee..."
+                            fullWidth
+                            value={empSearchTerm}
+                            onChange={(e) => setEmpSearchTerm(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Escape') e.stopPropagation();
+                            }}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <Search fontSize="small" />
+                                </InputAdornment>
+                              )
+                            }}
+                          />
+                        </ListSubheader>
+                        <MenuItem value="">
+                          <em>All Employees</em>
+                        </MenuItem>
+                        {filteredEmployeeOptions
+                          .filter((emp) => emp.EmpName.toLowerCase().includes(empSearchTerm.toLowerCase()))
+                          .map((emp) => (
+                          <MenuItem key={emp.EmpId} value={emp.fingerPrintEmpId}>
+                            {emp.EmpName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                      Department
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <Select
+                        value={tempSelectedDepartment}
+                        onChange={handleTempDepartmentChange}
+                        MenuProps={{ autoFocus: false }}
+                      >
+                        <MenuItem value="">
+                          <em>All Departments</em>
+                        </MenuItem>
+                        {uniqueDepartments.map((dept) => (
+                          <MenuItem key={dept} value={dept}>
+                            {dept}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: "block" }}>
+                      Branch
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                      <Select
+                        value={tempSelectedBranch}
+                        onChange={handleTempBranchChange}
+                        MenuProps={{ autoFocus: false }}
+                      >
+                        <MenuItem value="">
+                          <em>All Branches</em>
+                        </MenuItem>
+                        {filteredBranchList.map((branch) => (
+                          <MenuItem key={branch.BranchId} value={branch.BranchId.toString()}>
+                            {branch.BranchName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                </>
+              )}
             </Box>
-            <Button
-              onClick={() => {
-                fetchAttendanceRecords(filterObj);
-                setAppliedEmployee(selectedEmployee);
-                setAppliedDepartment(selectedDepartment);
-                setAppliedBranch(selectedBranch);
-              }}
-              variant="contained"
-              size="small"
+          </TopFilterBar>
+
+          <Tooltip title="Reset Filters & Refresh">
+            <IconButton
+              onClick={handleResetFilters}
               sx={{
-                bgcolor: "primary.main",
-                color: "white",
-                flexShrink: 0,
-                height: 29,
-                fontSize: "0.6rem",
-                minWidth: "auto",
-                px: 1.5,
-                textTransform: "none",
-                fontWeight: "bold",
-                "&:hover": { bgcolor: "primary.dark" },
+                backgroundColor: "#ffffff",
+                border: "1.5px solid #000000",
+                borderRadius: "50%",
+                width: 36,
+                height: 36,
+                padding: 0,
+                "&:hover": {
+                  backgroundColor: "#f5f5f5",
+                  border: "1.5px solid #000000",
+                },
+                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
               }}
             >
-              Search
-            </Button>
-          </Box>
-        ) : (
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <Box display="flex" alignItems="center" gap={1} flexWrap="nowrap">
-              <DatePicker
-                label="From"
-                format="dd-MM-yyyy"
-                value={filterObj.startDate ? new Date(filterObj.startDate) : null}
-                onChange={(newValue) => handleDateChange("startDate", newValue)}
-                slotProps={{ textField: { size: "small", sx: { width: 130 } } }}
-              />
-              <Typography variant="body2" color="textSecondary">to</Typography>
-              <DatePicker
-                label="To"
-                format="dd-MM-yyyy"
-                value={filterObj.endDate ? new Date(filterObj.endDate) : null}
-                onChange={(newValue) => handleDateChange("endDate", newValue)}
-                slotProps={{ textField: { size: "small", sx: { width: 130 } } }}
-              />
-              <Button
-                onClick={() => {
-                  fetchAttendanceRecords(filterObj);
-                  setAppliedEmployee(selectedEmployee);
-                  setAppliedDepartment(selectedDepartment);
-                  setAppliedBranch(selectedBranch);
-                }}
-                variant="contained"
-                color="primary"
-                size="small"
-                sx={{ height: 40, textTransform: "none", fontWeight: "bold" }}
-              >
-                Search
-              </Button>
-            </Box>
-          </LocalizationProvider>
-        )}
+              <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* TAB 0: Dashboard */}
@@ -3786,6 +3891,26 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
             spacing={isMobile ? 0.5 : 1}
             sx={{ flexWrap: "wrap", gap: isMobile ? 0.5 : 1, display: isMobile ? 'none' : 'flex' }}
           >
+            {showSyncButton && (
+              <Button
+                size={isMobile ? "small" : "medium"}
+                variant="contained"
+                color="primary"
+                startIcon={isSyncing ? <CircularProgress size={16} color="inherit" /> : <Refresh sx={isMobile ? { fontSize: "1.1rem !important" } : {}} />}
+                onClick={handleSyncFingerprint}
+                disabled={isSyncing}
+                sx={{ 
+                  textTransform: "none", 
+                  whiteSpace: "pre-line", 
+                  textAlign: "center", 
+                  lineHeight: 1.1,
+                  ...(isMobile && { fontSize: "0.6rem", padding: "4px 8px", minWidth: 80 }),
+                  display: isMobile ? 'none' : 'inline-flex',
+                }}
+              >
+                {isMobile ? "SYNC" : "Sync"}
+              </Button>
+            )}
             <Button
               size={isMobile ? "small" : "medium"}
               variant={
@@ -3886,95 +4011,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
           }}
         >
           <Box sx={{ flex: isMobile ? "none" : 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 1 : 2, width: isMobile ? "100%" : "auto" }}>
-            <FormControl sx={{ minWidth: isMobile ? 120 : 300, width: isMobile ? "100%" : 400, display: (isMobile && !showAllTabs) ? 'none' : 'flex' }} size="small">
-              <InputLabel id="employee-select-label" sx={isMobile ? { fontSize: "0.75rem", lineHeight: 0.8, top: -7 } : {}}>Select Employee</InputLabel>
-              <Select
-                labelId="employee-select-label"
-                id="employee-select"
-                value={selectedEmployee}
-                label="Select Employee"
-                onChange={handleEmployeeChange}
-                MenuProps={{ autoFocus: false }}
-                sx={isMobile ? { fontSize: "0.75rem", height: 26, "& .MuiSelect-select": { py: 0, display: "flex", alignItems: "center" } } : {}}
-              >
-                <ListSubheader sx={{ pt: 1, pb: 1, zIndex: 2, bgcolor: 'background.paper', lineHeight: 'normal' }}>
-                  <TextField
-                    size="small"
-                    autoFocus
-                    placeholder="Search employee..."
-                    fullWidth
-                    value={empSearchTerm}
-                    onChange={(e) => setEmpSearchTerm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Escape') {
-                        e.stopPropagation();
-                      }
-                    }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Search fontSize="small" />
-                        </InputAdornment>
-                      )
-                    }}
-                  />
-                </ListSubheader>
-                <MenuItem value="">
-                  <em>All Employees</em>
-                </MenuItem>
-                {filteredEmployeeOptions
-                  .filter((emp) => emp.EmpName.toLowerCase().includes(empSearchTerm.toLowerCase()))
-                  .map((emp) => (
-                  <MenuItem key={emp.EmpId} value={emp.fingerPrintEmpId} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
-                    {emp.EmpName}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl sx={{ minWidth: isMobile ? 120 : 200, width: isMobile ? "100%" : 250, display: (isMobile && !showAllTabs) ? 'none' : 'flex' }} size="small">
-              <InputLabel id="department-select-label" sx={isMobile ? { fontSize: "0.75rem", lineHeight: 0.8, top: -7 } : {}}>Select Department</InputLabel>
-              <Select
-                labelId="department-select-label"
-                id="department-select"
-                value={selectedDepartment}
-                label="Select Department"
-                onChange={handleDepartmentChange}
-                MenuProps={{ autoFocus: false }}
-                sx={isMobile ? { fontSize: "0.75rem", height: 26, "& .MuiSelect-select": { py: 0, display: "flex", alignItems: "center" } } : {}}
-              >
-                <MenuItem value="">
-                  <em>All Departments</em>
-                </MenuItem>
-                {uniqueDepartments.map((dept) => (
-                  <MenuItem key={dept} value={dept} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
-                    {dept}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl sx={{ minWidth: isMobile ? 120 : 200, width: isMobile ? "100%" : 250, display: (isMobile && !showAllTabs) ? 'none' : 'flex' }} size="small">
-              <InputLabel id="branch-select-label" sx={isMobile ? { fontSize: "0.75rem", lineHeight: 0.8, top: -7 } : {}}>Select Branch</InputLabel>
-              <Select
-                labelId="branch-select-label"
-                id="branch-select"
-                value={selectedBranch}
-                label="Select Branch"
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                MenuProps={{ autoFocus: false }}
-                sx={isMobile ? { fontSize: "0.75rem", height: 26, "& .MuiSelect-select": { py: 0, display: "flex", alignItems: "center" } } : {}}
-              >
-                <MenuItem value="">
-                  <em>All Branches</em>
-                </MenuItem>
-                {filteredBranchList.map((branch) => (
-                  <MenuItem key={branch.BranchId} value={branch.BranchId.toString()} sx={isMobile ? { fontSize: "0.8rem" } : {}}>
-                    {branch.BranchName}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <Box sx={{ display: "flex", gap: 1, justifyContent: isMobile ? "center" : "flex-start", flexWrap: "wrap" }}>
               <Chip 
                 label={`Present: ${searchedRecords.filter(r => r.AttendanceStatus === 'P').length}`} 
@@ -3996,26 +4032,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
               />
             </Box>
           </Box>
-          {showSyncButton && (
-            <Button
-              size={isMobile ? "small" : "medium"}
-              variant="contained"
-              color="primary"
-              startIcon={isSyncing ? <CircularProgress size={16} color="inherit" /> : <Refresh sx={isMobile ? { fontSize: "1.1rem !important" } : {}} />}
-              onClick={handleSyncFingerprint}
-              disabled={isSyncing}
-              sx={{ 
-                textTransform: "none", 
-                whiteSpace: "pre-line", 
-                textAlign: "center", 
-                lineHeight: 1.1,
-                ...(isMobile && { fontSize: "0.6rem", padding: "4px 8px", minWidth: 80 }),
-                display: isMobile ? 'none' : 'inline-flex',
-              }}
-            >
-              {isMobile ? "SYNC" : "Sync"}
-            </Button>
-          )}
           <Button
             size={isMobile ? "small" : "medium"}
             variant="contained"
@@ -4735,7 +4751,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                     })
                     .every((e) => cumulativeSelectedEmps.includes(e.id))
                 }
-                onChange={(e) => {
+                onChange={(_e) => {
                   const filtered = employeeList.filter((emp) => {
                     const term = cumulativeSearchTerm.toLowerCase();
                     return (
@@ -4744,7 +4760,7 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
                       emp.id.toLowerCase().includes(term)
                     );
                   });
-                  if (e.target.checked) {
+                  if (_e.target.checked) {
                     const newIds = filtered.map((emp) => emp.id);
                     setCumulativeSelectedEmps((prev) =>
                       Array.from(new Set([...prev, ...newIds])),

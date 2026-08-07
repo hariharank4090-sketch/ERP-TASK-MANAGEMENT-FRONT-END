@@ -22,6 +22,7 @@ interface AppDialogProps {
   fullWidth?: boolean;
   isSubmit?: boolean;
   extraActions?: React.ReactNode;
+  disableBackdropClick?: boolean;
 }
 
 const AppDialog: React.FC<AppDialogProps> = ({
@@ -36,11 +37,18 @@ const AppDialog: React.FC<AppDialogProps> = ({
   fullWidth = true,
   isSubmit = false,
   extraActions,
+  disableBackdropClick = false,
 }) => {
+  const handleDialogClose = (_event: object, reason: string) => {
+    if (disableBackdropClick && (reason === "backdropClick" || reason === "escapeKeyDown")) {
+      return;
+    }
+    onClose();
+  };
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleDialogClose}
       fullWidth={fullWidth}
       maxWidth={maxWidth}
       PaperProps={{

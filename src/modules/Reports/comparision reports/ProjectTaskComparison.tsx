@@ -2968,7 +2968,6 @@ const ProjectTaskComparison = () => {
               onOpenDialog={() => setFilterDialogOpen(true)}
               onCloseDialog={() => {
                 setFilterDialogOpen(false);
-                handleSearch();
               }}
               onSearch={handleSearch}
             >

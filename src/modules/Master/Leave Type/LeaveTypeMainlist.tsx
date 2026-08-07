@@ -4,12 +4,16 @@ import {
   Tooltip, 
   Alert,
   Box,
-  Typography
+  Typography,
+  FormControl,
+  InputLabel
 } from "@mui/material";
-import { Edit, Delete } from "@mui/icons-material";
+import { Edit, Delete, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
 
 import DataTable, { createCol } from "../../../Components/dataTable";
+import TopFilterBar from "../../../Components/TopFilterBar";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import { LeaveTypeDialog } from "./LeaveTypeForm";
 import { 
   getleavetype, 
@@ -40,6 +44,15 @@ const LeaveTypeMainPage: React.FC<PageProps> = ({
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoadingLeaveTypes, setIsLoadingLeaveTypes] = useState(false);
+
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState<number | "ALL">("ALL");
+  const [appliedLeaveType, setAppliedLeaveType] = useState<number | "ALL">("ALL");
+
+  const numEq = (a: any, b: any) => {
+    if (a == null || b == null) return false;
+    return Number(a) === Number(b);
+  };
 
   /** Fetch Leave Types List */
   const fetchLeaveTypeList = async () => {
@@ -135,16 +148,33 @@ const LeaveTypeMainPage: React.FC<PageProps> = ({
     }
   };
 
+  const uniqueLeaveTypes = useMemo(() => {
+    const map = new Map();
+    leaveTypes.forEach(p => {
+      if (p.Id && p.LeaveType) {
+        map.set(Number(p.Id), p.LeaveType);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ Id: id, LeaveType: name }));
+  }, [leaveTypes]);
+
   // Filter data based on search term
   const filteredLeaveTypes = useMemo(() => {
-    if (!searchTerm.trim()) return leaveTypes;
+    let filtered = leaveTypes;
+
+    // Leave Type filter
+    if (appliedLeaveType !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Id, appliedLeaveType));
+    }
+
+    if (!searchTerm.trim()) return filtered;
 
     const term = searchTerm.toLowerCase();
-    return leaveTypes.filter((item) => {
+    return filtered.filter((item) => {
       const leaveTypeName = item.LeaveType?.toLowerCase() || '';
       return leaveTypeName.includes(term);
     });
-  }, [searchTerm, leaveTypes]);
+  }, [searchTerm, leaveTypes, appliedLeaveType]);
 
   return (
     <>
@@ -171,6 +201,73 @@ const LeaveTypeMainPage: React.FC<PageProps> = ({
           setDialog({ ...dialog, createDialog: true });
         }}
         createButtonColor="#c99f65"
+        headerActions={
+          <Box display="flex" alignItems="center" gap={1}>
+            <TopFilterBar
+              onSearch={() => {
+                setAppliedLeaveType(leaveTypeFilter);
+              }}
+              dialogOpen={filterDialogOpen}
+              onOpenDialog={() => {
+                setLeaveTypeFilter(appliedLeaveType);
+                setFilterDialogOpen(true);
+              }}
+              onCloseDialog={() => {
+                setLeaveTypeFilter(appliedLeaveType);
+                setFilterDialogOpen(false);
+              }}
+            >
+              <Box display="flex" flexDirection="column" gap={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="leavetype-filter-label">Leave Type</InputLabel>
+                  <SearchableSelect
+                    labelId="leavetype-filter-label"
+                    label="Leave Type"
+                    value={leaveTypeFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setLeaveTypeFilter(val);
+                    }}
+                    options={uniqueLeaveTypes.map(p => ({
+                      value: p.Id,
+                      label: p.LeaveType
+                    }))}
+                    allOptionLabel="All Leave Types"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search leave type..."
+                  />
+                </FormControl>
+              </Box>
+            </TopFilterBar>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={() => {
+                  setSearchTerm("");
+                  setLeaveTypeFilter("ALL");
+                  setAppliedLeaveType("ALL");
+                  
+                  fetchLeaveTypeList();
+                  toast.info("Page filters reset and refreshed");
+                }}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        }
         showMasterTableHeader={false}
         columns={[
           createCol("LeaveType", "string", "Leave Type"),

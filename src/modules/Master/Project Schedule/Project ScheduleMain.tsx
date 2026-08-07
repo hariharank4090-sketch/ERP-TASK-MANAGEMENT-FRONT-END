@@ -15,12 +15,17 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow} from "@mui/material";
-import { Edit, Delete, Person, History } from "@mui/icons-material";
+  TableRow,
+  FormControl,
+  InputLabel
+} from "@mui/material";
+import { Edit, Delete, Person, History, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
 
 import DataTable, { createCol } from "../../../Components/dataTable";
+import TopFilterBar from "../../../Components/TopFilterBar";
+import SearchableSelect from "../../../Components/SearchableSelect";
 import { ProjectScheduleDialog } from "./Project Scheduleform";
 import AssignTask from "../Assigntask.form/AssignTask.form";
 
@@ -53,7 +58,17 @@ interface ProjectScheduleDisplay extends projectscheduleData, Record<string, unk
   expanded?: boolean;
 }
 
-// ─── Date helpers (module-level, no closure issues) ───────────────────────────
+// ─── Helpers (module-level, no closure issues) ───────────────────────────
+
+const parseSchType = (val: any): number | undefined => {
+  if (val == null) return undefined;
+  const str = String(val).trim().toLowerCase().replace(/^"|"$/g, '');
+  if (str === "1" || str === "onetime" || str === "one-time" || str === "one time") return 1;
+  if (str === "2" || str === "repetitive") return 2;
+  const num = Number(str);
+  if (!isNaN(num) && num !== 0) return num;
+  return undefined;
+};
 
 /**
  * Converts any date value to "YYYY-MM-DD" for passing to AssignTask or
@@ -181,6 +196,13 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   const [error,            setError]             = useState<string | null>(null);
   const [,          setLoading]           = useState(false);
 
+  const [filteredTasks,      setFilteredTasks]      = useState<taskDropdown[]>([]);
+  const [taskTypes,          setTaskTypes]          = useState<taskTypeDropdown[]>([]);
+  const [projects,           setProjects]           = useState<ProjectDropdown[]>([]);
+  const [schedulePlans,      setSchedulePlans]      = useState<schedulePlanDropdown[]>([]);
+  const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(false);
+  const [isLoadingTaskTypes, setIsLoadingTaskTypes] = useState(false);
+
   const [assignTaskOpen,                setAssignTaskOpen]                = useState(false);
   const [assignTaskLoading,             setAssignTaskLoading]             = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,12 +212,250 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   const [extensionsData, setExtensionsData] = useState<ProjectScheduleExtension[]>([]);
   const [selectedScheduleForExtensions, setSelectedScheduleForExtensions] = useState<ProjectScheduleDisplay | null>(null);
 
-  const [projects,       setProjects]       = useState<ProjectDropdown[]>([]);
-  const [filteredTasks,  setFilteredTasks]  = useState<taskDropdown[]>([]);
-  const [taskTypes,      setTaskTypes]      = useState<taskTypeDropdown[]>([]);
-  const [schedulePlans,  setSchedulePlans]  = useState<schedulePlanDropdown[]>([]);
-  const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(false);
-  const [isLoadingTaskTypes, setIsLoadingTaskTypes] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [projectIdFilter, setProjectIdFilter] = useState<number | "ALL">("ALL");
+  const [taskTypeIdFilter, setTaskTypeIdFilter] = useState<number | "ALL">("ALL");
+  const [taskIdFilter, setTaskIdFilter] = useState<number | "ALL">("ALL");
+  const [schTypeFilter, setSchTypeFilter] = useState<number | "ALL">("ALL");
+  const [planTypeFilter, setPlanTypeFilter] = useState<string | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] = useState<number | "ALL">("ALL");
+
+  const [appliedProjectId, setAppliedProjectId] = useState<number | "ALL">("ALL");
+  const [appliedTaskTypeId, setAppliedTaskTypeId] = useState<number | "ALL">("ALL");
+  const [appliedTaskId, setAppliedTaskId] = useState<number | "ALL">("ALL");
+  const [appliedSchType, setAppliedSchType] = useState<number | "ALL">("ALL");
+  const [appliedPlanType, setAppliedPlanType] = useState<string | "ALL">("ALL");
+  const [appliedStatus, setAppliedStatus] = useState<number | "ALL">("ALL");
+
+  const numEq = (a: any, b: any) => {
+    if (a == null || b == null) return false;
+    return Number(a) === Number(b);
+  };
+
+  // Get unique options from schedules data for dropdowns
+  const scheduleTypeOptions = [
+    { value: 1, label: "One-Time" },
+    { value: 2, label: "Repetitive" }
+  ];
+
+  const statusOptions = [
+    { value: 1, label: "Inprocess" },
+    { value: 2, label: "Pending" },
+    { value: 3, label: "Completed" }
+  ];
+
+  const uniquePlanTypes = useMemo(() => {
+    const map = new Set<string>();
+    schedules.forEach(s => {
+      if (s.planType) map.add(s.planType);
+    });
+    return Array.from(map).map(pt => ({ value: pt, label: pt }));
+  }, [schedules]);
+  const uniqueProjects = useMemo(() => {
+    const map = new Map();
+    schedules.forEach(s => {
+      if (s.Project_Id && s.projectName) {
+        map.set(Number(s.Project_Id), s.projectName);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ Project_Id: id, Project_Name: name }));
+  }, [schedules]);
+
+  const uniqueTaskTypes = useMemo(() => {
+    const map = new Map();
+    schedules.forEach(s => {
+      if (s.taskTypeId && s.taskType) {
+        map.set(Number(s.taskTypeId), s.taskType);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ Task_Type_Id: id, Task_Type: name }));
+  }, [schedules]);
+
+  const uniqueTasks = useMemo(() => {
+    const map = new Map();
+    schedules.forEach(s => {
+      if (s.taskId && s.taskName) {
+        map.set(Number(s.taskId), s.taskName);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ Task_Id: id, Task_Name: name }));
+  }, [schedules]);
+
+  // Cascading logic - Fully bi-directional filtering
+  const getFilteredProjectsForDropdown = useMemo(() => {
+    const validProjectIds = new Set(
+      schedules
+        .filter(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return (
+            (taskTypeIdFilter === "ALL" || numEq(item.taskTypeId, taskTypeIdFilter)) &&
+            (taskIdFilter === "ALL" || numEq(item.taskId, taskIdFilter)) &&
+            (schTypeFilter === "ALL" || numEq(st, schTypeFilter)) &&
+            (planTypeFilter === "ALL" || item.planType === planTypeFilter) &&
+            (statusFilter === "ALL" || numEq(item.schStatus, statusFilter))
+          );
+        })
+        .map(item => Number(item.Project_Id))
+        .filter(id => !isNaN(id) && id !== 0)
+    );
+    return uniqueProjects.filter(p => validProjectIds.has(p.Project_Id));
+  }, [uniqueProjects, schedules, taskTypeIdFilter, taskIdFilter, schTypeFilter, planTypeFilter, statusFilter]);
+
+  const getFilteredTaskTypesForDropdown = useMemo(() => {
+    const validTaskTypeIds = new Set(
+      schedules
+        .filter(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return (
+            (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
+            (taskIdFilter === "ALL" || numEq(item.taskId, taskIdFilter)) &&
+            (schTypeFilter === "ALL" || numEq(st, schTypeFilter)) &&
+            (planTypeFilter === "ALL" || item.planType === planTypeFilter) &&
+            (statusFilter === "ALL" || numEq(item.schStatus, statusFilter))
+          );
+        })
+        .map(item => Number(item.taskTypeId))
+        .filter(id => !isNaN(id) && id !== 0)
+    );
+    return uniqueTaskTypes.filter(tg => validTaskTypeIds.has(tg.Task_Type_Id));
+  }, [uniqueTaskTypes, schedules, projectIdFilter, taskIdFilter, schTypeFilter, planTypeFilter, statusFilter]);
+
+  const getFilteredTasksForDropdown = useMemo(() => {
+    const validTaskIds = new Set(
+      schedules
+        .filter(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return (
+            (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
+            (taskTypeIdFilter === "ALL" || numEq(item.taskTypeId, taskTypeIdFilter)) &&
+            (schTypeFilter === "ALL" || numEq(st, schTypeFilter)) &&
+            (planTypeFilter === "ALL" || item.planType === planTypeFilter) &&
+            (statusFilter === "ALL" || numEq(item.schStatus, statusFilter))
+          );
+        })
+        .map(item => Number(item.taskId))
+        .filter(id => !isNaN(id) && id !== 0)
+    );
+    return uniqueTasks.filter(t => validTaskIds.has(t.Task_Id));
+  }, [uniqueTasks, schedules, projectIdFilter, taskTypeIdFilter, schTypeFilter, planTypeFilter, statusFilter]);
+
+  const getFilteredSchTypesForDropdown = useMemo(() => {
+    if (projectIdFilter === "ALL" && taskTypeIdFilter === "ALL" && taskIdFilter === "ALL") {
+      return scheduleTypeOptions;
+    }
+    const validSchTypes = new Set(
+      schedules
+        .filter(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return (
+            (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
+            (taskTypeIdFilter === "ALL" || numEq(item.taskTypeId, taskTypeIdFilter)) &&
+            (taskIdFilter === "ALL" || numEq(item.taskId, taskIdFilter))
+          );
+        })
+        .map(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return st;
+        })
+        .filter((id): id is number => id !== undefined && !isNaN(id) && id !== 0)
+    );
+    return scheduleTypeOptions.filter(st => validSchTypes.has(st.value));
+  }, [scheduleTypeOptions, schedules, projectIdFilter, taskTypeIdFilter, taskIdFilter]);
+
+  const getFilteredPlanTypesForDropdown = useMemo(() => {
+    const validPlanTypes = new Set(
+      schedules
+        .filter(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return (
+            (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
+            (taskTypeIdFilter === "ALL" || numEq(item.taskTypeId, taskTypeIdFilter)) &&
+            (taskIdFilter === "ALL" || numEq(item.taskId, taskIdFilter)) &&
+            (schTypeFilter === "ALL" || numEq(st, schTypeFilter)) &&
+            (statusFilter === "ALL" || numEq(item.schStatus, statusFilter))
+          );
+        })
+        .map(item => item.planType)
+        .filter(pt => pt)
+    );
+    return uniquePlanTypes.filter(pt => validPlanTypes.has(pt.value));
+  }, [uniquePlanTypes, schedules, projectIdFilter, taskTypeIdFilter, taskIdFilter, schTypeFilter, statusFilter]);
+
+  const getFilteredStatusForDropdown = useMemo(() => {
+    const validStatuses = new Set(
+      schedules
+        .filter(item => {
+          let st = parseSchType(item.schType);
+          if (st === undefined) {
+            st = (Number(item.schPlanId) === 5) ? 1 : 2;
+          }
+          return (
+            (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
+            (taskTypeIdFilter === "ALL" || numEq(item.taskTypeId, taskTypeIdFilter)) &&
+            (taskIdFilter === "ALL" || numEq(item.taskId, taskIdFilter)) &&
+            (schTypeFilter === "ALL" || numEq(st, schTypeFilter)) &&
+            (planTypeFilter === "ALL" || item.planType === planTypeFilter)
+          );
+        })
+        .map(item => Number(item.schStatus))
+        .filter(id => !isNaN(id) && id !== 0)
+    );
+    return statusOptions.filter(st => validStatuses.has(st.value));
+  }, [statusOptions, schedules, projectIdFilter, taskTypeIdFilter, taskIdFilter, schTypeFilter, planTypeFilter]);
+
+  useEffect(() => {
+    if (projectIdFilter !== "ALL") {
+      const isValid = getFilteredProjectsForDropdown.some(p => numEq(p.Project_Id, projectIdFilter));
+      if (!isValid) setProjectIdFilter("ALL");
+    }
+
+    if (taskTypeIdFilter !== "ALL") {
+      const isValid = getFilteredTaskTypesForDropdown.some(t => numEq(t.Task_Type_Id, taskTypeIdFilter));
+      if (!isValid) setTaskTypeIdFilter("ALL");
+    }
+
+    if (taskIdFilter !== "ALL") {
+      const isValid = getFilteredTasksForDropdown.some(t => numEq(t.Task_Id, taskIdFilter));
+      if (!isValid) setTaskIdFilter("ALL");
+    }
+
+    if (schTypeFilter !== "ALL") {
+      const isValid = getFilteredSchTypesForDropdown.some(st => numEq(st.value, schTypeFilter));
+      if (!isValid) setSchTypeFilter("ALL");
+    }
+
+    if (planTypeFilter !== "ALL") {
+      const isValid = getFilteredPlanTypesForDropdown.some(pt => pt.value === planTypeFilter);
+      if (!isValid) setPlanTypeFilter("ALL");
+    }
+
+    if (statusFilter !== "ALL") {
+      const isValid = getFilteredStatusForDropdown.some(st => numEq(st.value, statusFilter));
+      if (!isValid) setStatusFilter("ALL");
+    }
+  }, [
+    projectIdFilter, taskTypeIdFilter, taskIdFilter, schTypeFilter, planTypeFilter, statusFilter, schedules,
+    getFilteredProjectsForDropdown, getFilteredTaskTypesForDropdown, getFilteredTasksForDropdown,
+    getFilteredSchTypesForDropdown, getFilteredPlanTypesForDropdown, getFilteredStatusForDropdown
+  ]);
 
   const fetchTasksForProject = async (projectId: number) => {
     if (!projectId || projectId === 0) { setFilteredTasks([]); return; }
@@ -515,15 +775,53 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   };
 
   const filteredSchedules = useMemo(() => {
-    if (!searchTerm.trim()) return schedules;
+    let filtered = schedules;
+
+    // Project filter
+    if (appliedProjectId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.Project_Id, appliedProjectId));
+    }
+
+    // Task Type filter
+    if (appliedTaskTypeId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.taskTypeId, appliedTaskTypeId));
+    }
+
+    // Task filter
+    if (appliedTaskId !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.taskId, appliedTaskId));
+    }
+
+    // Schedule Type filter
+    if (appliedSchType !== "ALL") {
+      filtered = filtered.filter(item => {
+        let st = parseSchType(item.schType);
+        if (st === null) {
+          st = (Number(item.schPlanId) === 5) ? 1 : 2;
+        }
+        return numEq(st, appliedSchType);
+      });
+    }
+
+    // Plan Type filter
+    if (appliedPlanType !== "ALL") {
+      filtered = filtered.filter(item => item.planType === appliedPlanType);
+    }
+
+    // Status filter
+    if (appliedStatus !== "ALL") {
+      filtered = filtered.filter(item => numEq(item.schStatus, appliedStatus));
+    }
+
+    if (!searchTerm.trim()) return filtered;
     const term = searchTerm.toLowerCase();
-    return schedules.filter(item =>
+    return filtered.filter(item =>
       item.schNo?.toLowerCase().includes(term)       ||
       item.taskName?.toLowerCase().includes(term)    ||
       item.taskType?.toLowerCase().includes(term)    ||
       item.projectName?.toLowerCase().includes(term)
     );
-  }, [searchTerm, schedules]);
+  }, [searchTerm, schedules, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedSchType, appliedPlanType, appliedStatus]);
 
   const formatTimeTo12Hour = (timeString: string) => {
     if (!timeString) return "-";
@@ -564,6 +862,186 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
         headerTitle="Project Schedule Master"
         EnableSerialNumber
         dataArray={filteredSchedules}
+        headerActions={
+          <Box display="flex" alignItems="center" gap={1}>
+            <TopFilterBar
+              onSearch={() => {
+                setAppliedProjectId(projectIdFilter);
+                setAppliedTaskTypeId(taskTypeIdFilter);
+                setAppliedTaskId(taskIdFilter);
+                setAppliedSchType(schTypeFilter);
+                setAppliedPlanType(planTypeFilter);
+                setAppliedStatus(statusFilter);
+              }}
+              dialogOpen={filterDialogOpen}
+              onOpenDialog={() => {
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setTaskIdFilter(appliedTaskId);
+                setSchTypeFilter(appliedSchType);
+                setPlanTypeFilter(appliedPlanType);
+                setStatusFilter(appliedStatus);
+                setFilterDialogOpen(true);
+              }}
+              onCloseDialog={() => {
+                setProjectIdFilter(appliedProjectId);
+                setTaskTypeIdFilter(appliedTaskTypeId);
+                setTaskIdFilter(appliedTaskId);
+                setSchTypeFilter(appliedSchType);
+                setPlanTypeFilter(appliedPlanType);
+                setStatusFilter(appliedStatus);
+                setFilterDialogOpen(false);
+              }}
+            >
+              <Box display="flex" flexDirection="column" gap={2}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="project-filter-label">Project</InputLabel>
+                  <SearchableSelect
+                    labelId="project-filter-label"
+                    label="Project"
+                    value={projectIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setProjectIdFilter(val);
+                    }}
+                    options={getFilteredProjectsForDropdown.map(p => ({
+                      value: p.Project_Id,
+                      label: p.Project_Name
+                    }))}
+                    allOptionLabel="All Projects"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search project..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="task-type-filter-label">Task Type</InputLabel>
+                  <SearchableSelect
+                    labelId="task-type-filter-label"
+                    label="Task Type"
+                    value={taskTypeIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setTaskTypeIdFilter(val);
+                    }}
+                    options={getFilteredTaskTypesForDropdown.map(t => ({
+                      value: t.Task_Type_Id,
+                      label: t.Task_Type
+                    }))}
+                    allOptionLabel="All Task Types"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search task type..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="task-filter-label">Task</InputLabel>
+                  <SearchableSelect
+                    labelId="task-filter-label"
+                    label="Task"
+                    value={taskIdFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setTaskIdFilter(val);
+                    }}
+                    options={getFilteredTasksForDropdown.map(t => ({
+                      value: t.Task_Id,
+                      label: t.Task_Name
+                    }))}
+                    allOptionLabel="All Tasks"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search task..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="sch-type-filter-label">Schedule Type</InputLabel>
+                  <SearchableSelect
+                    labelId="sch-type-filter-label"
+                    label="Schedule Type"
+                    value={schTypeFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setSchTypeFilter(val);
+                    }}
+                    options={getFilteredSchTypesForDropdown}
+                    allOptionLabel="All Schedule Types"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search schedule type..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="plan-type-filter-label">Plan Type</InputLabel>
+                  <SearchableSelect
+                    labelId="plan-type-filter-label"
+                    label="Plan Type"
+                    value={planTypeFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setPlanTypeFilter(val);
+                    }}
+                    options={getFilteredPlanTypesForDropdown}
+                    allOptionLabel="All Plan Types"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search plan type..."
+                  />
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="status-filter-label">Status</InputLabel>
+                  <SearchableSelect
+                    labelId="status-filter-label"
+                    label="Status"
+                    value={statusFilter}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setStatusFilter(val);
+                    }}
+                    options={getFilteredStatusForDropdown}
+                    allOptionLabel="All Statuses"
+                    allOptionValue="ALL"
+                    searchPlaceholder="Search status..."
+                  />
+                </FormControl>
+              </Box>
+            </TopFilterBar>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={() => {
+                  setSearchTerm("");
+                  setProjectIdFilter("ALL");
+                  setTaskTypeIdFilter("ALL");
+                  setTaskIdFilter("ALL");
+                  setSchTypeFilter("ALL");
+                  setPlanTypeFilter("ALL");
+                  setStatusFilter("ALL");
+                  
+                  setAppliedProjectId("ALL");
+                  setAppliedTaskTypeId("ALL");
+                  setAppliedTaskId("ALL");
+                  setAppliedSchType("ALL");
+                  setAppliedPlanType("ALL");
+                  setAppliedStatus("ALL");
+                  
+                  fetchSchedulesList();
+                  fetchDropdownData();
+                  toast.info("Page filters reset and refreshed");
+                }}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        }
         showSearch={true}
         searchPlaceholder="Search Schedule No., Task, Type or Project..."
         searchValue={searchTerm}

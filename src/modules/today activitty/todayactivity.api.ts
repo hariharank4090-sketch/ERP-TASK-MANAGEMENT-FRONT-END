@@ -102,20 +102,34 @@ export const getAllEmployees = async (
     }
     
     try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: employeeAPI,
-            method: "GET",
-            loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
-            loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
-        });
-
+        const [res, desRes] = await Promise.all([
+            fetchLink<BasicApiResponse>({
+                address: employeeAPI,
+                method: "GET",
+                loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+                loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+            }),
+            fetchLink<BasicApiResponse>({
+                address: "masters/employees/designations",
+                method: "GET"
+            })
+        ]);
+ 
         if (res && res.success) {
             // Map the API response to EmployeeDropdown format
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const apiData = res.data as any[];
+            const desData = desRes && desRes.success && Array.isArray(desRes.data) ? desRes.data : [];
+            const desMap = new Map<number, string>(
+                desData.map((d: any) => [Number(d.Designation_Id), d.Designation])
+            );
+
             employeesCache = apiData.map(item => ({
                 Emp_Id: item.Emp_Id,
-                Emp_Name: item.Emp_Name
+                Emp_Name: item.Emp_Name,
+                Department: item.Department || "",
+                BranchId: item.Branch || item.BranchId || item.Branch_Id || item.branch_id || item.branchId || item.branch || item.company_id || item.Company_id || "",
+                Designation: desMap.get(Number(item.Designation)) || "—"
             })) || [];
             return employeesCache;
         } else {
@@ -388,7 +402,92 @@ export const clearMasterDataCache = () => {
     projectsCache = [];
 };
 
-// Backward compatibility functions
 export const getTaskDropdown = getAllTasks;
 export const getEmployeeDropdown = getAllEmployees;
 export const getProjectDropdown = getAllProjects;
+
+// Get branch dropdown
+export const getBranchDropdown = async (
+    loadingOn?: () => void,
+    loadingOff?: () => void
+): Promise<any[]> => {
+    try {
+        const res = await fetchLink<BasicApiResponse>({ 
+            address: "masters/branch",
+            method: "GET",
+            loadingOn,
+            loadingOff
+        });
+        if (res && res.success) {
+            return Array.isArray(res.data) ? res.data : [];
+        }
+        return [];
+    } catch (error) {
+        return [];
+    }
+};
+
+// Get department list
+export const getDepartmentList = async (
+    loadingOn?: () => void,
+    loadingOff?: () => void
+): Promise<any[]> => {
+    try {
+        const res = await fetchLink<BasicApiResponse>({ 
+            address: "attendance/department/list",
+            method: "GET",
+            loadingOn,
+            loadingOff
+        });
+        if (res && res.success) {
+            const departments = res.others?.department || [];
+            return departments
+                .filter((dept: any) => dept && dept.value !== null && dept.label !== null)
+                .map((dept: any) => ({
+                    value: dept.value,
+                    label: dept.label
+                }));
+        }
+        return [];
+    } catch (error) {
+        return [];
+    }
+};
+
+// Get task types dropdown/list
+export const getTaskTypes = async (
+    loadingOn?: () => void,
+    loadingOff?: () => void
+): Promise<any> => {
+    try {
+        return await fetchLink<any>({ 
+            address: "masters/taskType/",
+            method: "GET",
+            loadingOn,
+            loadingOff
+        });
+    } catch (error) {
+        return [];
+    }
+};
+
+// Get designation list
+export const getDesignationList = async (
+    loadingOn?: () => void,
+    loadingOff?: () => void
+): Promise<any[]> => {
+    try {
+        const res = await fetchLink<BasicApiResponse>({ 
+            address: "masters/employees/designations",
+            method: "GET",
+            loadingOn,
+            loadingOff
+        });
+        if (res && res.success) {
+            return Array.isArray(res.data) ? res.data : [];
+        }
+        return [];
+    } catch (error) {
+        return [];
+    }
+};
