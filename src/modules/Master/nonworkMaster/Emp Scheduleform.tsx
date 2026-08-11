@@ -169,19 +169,42 @@ const TodayTaskDialog: React.FC<Props> = ({
     if (!val) return "";
     try {
       if (typeof val === "string" && val.includes("T")) {
-        return val.split("T")[1].substring(0, 5);
+        if (val.includes("1970-01-01") || val.includes("1900-01-01")) {
+          return val.split("T")[1].substring(0, 5);
+        }
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) {
+          const hrs = d.getHours().toString().padStart(2, "0");
+          const mins = d.getMinutes().toString().padStart(2, "0");
+          return `${hrs}:${mins}`;
+        }
       }
       if (typeof val === "string" && val.includes(":")) {
         return val.substring(0, 5);
       }
       const d = new Date(val);
       if (!isNaN(d.getTime())) {
-        return d.toISOString().split("T")[1].substring(0, 5);
+        const hrs = d.getHours().toString().padStart(2, "0");
+        const mins = d.getMinutes().toString().padStart(2, "0");
+        return `${hrs}:${mins}`;
       }
     } catch (e) {
       console.error("Time parse error", e);
     }
     return "";
+  };
+
+  const parseTimeToDate = (timeVal: string, dateVal: string): Date | null => {
+    if (!timeVal) return null;
+    if (timeVal.includes("T")) {
+      const d = new Date(timeVal);
+      if (!isNaN(d.getTime())) return d;
+    }
+    try {
+      const d = new Date(`${dateVal}T${timeVal}:00`);
+      if (!isNaN(d.getTime())) return d;
+    } catch { /* ignore */ }
+    return null;
   };
 
   useEffect(() => {
@@ -230,8 +253,8 @@ const TodayTaskDialog: React.FC<Props> = ({
         Emp_Id: primaryEmpId,
         Emp_Name: sourceData.Emp_Name || "",
         Work_Dt: workDate,
-        Start_Time: extractTimeForInput(sourceData.Start_Time) || extractTimeForInput(sourceData.Sch_Est_Start_Time) || "",
-        End_Time: extractTimeForInput(sourceData.End_Time) || extractTimeForInput(sourceData.Sch_Est_End_Time) || "",
+        Start_Time: isEditMode ? (extractTimeForInput(sourceData.Start_Time) || "") : "",
+        End_Time: isEditMode ? (extractTimeForInput(sourceData.End_Time) || "") : "",
         Work_Status: statusDisplay,
         Work_Done: sourceData.Work_Done || "",
         Process_Id: sourceData.Process_Id?.toString() || ""
@@ -411,10 +434,10 @@ const TodayTaskDialog: React.FC<Props> = ({
   };
 
   const calculateMinutes = () => {
-    if (!formData.Start_Time) return 0;
-    const start = new Date(formData.Start_Time).getTime();
-    const end = formData.End_Time ? new Date(formData.End_Time).getTime() : Date.now();
-    return Number(((end - start) / 60000).toFixed(2));
+    const startDate = parseTimeToDate(formData.Start_Time, formData.Work_Dt);
+    if (!startDate) return 0;
+    const endDate = parseTimeToDate(formData.End_Time, formData.Work_Dt) || new Date();
+    return Number(((endDate.getTime() - startDate.getTime()) / 60000).toFixed(2));
   };
 
   const validateForm = (): boolean => {
@@ -461,15 +484,15 @@ const TodayTaskDialog: React.FC<Props> = ({
     if (formData.Work_Status === "Completed") workStatusNumber = 3;
 
     const parameters: WorkParameter[] = taskParameters.map((param) => ({
-      Param_Id: param.Param_Id,
-      Default_Value: param.Default_Value || null,
-      Current_Value: paramValues[`param_${param.Param_Id}`] || null
+      Param_Id: Number(param.Param_Id),
+      Default_Value: param.Default_Value != null ? String(param.Default_Value) : null,
+      Current_Value: paramValues[`param_${param.Param_Id}`] != null ? String(paramValues[`param_${param.Param_Id}`]) : null
     }));
 
     // Core required fields — NO Work_Id for creates
     const payload: any = {
-      Sch_Id: parseInt(formData.Sch_Id) || 0,
-      Task_Id: parseInt(formData.Task_Id) || 0,
+      Sch_Id: formData.Sch_Id && !isNaN(Number(formData.Sch_Id)) ? Number(formData.Sch_Id) : undefined,
+      Task_Id: formData.Task_Id && !isNaN(Number(formData.Task_Id)) ? Number(formData.Task_Id) : undefined,
       Emp_Id: empId,
       Work_Dt: formData.Work_Dt,
       Work_Status: workStatusNumber,
@@ -502,14 +525,14 @@ const TodayTaskDialog: React.FC<Props> = ({
     if (formData.Work_Status === "Completed") workStatusNumber = 3;
 
     const parameters: WorkParameter[] = taskParameters.map((param) => ({
-      Param_Id: param.Param_Id,
-      Default_Value: param.Default_Value || null,
-      Current_Value: paramValues[`param_${param.Param_Id}`] || null
+      Param_Id: Number(param.Param_Id),
+      Default_Value: param.Default_Value != null ? String(param.Default_Value) : null,
+      Current_Value: paramValues[`param_${param.Param_Id}`] != null ? String(paramValues[`param_${param.Param_Id}`]) : null
     }));
 
     const payload: any = {
-      Sch_Id: parseInt(formData.Sch_Id) || 0,
-      Task_Id: parseInt(formData.Task_Id) || 0,
+      Sch_Id: formData.Sch_Id && !isNaN(Number(formData.Sch_Id)) ? Number(formData.Sch_Id) : undefined,
+      Task_Id: formData.Task_Id && !isNaN(Number(formData.Task_Id)) ? Number(formData.Task_Id) : undefined,
       Emp_Id: selectedEmployees[0],
       Work_Dt: formData.Work_Dt,
       Work_Status: workStatusNumber,
@@ -756,7 +779,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               type="time"
               fullWidth
               size="small"
-              value={formData.Start_Time}
+              value={extractTimeForInput(formData.Start_Time)}
               onChange={(e) => handleInputChange("Start_Time", e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
             />
@@ -768,7 +791,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               type="time"
               fullWidth
               size="small"
-              value={formData.End_Time}
+              value={extractTimeForInput(formData.End_Time)}
               onChange={(e) => handleInputChange("End_Time", e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
             />
@@ -820,7 +843,6 @@ const TodayTaskDialog: React.FC<Props> = ({
                 <Button
                   onClick={handleStart}
                   variant="contained"
-                  disabled={!!formData.End_Time}
                   sx={{ width: 120, height: 120, borderRadius: "50%" }}
                 >
                   START

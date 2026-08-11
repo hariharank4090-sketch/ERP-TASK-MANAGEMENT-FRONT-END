@@ -217,7 +217,7 @@ interface MainMenuProps extends PageProps {
     onToggleTodayPlan?: () => void;
 }
 
-const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPlan, loadingOn, loadingOff }) => {
+const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPlan }) => {
     const { navDetails } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -229,11 +229,8 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
     const [drawerOpen, setDrawerOpen] = useState(false);
 
     const handleNavigation = (path: string) => {
-        if (loadingOn) loadingOn();
         navigate(path);
         setDrawerOpen(false); // Close drawer on mobile navigation
-        // loadingOff immediately lets the LoadingScreen's 3300ms minimum duration take over
-        if (loadingOff) setTimeout(() => loadingOff(), 50);
     };
 
     // Flatten the entire tree then filter menuType === 2 (main menu nodes).

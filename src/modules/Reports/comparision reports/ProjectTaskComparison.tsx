@@ -1489,9 +1489,10 @@ import {
   getEmployeeDropdown,
 } from "../../TodayPlan/todayplan.api";
 import { fetchLink } from "../../../Components/customFetch";
-import { Box, Typography, LinearProgress, Stack, Chip, TextField } from "@mui/material";
+import { Box, Typography, LinearProgress, Stack, Chip, TextField, IconButton, Tooltip } from "@mui/material";
 import SearchableSelect from "../../../Components/SearchableSelect";
 import DashboardTopFilterBar from "../../../Components/TopFilterBar";
+import { Refresh } from "@mui/icons-material";
 
 // --- CSS ---
 const STYLES = `
@@ -2974,12 +2975,26 @@ const ProjectTaskComparison = () => {
               {filterDialogContent}
             </DashboardTopFilterBar>
 
-            <button className="reset-btn" onClick={handleReset}>
-              <svg viewBox="0 0 24 24">
-                <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"></path>
-              </svg>
-              Reset
-            </button>
+            <Tooltip title="Reset Filters & Refresh">
+              <IconButton
+                onClick={handleReset}
+                sx={{
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #000000",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
+                  "&:hover": {
+                    backgroundColor: "#f5f5f5",
+                    border: "1.5px solid #000000",
+                  },
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              >
+                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+              </IconButton>
+            </Tooltip>
           </div>
         </div>
 

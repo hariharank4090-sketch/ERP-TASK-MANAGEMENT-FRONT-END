@@ -900,8 +900,8 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                   sx={{
                     bgcolor: "#e3f2fd",
                     color: "#1565c0",
-                    fontWeight: 500,
-                    fontSize: "0.75rem",
+                    fontWeight: "bold",
+                    fontSize: "0.85rem",
                   }}
                 />
               ) : (
@@ -1113,7 +1113,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   // Main Render
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, pt: { xs: 0.5, sm: 3 } }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 0 }, display: "flex", flexDirection: "column", width: "100%", maxWidth: "100%", overflow: "hidden", zoom: 1.33333 }}>
       {/* Filters Section */}
       <Paper sx={{ p: 0.5, px: 2, mb: 1.5, borderRadius: 2 }} elevation={1}>
         <Box
@@ -1601,8 +1601,23 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
             )}
           </Box>
         ) : (
-          <TableContainer sx={{ maxHeight: "calc(100vh - 160px)" }}>
-            <Table stickyHeader>
+          <TableContainer sx={{ maxHeight: "calc(100vh - 160px)", overflowX: "auto" }}>
+            <Table
+              stickyHeader
+              sx={{
+                "& .MuiTableBody-root .MuiTableCell-root": {
+                  fontSize: "0.72rem",
+                  padding: "6px 8px",
+                  borderBottom: "1px solid #f0f0f0",
+                  whiteSpace: "normal",
+                  lineHeight: 1.2
+                },
+                "& .MuiTableBody-root .MuiTableCell-root .MuiTypography-root": {
+                  fontSize: "0.72rem",
+                  lineHeight: 1.2
+                }
+              }}
+            >
               <TableHead>
                 <TableRow>
                   {TABLE_HEADERS.map((header) => (
@@ -1612,9 +1627,10 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                       sx={{
                         bgcolor: "#f5f5f5",
                         fontWeight: 700,
-                        fontSize: "0.875rem",
-                        py: 1.5,
-                        whiteSpace: "nowrap",
+                        fontSize: "0.75rem",
+                        padding: "6px 8px",
+                        whiteSpace: "normal",
+                        lineHeight: 1.1,
                       }}
                     >
                       {header.label}

@@ -277,6 +277,7 @@ const EmpSchedulesMainPage: React.FC = () => {
   const [, setLoadingEmployees] = useState(false);
   const [isFilterLoaded, setIsFilterLoaded] = useState(false);
   const [isSearchPerformed, setIsSearchPerformed] = useState(false);
+  const [tableResetKey, setTableResetKey] = useState(0);
 
   // ── DIALOG STATES ──
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -360,9 +361,10 @@ const EmpSchedulesMainPage: React.FC = () => {
   // GET EMPLOYEE NAME BY ID
   // ─────────────────────────────────────────────────────────
 
-  const getEmployeeName = useCallback((empId: number | undefined): string => {
+  const getEmployeeName = useCallback((empId: any): string => {
     if (!empId) return "-";
-    return employeeMap.get(empId) || `Employee ID: ${empId}`;
+    const idNum = Number(empId);
+    return employeeMap.get(idNum) || `Employee ID: ${empId}`;
   }, [employeeMap]);
 
   // ─────────────────────────────────────────────────────────
@@ -390,8 +392,15 @@ const EmpSchedulesMainPage: React.FC = () => {
         return [];
       }
 
-      // Filter work details by Task_Id so it only shows data for this specific row
-      const filteredByTask = worksArray.filter((work: any) => work.Task_Id === schedule.taskId);
+      // Filter work details by Task_Id and Sch_Id so it only shows data for this specific row, converting to strings for safe comparison
+      const filteredByTask = worksArray.filter((work: any) => {
+        const workSchId = work.Sch_Id !== undefined && work.Sch_Id !== null ? String(work.Sch_Id) : "";
+        const schedSchId = schedule.schId !== undefined && schedule.schId !== null ? String(schedule.schId) : "";
+        const workTaskId = work.Task_Id !== undefined && work.Task_Id !== null ? String(work.Task_Id) : "";
+        const schedTaskId = schedule.taskId !== undefined && schedule.taskId !== null ? String(schedule.taskId) : "";
+        
+        return workSchId === schedSchId && workTaskId === schedTaskId;
+      });
 
       // Enhance work details with schedule information and employee names
       return filteredByTask.map((work: any) => ({
@@ -796,6 +805,7 @@ const EmpSchedulesMainPage: React.FC = () => {
     setDateRangeProjects([]);
     setDateRangeTasks([]);
     setSchedules([]);
+    setTableResetKey((prev) => prev + 1);
   };
 
   // ─────────────────────────────────────────────────────────
@@ -1127,6 +1137,7 @@ const EmpSchedulesMainPage: React.FC = () => {
                   onCloseDialog={() => setFilterDialogOpen(false)}
                   onSearch={() => {
                     setFilterDialogOpen(false);
+                    setTableResetKey((prev) => prev + 1);
                     handleSearch();
                   }}
                 >
@@ -1287,6 +1298,8 @@ const EmpSchedulesMainPage: React.FC = () => {
               </Box>
             }
             dataArray={displayData as any[]}
+            key={tableResetKey}
+            resetKey={tableResetKey}
             columns={columns}
             isExpendable={true}
             expandableComp={({ row }) => (

@@ -386,7 +386,7 @@ const ScheduleCard: React.FC<{
           <Typography variant="caption" color="text.secondary">Est. Time</Typography>
           {latestTaskDate ? (
             <Tooltip title={`Latest correction: ${latestTaskDate.taskWorkDate}`}>
-              <Typography variant="body2" sx={{ color: "#1976d2", fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: "#1976d2", fontWeight: "bold" }}>
                 {formatTimeTo12Hour(latestTaskDate.taskStartTime || "")} –{" "}
                 {formatTimeTo12Hour(latestTaskDate.taskEndTime || "")}
               </Typography>
@@ -732,7 +732,7 @@ const ExpandedSchedulesComponent: React.FC<{
   }
 
   return (
-    <Box sx={{ p: 0, backgroundColor: "#f8fafc", width: "100%", boxSizing: "border-box", overflowX: "auto" }}>
+    <Box sx={{ p: 0, backgroundColor: "#f8fafc", width: "100%", boxSizing: "border-box", overflow: "hidden" }}>
       <Box
         sx={{
           display: "flex", alignItems: { xs: "flex-start", sm: "center" },
@@ -841,13 +841,14 @@ const ExpandedSchedulesComponent: React.FC<{
             dataArray={filteredSchedules as any[]}
             tableProps={{
               sx: {
+                minWidth: "100%",
                 "& .MuiTableHead-root .MuiTableCell-root": {
-                  fontSize: "0.75rem", fontWeight: 600, padding: "8px 12px",
+                  fontSize: "0.72rem", fontWeight: 600, padding: "8px 6px",
                   backgroundColor: "#f8f9fa", borderBottom: "2px solid #e0e0e0",
                   whiteSpace: "nowrap"
                 },
                 "& .MuiTableBody-root .MuiTableCell-root": {
-                  fontSize: "0.75rem", padding: "8px 12px", borderBottom: "1px solid #f0f0f0",
+                  fontSize: "0.72rem", padding: "8px 6px", borderBottom: "1px solid #f0f0f0",
                   whiteSpace: "nowrap"
                 },
                 "& .MuiTableBody-root .MuiTableRow-root:hover": { backgroundColor: "#f9f9f9" }
@@ -859,14 +860,6 @@ const ExpandedSchedulesComponent: React.FC<{
               }
             }}
             columns={[
-              {
-                isVisible: 1, ColumnHeader: "Task Dates", align: "center" as const, isCustomCell: true,
-                Cell: ({ row }: { row: Record<string, unknown> }) => {
-                  const r = row as unknown as ScheduleDisplay;
-                  const n = r.taskDatesCount || r.taskDates?.length || 0;
-                  return <span style={{ fontWeight: n > 0 ? 600 : 400, color: n > 0 ? "#1976d2" : "#666" }}>{n}</span>;
-                },
-              },
               createCol("schNo", "string", "Schedule No."),
               {
                 isVisible: 1, ColumnHeader: "Schedule Date", align: "left" as const, isCustomCell: true,
@@ -875,9 +868,9 @@ const ExpandedSchedulesComponent: React.FC<{
                   return <span>{formatDate(r.schDate)}</span>;
                 },
               },
-              createCol("projectName", "string", "Project Name"),
-              createCol("taskType",    "string", "Task Type"),
-              createCol("taskName",    "string", "Task Name"),
+              createCol("projectName", "string", "Project Name", "left", "center", 0),
+              createCol("taskType",    "string", "Task Type", "left", "center", 0),
+              createCol("taskName",    "string", "Task Name", "left", "center", 0),
               {
                 isVisible: 1, ColumnHeader: "Sch First Start Date", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
@@ -916,7 +909,12 @@ const ExpandedSchedulesComponent: React.FC<{
                 isVisible: 1, ColumnHeader: "Schedule Period", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
                   const r = row as unknown as ScheduleDisplay;
-                  return <span>{formatDate(r.schStartDate)} to {formatDate(r.schEndDate)}</span>;
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>
+                      <span>{formatDate(r.schStartDate)}</span>
+                      <span>{formatDate(r.schEndDate)}</span>
+                    </div>
+                  );
                 },
               },
               {
@@ -927,16 +925,18 @@ const ExpandedSchedulesComponent: React.FC<{
                   if (latestTaskDate) {
                     return (
                       <Tooltip title={`Latest correction: ${latestTaskDate.taskWorkDate}`}>
-                        <span style={{ color: "#1976d2", fontWeight: 500 }}>
-                          {formatTimeTo12Hour(latestTaskDate.taskStartTime || "")} - {formatTimeTo12Hour(latestTaskDate.taskEndTime || "")}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "#1976d2", fontWeight: "bold", fontSize: "0.75rem", lineHeight: 1.2 }}>
+                          <span>{formatTimeTo12Hour(latestTaskDate.taskStartTime || "")}</span>
+                          <span>{formatTimeTo12Hour(latestTaskDate.taskEndTime || "")}</span>
+                        </div>
                       </Tooltip>
                     );
                   }
                   return (
-                    <span style={{ color: "#666" }}>
-                      {formatTimeTo12Hour(r.schEstStartTime)} - {formatTimeTo12Hour(r.schEstEndTime)}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "#666", lineHeight: 1.2 }}>
+                      <span>{formatTimeTo12Hour(r.schEstStartTime)}</span>
+                      <span>{formatTimeTo12Hour(r.schEstEndTime)}</span>
+                    </div>
                   );
                 },
               },
@@ -970,7 +970,7 @@ const ExpandedSchedulesComponent: React.FC<{
                 },
               },
               {
-                isVisible: 1, ColumnHeader: "Employee Count", align: "center" as const, isCustomCell: true,
+                isVisible: 1, ColumnHeader: "Staff", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
                   const r = row as unknown as ScheduleDisplay;
                   const count = r.empCount || 0;
@@ -1092,6 +1092,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const [appliedTaskId, setAppliedTaskId] = useState<number | "ALL">("ALL");
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [expandedRefreshKeys, setExpandedRefreshKeys] = useState<Record<number, number>>({});
+  const [resetKey, setResetKey] = useState(0);
 
   const [scheduleObj, setScheduleObj] = useState<projectscheduleCreateInput>(emptyprojectschedule);
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
@@ -1148,7 +1149,6 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const fetchAllData = useCallback(async () => {
     if (dataFetched.current && tasks.length > 0) return;
     try {
-      if (loadingOn) loadingOn();
       if (isMounted.current) { setLoading(true); setError(null); }
 
       const [tasksData, groupsData, schedulesResult, projectsData] = await Promise.all([
@@ -1203,7 +1203,6 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
       if (isMounted.current) { setError("Failed to load tasks"); toast.error("Failed to load tasks"); }
     } finally {
       if (isMounted.current) setLoading(false);
-      if (loadingOff) loadingOff();
     }
   }, [loadingOn, loadingOff, tasks.length]);
 
@@ -1798,6 +1797,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
       <DataTable
         headerTitle="Task Schedule Master"
         dataArray={filteredTasksList}
+        resetKey={resetKey}
         headerActions={
           <Box display="flex" alignItems="center" gap={1}>
             <TopFilterBar
@@ -1895,6 +1895,8 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
                   setAppliedTaskTypeId("ALL");
                   setAppliedTaskId("ALL");
 
+                  dataFetched.current = false;
+                  setResetKey(prev => prev + 1);
                   fetchAllData();
                   fetchDropdownData();
                   toast.info("Page filters reset and refreshed");

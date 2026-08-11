@@ -51,7 +51,6 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { toast } from "react-toastify";
 import { useAuth } from "../../auth/authContext";
-import LoadingScreen from "../../Components/loadingScreen";
 
 import {
   getEnrichedWorkMaster,
@@ -521,11 +520,14 @@ const ExpandedSchedulesComponent: React.FC<{
   formatTimeTo12Hour: (t: string) => string;
   getPlanTypeChip: (p: string) => React.ReactNode;
   getStatusChip: (s: number) => React.ReactNode;
+  appliedEmployeeId?: number | "ALL";
+  projectEmpSchedules?: any[];
 }> = ({
   taskId, taskName, taskTypeName, taskProjectId,
   schedulePlans, allProjects,
   onCreateSchedule, onEditSchedule, onViewCorrections, onDeleteSchedule,
   formatDate, formatTimeTo12Hour, getPlanTypeChip, getStatusChip,
+  appliedEmployeeId, projectEmpSchedules,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -764,19 +766,40 @@ const ExpandedSchedulesComponent: React.FC<{
     return () => { mountedRef.current = false; };
   }, [fetchSchedules]);
 
-  const filteredSchedules = useMemo(
-    () => schedules.filter(s => matchesTab(s.planType, activeTab)),
-    [schedules, activeTab],
-  );
+  const filteredSchedules = useMemo(() => {
+    let result = schedules.filter(s => matchesTab(s.planType, activeTab));
+    if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+      result = result.filter(s =>
+        (projectEmpSchedules || []).some((emp: any) =>
+          numEq(emp.Sch_Id || emp.schId, s.schId) && numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)
+        )
+      );
+    }
+    return result;
+  }, [schedules, activeTab, appliedEmployeeId, projectEmpSchedules]);
 
-  const tabCounts = useMemo(() => ({
-    DAY: schedules.filter(s => matchesTab(s.planType, "DAY")).length,
-    WEEKLY: schedules.filter(s => matchesTab(s.planType, "WEEKLY")).length,
-    MONTHLY: schedules.filter(s => matchesTab(s.planType, "MONTHLY")).length,
-    SPECIFIC_DAY: schedules.filter(s => matchesTab(s.planType, "SPECIFIC_DAY")).length,
-    TIME_BASED: schedules.filter(s => matchesTab(s.planType, "TIME_BASED")).length,
-    ALL: schedules.length,
-  }), [schedules]);
+  const tabCounts = useMemo(() => {
+    const filterSchedulesList = (tab: ScheduleFilterTab) => {
+      let result = schedules.filter(s => matchesTab(s.planType, tab));
+      if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+        result = result.filter(s =>
+          (projectEmpSchedules || []).some((emp: any) =>
+            numEq(emp.Sch_Id || emp.schId, s.schId) && numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)
+          )
+        );
+      }
+      return result.length;
+    };
+
+    return {
+      DAY: filterSchedulesList("DAY"),
+      WEEKLY: filterSchedulesList("WEEKLY"),
+      MONTHLY: filterSchedulesList("MONTHLY"),
+      SPECIFIC_DAY: filterSchedulesList("SPECIFIC_DAY"),
+      TIME_BASED: filterSchedulesList("TIME_BASED"),
+      ALL: filterSchedulesList("ALL"),
+    };
+  }, [schedules, appliedEmployeeId, projectEmpSchedules]);
 
   if (loading) {
     return (
@@ -804,7 +827,7 @@ const ExpandedSchedulesComponent: React.FC<{
           alignItems: { xs: "flex-start", sm: "center" },
           flexDirection: { xs: "column", sm: "row" },
           mb: 1, gap: 1,
-          px: 1,
+          px: 2,
           pt: 1,
         }}
       >
@@ -817,7 +840,7 @@ const ExpandedSchedulesComponent: React.FC<{
             Schedules —
           </Typography>
           <Chip
-            label={`${schedules.length} schedule${schedules.length !== 1 ? "s" : ""}`}
+            label={`${filteredSchedules.length} schedule${filteredSchedules.length !== 1 ? "s" : ""}`}
             size="small"
             sx={{ backgroundColor: "#e3f2fd" }}
           />
@@ -946,13 +969,14 @@ const ExpandedSchedulesComponent: React.FC<{
             dataArray={filteredSchedules as any[]}
             tableProps={{
               sx: {
+                minWidth: "100%",
                 "& .MuiTableHead-root .MuiTableCell-root": {
-                  fontSize: "0.75rem", fontWeight: 600, padding: "8px 12px",
+                  fontSize: "0.78rem", fontWeight: 600, padding: "4px 6px",
                   backgroundColor: "#f8f9fa", borderBottom: "2px solid #e0e0e0",
                   whiteSpace: "nowrap"
                 },
                 "& .MuiTableBody-root .MuiTableCell-root": {
-                  fontSize: "0.75rem", padding: "8px 12px", borderBottom: "1px solid #f0f0f0",
+                  fontSize: "0.78rem", fontWeight: 600, padding: "4px 6px", borderBottom: "1px solid #f0f0f0",
                   whiteSpace: "nowrap"
                 },
                 "& .MuiTableBody-root .MuiTableRow-root:hover": { backgroundColor: "#f9f9f9" }
@@ -965,7 +989,7 @@ const ExpandedSchedulesComponent: React.FC<{
             }}
             columns={[
               {
-                isVisible: 1, ColumnHeader: "Task Dates", align: "center" as const, isCustomCell: true,
+                isVisible: 0, ColumnHeader: "Task Dates", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
                   const r = row as unknown as ScheduleDisplay;
                   const n = r.taskDatesCount || r.taskDates?.length || 0;
@@ -980,9 +1004,9 @@ const ExpandedSchedulesComponent: React.FC<{
                   return <span>{formatDateToDDMMYYYY(r.schDate)}</span>;
                 },
               },
-              { Field_Name: "projectName", Fied_Data: "string", ColumnHeader: "Project Name", align: "left", verticalAlign: "center", isVisible: 1 },
-              { Field_Name: "taskType", Fied_Data: "string", ColumnHeader: "Task Type", align: "left", verticalAlign: "center", isVisible: 1 },
-              { Field_Name: "taskName", Fied_Data: "string", ColumnHeader: "Task Name", align: "left", verticalAlign: "center", isVisible: 1 },
+              { Field_Name: "projectName", Fied_Data: "string", ColumnHeader: "Project Name", align: "left", verticalAlign: "center", isVisible: 0 },
+              { Field_Name: "taskType", Fied_Data: "string", ColumnHeader: "Task Type", align: "left", verticalAlign: "center", isVisible: 0 },
+              { Field_Name: "taskName", Fied_Data: "string", ColumnHeader: "Task Name", align: "left", verticalAlign: "center", isVisible: 0 },
               {
                 isVisible: 1, ColumnHeader: "Sch First Start Date", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
@@ -1021,7 +1045,12 @@ const ExpandedSchedulesComponent: React.FC<{
                 isVisible: 1, ColumnHeader: "Schedule Period", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
                   const r = row as unknown as ScheduleDisplay;
-                  return <span>{formatDateToDDMMYYYY(r.schStartDate)} to {formatDateToDDMMYYYY(r.schEndDate)}</span>;
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+                      <span>{formatDateToDDMMYYYY(r.schStartDate)}</span>
+                      <span>{formatDateToDDMMYYYY(r.schEndDate)}</span>
+                    </div>
+                  );
                 },
               },
               {
@@ -1032,16 +1061,18 @@ const ExpandedSchedulesComponent: React.FC<{
                   if (latestTaskDate) {
                     return (
                       <Tooltip title={`Latest correction: ${latestTaskDate.taskWorkDate}`}>
-                        <span style={{ color: "#1976d2", fontWeight: 500 }}>
-                          {formatTimeTo12Hour(latestTaskDate.taskStartTime || "")} - {formatTimeTo12Hour(latestTaskDate.taskEndTime || "")}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "#1976d2", fontWeight: 600, gap: "1px" }}>
+                          <span>{formatTimeTo12Hour(latestTaskDate.taskStartTime || "")}</span>
+                          <span>{formatTimeTo12Hour(latestTaskDate.taskEndTime || "")}</span>
+                        </div>
                       </Tooltip>
                     );
                   }
                   return (
-                    <span style={{ color: "#666" }}>
-                      {formatTimeTo12Hour(r.schEstStartTime)} - {formatTimeTo12Hour(r.schEstEndTime)}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "#666", gap: "1px" }}>
+                      <span>{formatTimeTo12Hour(r.schEstStartTime)}</span>
+                      <span>{formatTimeTo12Hour(r.schEstEndTime)}</span>
+                    </div>
                   );
                 },
               },
@@ -1075,7 +1106,7 @@ const ExpandedSchedulesComponent: React.FC<{
                 },
               },
               {
-                isVisible: 1, ColumnHeader: "Employee Count", align: "center" as const, isCustomCell: true,
+                isVisible: 1, ColumnHeader: "Staff", align: "center" as const, isCustomCell: true,
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
                   const r = row as unknown as ScheduleDisplay;
                   const count = r.empCount || 0;
@@ -1106,19 +1137,19 @@ const ExpandedSchedulesComponent: React.FC<{
                 Cell: ({ row }: { row: Record<string, unknown> }) => {
                   const r = row as unknown as ScheduleDisplay;
                   return (
-                    <Box display="flex" justifyContent="center">
+                    <Box display="flex" justifyContent="center" sx={{ px: 0.5, gap: "2px" }}>
                       <Tooltip title="View Corrections">
-                        <IconButton onClick={() => onViewCorrections(r, taskProjectId)} color="info" size="small" sx={{ mr: 1 }}>
+                        <IconButton onClick={() => onViewCorrections(r, taskProjectId)} color="info" size="small" sx={{ p: "2px" }}>
                           <Person fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit Schedule">
-                        <IconButton onClick={() => onEditSchedule(r)} color="primary" size="small" sx={{ mr: 1 }}>
+                        <IconButton onClick={() => onEditSchedule(r)} color="primary" size="small" sx={{ p: "2px" }}>
                           <Edit fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete Schedule">
-                        <IconButton onClick={() => onDeleteSchedule(r.schId, taskId)} color="error" size="small">
+                        <IconButton onClick={() => onDeleteSchedule(r.schId, taskId)} color="error" size="small" sx={{ p: "2px" }}>
                           <Delete fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -1190,7 +1221,10 @@ const TaskExpandedComponent: React.FC<{
   projectName: string;
   appliedTaskId?: number | "ALL";
   onDataChange?: () => void | Promise<void>;
-}> = ({ taskTypeId, projectId, projectName, appliedTaskId = "ALL", onDataChange }) => {
+  appliedEmployeeId?: number | "ALL";
+  projectEmpSchedules?: any[];
+  projectSchedules?: any[];
+}> = ({ taskTypeId, projectId, projectName, appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules }) => {
   const [tasks, setTasks] = useState<TaskDisplay[]>([]);
   const [taskGroups, setTaskGroups] = useState<taskgroupDropdown[]>([]);
   const [taskProjects, setTaskProjects] = useState<TaskProjectDropdown[]>([]);
@@ -1285,6 +1319,13 @@ const TaskExpandedComponent: React.FC<{
       const schedCountMap = new Map<number, number>();
       (schedulesResult?.data || []).forEach((s: any) => {
         const tid = s?.Task_Id || s?.taskId;
+        if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+          const schId = s?.Sch_Id || s?.schId;
+          const isAssigned = (projectEmpSchedules || []).some((emp: any) =>
+            numEq(emp.Sch_Id || emp.schId, schId) && numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)
+          );
+          if (!isAssigned) return;
+        }
         if (tid) schedCountMap.set(Number(tid), (schedCountMap.get(Number(tid)) || 0) + 1);
       });
 
@@ -1334,7 +1375,7 @@ const TaskExpandedComponent: React.FC<{
       if (isMounted.current) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskTypeId]);
+  }, [taskTypeId, appliedEmployeeId, projectEmpSchedules]);
 
   // ── Fetch dropdowns ───────────────────────────────────────────────────────
   const fetchDropdownData = useCallback(async () => {
@@ -1364,8 +1405,26 @@ const TaskExpandedComponent: React.FC<{
   }, [fetchTasks, fetchDropdownData]);
 
   const filteredTasksList = useMemo(() => {
-    return tasks;
-  }, [tasks]);
+    let result = tasks;
+    if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+      result = result.filter(task => {
+        const hasSch = (projectSchedules || []).some((sch: any) => {
+          const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+          const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
+          if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
+          
+          const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+          return (projectEmpSchedules || []).some((emp: any) => {
+            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+          });
+        });
+        return hasSch;
+      });
+    }
+    return result;
+  }, [tasks, appliedEmployeeId, projectId, projectSchedules, projectEmpSchedules]);
 
   // ── Close all dialogs ─────────────────────────────────────────────────────
   const closeAllDialogs = useCallback(() => {
@@ -1807,9 +1866,9 @@ const TaskExpandedComponent: React.FC<{
   }
 
   return (
-    <Box sx={{ p: 2, backgroundColor: "#f8fafc", width: "100%" }}>
+    <Box sx={{ px: 0, py: 1, backgroundColor: "#f8fafc", width: "100%", boxSizing: "border-box" }}>
       {/* Header */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, px: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center" }}>
           <Typography variant="h6" sx={{ color: "#1976d2", fontWeight: 600 }}>
             Tasks
@@ -1915,7 +1974,7 @@ const TaskExpandedComponent: React.FC<{
                   <TableRow>
                     <TableCell colSpan={5} sx={{ p: 0, borderBottom: expandedTasks[row.Task_Id] ? "1px solid #e0e0e0" : "none" }}>
                       <Collapse in={expandedTasks[row.Task_Id]} timeout="auto" unmountOnExit>
-                        <Box sx={{ p: 2, backgroundColor: "#fafafa" }}>
+                        <Box sx={{ px: 0, py: 1, backgroundColor: "#fafafa" }}>
                           <ExpandedSchedulesComponent
                             key={`expanded-${row.Task_Id}-${expandedRefreshKeys[row.Task_Id] || 0}`}
                             taskId={row.Task_Id}
@@ -1932,6 +1991,8 @@ const TaskExpandedComponent: React.FC<{
                             formatTimeTo12Hour={formatTimeTo12Hour}
                             getPlanTypeChip={getPlanTypeChip}
                             getStatusChip={getStatusChip}
+                            appliedEmployeeId={appliedEmployeeId}
+                            projectEmpSchedules={projectEmpSchedules}
                           />
                         </Box>
                       </Collapse>
@@ -2008,7 +2069,10 @@ const TaskTypeExpandedComponent: React.FC<{
   appliedTaskTypeId?: number | "ALL";
   appliedTaskId?: number | "ALL";
   onDataChange?: () => Promise<void>;
-}> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange }) => {
+  appliedEmployeeId?: number | "ALL";
+  projectEmpSchedules?: any[];
+  projectSchedules?: any[];
+}> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules }) => {
   const [taskTypes, setTaskTypes] = useState<TaskTypeDisplay[]>([]);
   const [projectOptions, setProjectOptions] = useState<TaskTypeProjectDropdown[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -2130,11 +2194,32 @@ const TaskTypeExpandedComponent: React.FC<{
     fetchTaskTypes();
   }, [fetchTaskTypes]);
 
-  // Apply status filter
+  // Apply status filter and employee filter
   const filteredTaskTypesList = useMemo(() => {
-    if (taskTypeStatusFilter === "ALL") return taskTypes;
-    return taskTypes.filter(tt => tt.status === taskTypeStatusFilter);
-  }, [taskTypes, taskTypeStatusFilter]);
+    let result = taskTypes;
+    if (taskTypeStatusFilter !== "ALL") {
+      result = result.filter(tt => tt.status === taskTypeStatusFilter);
+    }
+    if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+      result = result.filter(tt => {
+        // Check if there is any schedule for this task type and project assigned to the employee
+        const hasSch = (projectSchedules || []).some((sch: any) => {
+          const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+          const schTaskTypeId = sch.Task_Type_Id ?? sch.taskTypeId;
+          if (!numEq(schProjId, projectId) || !numEq(schTaskTypeId, tt.Task_Type_Id)) return false;
+          
+          const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+          return (projectEmpSchedules || []).some((emp: any) => {
+            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+          });
+        });
+        return hasSch;
+      });
+    }
+    return result;
+  }, [taskTypes, taskTypeStatusFilter, appliedEmployeeId, projectId, projectSchedules, projectEmpSchedules]);
 
   // Close all dialogs
   const closeAllDialogs = useCallback(() => {
@@ -2251,9 +2336,9 @@ const TaskTypeExpandedComponent: React.FC<{
   }
 
   return (
-    <Box sx={{ p: 2, backgroundColor: "#f8fafc", width: "100%" }}>
+    <Box sx={{ px: 0, py: 1, backgroundColor: "#f8fafc", width: "100%", boxSizing: "border-box" }}>
       {/* Header with Status filter dropdown */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, flexWrap: "wrap", gap: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, flexWrap: "wrap", gap: 1, px: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center" }}>
           <Typography variant="h6" sx={{ color: "#1976d2", fontWeight: 600 }}>
             Task Types
@@ -2395,7 +2480,7 @@ const TaskTypeExpandedComponent: React.FC<{
                   <TableRow>
                     <TableCell colSpan={5} sx={{ p: 0, borderBottom: expandedTaskTypes[row.Task_Type_Id] ? "1px solid #e0e0e0" : "none" }}>
                       <Collapse in={expandedTaskTypes[row.Task_Type_Id]} timeout="auto" unmountOnExit>
-                        <Box sx={{ p: 2, backgroundColor: "#fafafa" }}>
+                        <Box sx={{ px: 0, py: 1, backgroundColor: "#fafafa" }}>
                           <TaskExpandedComponent
                             taskTypeId={row.Task_Type_Id}
                             taskTypeName={row.Task_Type}
@@ -2406,6 +2491,9 @@ const TaskTypeExpandedComponent: React.FC<{
                               await fetchTaskTypes();
                               await onDataChange?.();
                             }}
+                            appliedEmployeeId={appliedEmployeeId}
+                            projectEmpSchedules={projectEmpSchedules}
+                            projectSchedules={projectSchedules}
                           />
                         </Box>
                       </Collapse>
@@ -2439,7 +2527,7 @@ const TaskTypeExpandedComponent: React.FC<{
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 const All = () => {
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [workData, setWorkData] = useState<WorkMasterData[]>([]);
   const [taskTypes, setTaskTypes] = useState<tasktypeData[]>([]);
@@ -2470,6 +2558,7 @@ const All = () => {
 
   // ── expandedRefreshKeys ───────────────────────────────────────────────────
   const [expandedRefreshKeys, setExpandedRefreshKeys] = useState<Record<string, number>>({});
+  const [tableResetKey, setTableResetKey] = useState(0);
 
   const isMounted = useRef(true);
   const { user } = useAuth(); // Destructure user from useAuth
@@ -2630,9 +2719,27 @@ const All = () => {
         let projectStaffCount = 0;
         
         if (projectId != null) {
-            projectTasksCount = tasks.filter((t: any) => 
+            let projectTasks = tasks.filter((t: any) => 
                 (t.Project_Id != null ? Number(t.Project_Id) : Number(t.project_id)) === projectId
-            ).length;
+            );
+            if (appliedEmployeeId !== "ALL") {
+                projectTasks = projectTasks.filter(task => {
+                    const hasSch = projectSchedules.some((sch: any) => {
+                        const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+                        const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
+                        if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
+                        
+                        const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+                        return projectEmpSchedules.some((emp: any) => {
+                            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+                            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+                            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+                        });
+                    });
+                    return hasSch;
+                });
+            }
+            projectTasksCount = projectTasks.length;
 
             const projectSchs = projectSchedules.filter((s: any) => 
                 (s.Project_Id != null ? Number(s.Project_Id) : s.project_id != null ? Number(s.project_id) : null) === projectId
@@ -2645,7 +2752,9 @@ const All = () => {
                     if (schIds.has(Number(emp.Sch_Id || emp.schId))) {
                         const empId = Number(emp.Emp_Id || emp.empId);
                         if (!isNaN(empId) && empId > 0) {
-                            empIds.add(empId);
+                            if (appliedEmployeeId === "ALL" || numEq(empId, appliedEmployeeId)) {
+                                empIds.add(empId);
+                            }
                         }
                     }
                 });
@@ -2784,6 +2893,25 @@ const All = () => {
             (tt as any).Status === 0 || (tt as any).Is_Active === 0
           );
         }
+
+        // If employee filter is active, filter project task types
+        if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+          projectTaskTypes = projectTaskTypes.filter(tt => {
+            const hasSch = projectSchedules.some((sch: any) => {
+              const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+              const schTaskTypeId = sch.Task_Type_Id ?? sch.taskTypeId;
+              if (!numEq(schProjId, item.Project_Id) || !numEq(schTaskTypeId, tt.Task_Type_Id)) return false;
+              
+              const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+              return projectEmpSchedules.some((emp: any) => {
+                const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+                const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+                return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+              });
+            });
+            return hasSch;
+          });
+        }
         
         return {
           ...item,
@@ -2795,7 +2923,7 @@ const All = () => {
       
       return grouped;
     },
-    [workData, taskTypes, activeProjectIds, projectIsActiveFilter, projects, tasks, projectSchedules, projectEmpSchedules],
+    [workData, taskTypes, activeProjectIds, projectIsActiveFilter, projects, tasks, projectSchedules, projectEmpSchedules, appliedEmployeeId],
   );
 
   // ── Apply project id filter (on already filtered data) ───────────────────
@@ -2822,15 +2950,18 @@ const All = () => {
     }
     if (appliedEmployeeId !== "ALL") {
       data = data.filter((row) => {
-        const hasWork = row.workEntries?.some((w: any) => numEq(w.Emp_Id, appliedEmployeeId));
-        const hasSch = projectEmpSchedules.some((emp: any) => 
-            numEq(emp.Emp_Id || emp.empId, appliedEmployeeId) && 
-            projectSchedules.some((sch: any) => 
-                numEq(sch.Sch_Id || sch.schId, emp.Sch_Id || emp.schId) && 
-                numEq(sch.Project_Id || sch.project_id || sch.projectId, row.Project_Id)
-            )
-        );
-        return hasWork || hasSch;
+        const hasSch = projectEmpSchedules.some((emp: any) => {
+          const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+          if (!numEq(empId, appliedEmployeeId)) return false;
+          
+          const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+          return projectSchedules.some((sch: any) => {
+            const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+            const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+            return numEq(schId, empSchId) && numEq(schProjId, row.Project_Id);
+          });
+        });
+        return hasSch;
       });
     }
     return data;
@@ -2973,19 +3104,21 @@ const All = () => {
     setAppliedTaskId("ALL");
     setAppliedEmployeeId("ALL");
     setFilterDialogOpen(false);
+    setTableResetKey(prev => prev + 1);
   }, []);
 
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ px: 3, pb: 3, pt: 2.5, minHeight: "100vh" }}>
+      <Box sx={{ px: 0, pb: 2, pt: 1, minHeight: "100vh" }}>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         {/* Expandable Table with Filter button in Header */}
         <Box sx={{ mt: 0 }}>
           <FilterableTable
+            key={tableResetKey}
             dataArray={filteredGroupedData as unknown as TableRowData[]}
             columns={tableColumns}
             EnableSerialNumber={true}
@@ -3031,7 +3164,7 @@ const All = () => {
             expandableComp={({ row }: { row: Record<string, unknown> }) => {
               const projectRow = row as unknown as ProjectRow;
               return (
-                <Box>
+                <Box sx={{ width: "100%", overflowX: "auto" }}>
                   <TaskTypeExpandedComponent
                     key={`expanded-tasktypes-${projectRow.Project_Name}-${expandedRefreshKeys[projectRow.Project_Name] || 0}`}
                     projectName={projectRow.Project_Name}
@@ -3039,6 +3172,9 @@ const All = () => {
                     appliedTaskTypeId={appliedTaskTypeId}
                     appliedTaskId={appliedTaskId}
                     onDataChange={handleDataChange}
+                    appliedEmployeeId={appliedEmployeeId}
+                    projectEmpSchedules={projectEmpSchedules}
+                    projectSchedules={projectSchedules}
                   />
                 </Box>
               );
@@ -3053,16 +3189,15 @@ const All = () => {
                   fontSize: "0.8rem", padding: "6px 16px", borderBottom: "1px solid #f0f0f0",
                 },
                 "& .MuiTableBody-root .MuiTableRow-root:hover": { backgroundColor: "#f9f9f9" },
-                "& .MuiTableBody-root tr > td[colspan]": { padding: "0 !important" },
+                "& .MuiTableBody-root tr > td[colspan]": { padding: "0 !important", maxWidth: 0 },
                 "& .MuiTableBody-root tr.expandable-row > td, & .MuiTableBody-root tr[class*='expand'] > td:only-child": {
-                  padding: "0 !important", width: "100%",
+                  padding: "0 !important", width: "100%", maxWidth: 0,
                 },
               },
             }}
           />
         </Box>
 
-        <LoadingScreen loading={loading} message="Loading Dashboard Data..." targetId="main-card-inner" />
 
         {/* AssignTask (Corrections) Dialog */}
         {assignTaskOpen && (

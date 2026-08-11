@@ -316,7 +316,7 @@ const getAssignedTaskKey = (task: AssignedTask): string =>
    MAIN PAGE
 ================================================================ */
 
-const WorkDoneBox = ({ lines }: { lines: string[]; islistDay?: boolean }) => {
+const WorkDoneBox = ({ lines, isMobile }: { lines: string[]; islistDay?: boolean; isMobile?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
   
   const flatText = lines.join(" ");
@@ -331,7 +331,7 @@ const WorkDoneBox = ({ lines }: { lines: string[]; islistDay?: boolean }) => {
         }
       }}
       style={{
-        fontSize: "0.63rem",
+        fontSize: isMobile ? "0.63rem" : "0.95rem",
         opacity: 0.9,
         marginTop: "3px",
         background: "rgba(0,0,0,0.15)",
@@ -428,15 +428,13 @@ const CreditListPage = () => {
 
       if (workMasterResponse.success && workMasterResponse.data.length > 0) {
         workMasterResponse.data.forEach((work: any) => {
-          const workDate = getDateOnly(work.Work_Dt);
-          const taskKey = `${work.Task_Id}_${work.Emp_Id}`;
-          const dateKey = `${taskKey}_${workDate}`;
-
           if (work.Work_Status === "Completed" ||
             work.Work_Status === "Pending" ||
             work.Work_Status === "In Progress" ||
             work.Tot_Minutes > 0) {
-            hasWorkKeysSet.add(dateKey);
+            if (work.Sch_Id) {
+              hasWorkKeysSet.add(String(work.Sch_Id));
+            }
           }
         });
       }
@@ -690,8 +688,7 @@ const CreditListPage = () => {
       const key = getAssignedTaskKey(task);
       const isRunning = timerRunningKeys.has(key);
       const taskDate = getDateOnly(task.Task_Assign_dt);
-      const hasWorkKey = `${task.Task_Id}_${task.Emp_Id}_${taskDate}`;
-      const hasWork = hasWorkKeys.has(hasWorkKey);
+      const hasWork = task.Sch_Id ? hasWorkKeys.has(String(task.Sch_Id)) : false;
 
       // ✅ Color computed from state — updates instantly when timer starts/stops
       let bgColor = "#1976d2";
@@ -807,6 +804,7 @@ const CreditListPage = () => {
     const task = info.event.extendedProps;
 
     const plan = {
+      SNo: task.SNo,
       AN_No: task.AN_No || task.Work_Id || task.Id,
       Sch_Id: task.Sch_Id,
       Task_Id: task.Task_Id,
@@ -860,7 +858,7 @@ const CreditListPage = () => {
             alignItems: "center",
             flexWrap: (info.view?.type.includes("list") || (isMobile && info.view?.type === "dayGridMonth")) ? "wrap" : "nowrap",
             gap: "4px",
-            fontSize: "0.75rem",
+            fontSize: isMobile ? "0.75rem" : "0.85rem",
             lineHeight: 1.4,
           }}
         >
@@ -882,7 +880,7 @@ const CreditListPage = () => {
               display: "inline-block",
               padding: "0 6px",
               borderRadius: "10px",
-              fontSize: "0.65rem",
+              fontSize: isMobile ? "0.65rem" : "0.75rem",
               fontWeight: 600,
               background: stat.bg,
               color: stat.color,
@@ -897,7 +895,7 @@ const CreditListPage = () => {
                 display: "inline-block",
                 padding: "0 6px",
                 borderRadius: "10px",
-                fontSize: "0.65rem",
+                fontSize: isMobile ? "0.65rem" : "0.75rem",
                 fontWeight: 600,
                 background: "#4caf50",
                 color: "#fff",
@@ -908,7 +906,7 @@ const CreditListPage = () => {
             </span>
           )}
         </div>
-        <div style={{ fontSize: "0.68rem", opacity: 0.9, marginTop: "1px" }}>
+        <div style={{ fontSize: isMobile ? "0.68rem" : "0.75rem", opacity: 0.9, marginTop: "1px" }}>
           {isMobile && info.view?.type === "dayGridMonth" ? (
             <>
               <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{start}</div>
@@ -939,9 +937,10 @@ const CreditListPage = () => {
             alignItems: "center",
             flexWrap: (info.view?.type.includes("list") || (isMobile && info.view?.type === "dayGridMonth")) ? "wrap" : "nowrap",
             gap: "4px",
-            fontSize: "0.75rem",
+            fontSize: isMobile ? "0.75rem" : "0.85rem",
             lineHeight: 1.4,
           }}
+          title={info.event.title}
         >
           <span
             style={{
@@ -961,7 +960,7 @@ const CreditListPage = () => {
               display: "inline-block",
               padding: "0 6px",
               borderRadius: "10px",
-              fontSize: "0.65rem",
+              fontSize: isMobile ? "0.65rem" : "0.75rem",
               fontWeight: 600,
               background: info.view?.type.includes("list") ? badge.bg : "rgba(255,255,255,0.3)",
               color: info.view?.type.includes("list") ? badge.color : "#fff",
@@ -972,7 +971,7 @@ const CreditListPage = () => {
           </span>
         </div>
         {!isAllDay && (
-          <div style={{ fontSize: "0.68rem", opacity: 0.9, marginTop: "1px" }}>
+          <div style={{ fontSize: isMobile ? "0.68rem" : "0.75rem", opacity: 0.9, marginTop: "1px" }}>
             {isMobile && info.view?.type === "dayGridMonth" ? (
               <>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{start}</div>
@@ -984,7 +983,7 @@ const CreditListPage = () => {
           </div>
         )}
         {hasWorkDone && (
-          <WorkDoneBox lines={workDoneLines} islistDay={info.view?.type.includes("list")} />
+          <WorkDoneBox lines={workDoneLines} islistDay={info.view?.type.includes("list")} isMobile={isMobile} />
         )}
       </div>
     );
@@ -1017,7 +1016,7 @@ const CreditListPage = () => {
   }
 
   return (
-    <Box p={isMobile ? 0.25 : 2}>
+    <Box p={isMobile ? 0.25 : 2} sx={!isMobile ? { zoom: 1.33333 } : {}}>
       {/* HEADER */}
       <Paper sx={{ p: isMobile ? 0.75 : 2, mb: isMobile ? 0.25 : 2 }}>
         <Stack
@@ -1128,7 +1127,8 @@ const CreditListPage = () => {
           <Grid container spacing={3}>
             {/* ASSIGNED TASKS CALENDAR */}
             {(!isMobile || mobileTab === "assigned") && (
-              <Paper sx={{ p: isMobile ? 0.75 : 2, height: "100%", width: isMobile ? "100%" : "48%", mx: 0, mb: isMobile ? 0.5 : 0 }}>
+              <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
+                <Paper sx={{ p: isMobile ? 0.75 : 2, height: "100%", width: "100%", mx: 0, mb: isMobile ? 0.5 : 0, display: 'flex', flexDirection: 'column' }}>
             <Stack direction="row" spacing={0.25} mb={0.5} alignItems="center">
               <AssignmentIcon color="primary" sx={isMobile ? { fontSize: "0.9rem" } : {}} />
               <Typography fontWeight="bold" variant={isMobile ? "caption" : "h6"} sx={isMobile ? { fontWeight: 700, fontSize: "0.75rem" } : {}}>
@@ -1146,7 +1146,27 @@ const CreditListPage = () => {
 
             <Box
               sx={{
-                height: isMobile ? 500 : 650,
+                height: isMobile ? 500 : 850,
+                ...(!isMobile && {
+                  "& .fc": {
+                    fontSize: "0.85rem",
+                  },
+                  "& .fc-col-header-cell-cushion": {
+                    fontSize: "0.85rem",
+                  },
+                  "& .fc-timegrid-slot-label-cushion": {
+                    fontSize: "0.8rem",
+                  },
+                  "& .fc-timegrid-axis-cushion": {
+                    fontSize: "0.8rem",
+                  },
+                  "& .fc-toolbar-title": {
+                    fontSize: "1.15rem !important",
+                  },
+                  "& .fc-button": {
+                    fontSize: "0.85rem !important",
+                  }
+                }),
                 ...(isMobile && {
                   "& .fc-header-toolbar": {
                     border: "1px solid #e1cdb0",
@@ -1294,12 +1314,14 @@ const CreditListPage = () => {
                 }}
               />
             </Box>
-          </Paper>
-          )}
+                </Paper>
+              </Grid>
+            )}
 
           {/* EXECUTED TASKS CALENDAR */}
           {(!isMobile || mobileTab === "executed") && (
-            <Paper sx={{ p: isMobile ? 0.75 : 2, height: "100%", width: isMobile ? "100%" : "48%", mx: 0, mb: isMobile ? 0.5 : 0 }}>
+            <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
+              <Paper sx={{ p: isMobile ? 0.75 : 2, height: "100%", width: "100%", mx: 0, mb: isMobile ? 0.5 : 0, display: 'flex', flexDirection: 'column' }}>
             <Stack
               direction="row"
               spacing={isMobile ? 0.25 : 1}
@@ -1357,7 +1379,27 @@ const CreditListPage = () => {
 
             <Box
               sx={{
-                height: isMobile ? 500 : 650,
+                height: isMobile ? 500 : 850,
+                ...(!isMobile && {
+                  "& .fc": {
+                    fontSize: "0.85rem",
+                  },
+                  "& .fc-col-header-cell-cushion": {
+                    fontSize: "0.85rem",
+                  },
+                  "& .fc-timegrid-slot-label-cushion": {
+                    fontSize: "0.8rem",
+                  },
+                  "& .fc-timegrid-axis-cushion": {
+                    fontSize: "0.8rem",
+                  },
+                  "& .fc-toolbar-title": {
+                    fontSize: "1.15rem !important",
+                  },
+                  "& .fc-button": {
+                    fontSize: "0.85rem !important",
+                  }
+                }),
                 ...(isMobile && {
                   "& .fc-header-toolbar": {
                     border: "1px solid #e1cdb0",
@@ -1503,7 +1545,8 @@ const CreditListPage = () => {
                 }}
               />
             </Box>
-          </Paper>
+              </Paper>
+            </Grid>
           )}
         </Grid>
         </>
@@ -1519,7 +1562,8 @@ const CreditListPage = () => {
           window.dispatchEvent(new CustomEvent("work-created"));
         }}
         selectedPlan={selectedPlan}
-        isEditMode={selectedPlan?.type === "executed" || (selectedPlan?.Work_Status && selectedPlan?.Work_Status !== "Pending")}
+        isEditMode={selectedPlan?.type === "executed"}
+        existingWork={selectedPlan}
         onTimerStart={handleTimerStart}
         onTimerStop={handleTimerStop}
       />

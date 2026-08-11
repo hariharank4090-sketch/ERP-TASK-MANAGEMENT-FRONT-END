@@ -125,6 +125,7 @@ export interface FilterableTableProps {
     sx?: Record<string, unknown>;
     size?: "small" | "medium";
   };
+  resetKey?: number;
 }
 
 type SortDirection = "asc" | "desc";
@@ -305,6 +306,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
   tableProps,
   createButtonProps,
   searchFieldProps,
+  resetKey,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -332,7 +334,10 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
     { type: "middle", class: "align-middle" },
   ];
 
-  const handleChangePage = (_event: unknown, newPage: number) => setPage(newPage);
+  const handleChangePage = (_event: unknown, newPage: number) => {
+    setPage(newPage);
+    setOpenRows({});
+  };
 
   const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRowsPerPage(parseInt(event.target.value, 10));
@@ -341,6 +346,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
 
   const handleSortRequest = (columnId?: string) => {
     if (!columnId) return;
+    setOpenRows({});
     const existing = sortCriteria.find((c) => c.columnId === columnId);
     if (existing) {
       setSortCriteria(
@@ -369,6 +375,10 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
 
   const [openRows, setOpenRows] = useState<Record<number, boolean>>({});
 
+  React.useEffect(() => {
+    setOpenRows({});
+  }, [searchValue, resetKey]);
+
   const toggleRow = (index: number) => {
     setOpenRows((prev) => ({ ...prev, [index]: !prev[index] }));
   };
@@ -394,6 +404,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
           )}
           {columns.map((column, columnInd) => {
             const isColumnVisible = isEqualNumber(column?.Defult_Display, 1) || isEqualNumber(column?.isVisible, 1);
+            if (!isColumnVisible) return null;
             const isCustomCell = Boolean(column?.isCustomCell) && column.Cell;
             const isCommonValue = !isCustomCell;
 
@@ -425,6 +436,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
               return (
                 <TableCell
                   key={columnInd}
+                  align={column.align || "left"}
                   className={`border-r border-gray-300 ${horizAlign} ${vertAlign} ${tdClass(row, column.Field_Name, index)}`}
                   sx={cellSx}
                   onClick={() => onClickFun ? onClickFun(row) : null}
@@ -438,6 +450,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
               return (
                 <TableCell
                   key={columnInd}
+                  align={column.align || "left"}
                   className={`border-r border-gray-300 ${horizAlign} ${vertAlign} ${tdClass(row, column.Field_Name, index)}`}
                   sx={cellSx}
                   onClick={() => onClickFun ? onClickFun(row) : null}
@@ -477,100 +490,102 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
       className="rounded-lg bg-white overflow-hidden"
       component={Paper}
       elevation={1}
-      sx={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
+      sx={{ display: "flex", flexDirection: "column", overflow: "hidden", width: "100%" }}
     >
       {/* ===== UPPER HEADER ROW ===== */}
-      <Box
-        sx={{
-          backgroundColor: "#c99f65",
-          borderBottom: "1px solid #e0e0e0",
-          minHeight: { xs: 48, sm: 50 },
-          px: { xs: 1.5, sm: 2 },
-          py: { xs: 1, sm: 1.5 },
-          display: "flex",
-          alignItems: { xs: "flex-start", sm: "center" },
-          justifyContent: "space-between",
-          flexDirection: { xs: "column", sm: "row" },
-          gap: { xs: 1, sm: 0 },
-          flexShrink: 0,
-        }}
-      >
-        {/* LEFT – Title */}
-        <Box flex={1} minWidth={0}>
-          {headerTitle && (
-            <Typography
-              variant={isMobile ? "h6" : "h5"}
-              component="h1"
-              sx={{ fontWeight: 600, color: "#333", fontSize: { xs: "1rem", sm: "1.25rem", md: "1.5rem" } }}
-            >
-              {headerTitle}
-            </Typography>
-          )}
-          {title && !headerTitle && (
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: 600, color: "#333", fontSize: { xs: "0.9rem", sm: "1rem", md: "1.1rem" } }}
-            >
-              {title}
-            </Typography>
-          )}
-        </Box>
-
-        {/* RIGHT – Search + Create + Actions */}
+      {(headerTitle || title || showSearch || headerActions || showCreateButton) && (
         <Box
-          display="flex"
-          alignItems="center"
-          gap={{ xs: 1, sm: 2 }}
-          flexWrap="wrap"
-          width={{ xs: "100%", sm: "auto" }}
+          sx={{
+            backgroundColor: "#c99f65",
+            borderBottom: "1px solid #e0e0e0",
+            minHeight: { xs: 48, sm: 50 },
+            px: { xs: 1.5, sm: 2 },
+            py: { xs: 1, sm: 1.5 },
+            display: "flex",
+            alignItems: { xs: "flex-start", sm: "center" },
+            justifyContent: "space-between",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 1, sm: 0 },
+            flexShrink: 0,
+          }}
         >
-          {showSearch && (
-            <TextField
-              size="small"
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-              InputProps={{
-                startAdornment: <Search fontSize="small" sx={{ mr: 0.5, color: "action.active" }} />,
-              }}
-              sx={{
-                width: { xs: "100%", sm: "220px", md: "280px" },
-                backgroundColor: "white",
-                "& .MuiOutlinedInput-root": { borderRadius: 1 },
-                "& input": { fontSize: { xs: "0.8rem", sm: "0.875rem" } },
-                ...searchFieldProps?.sx,
-              }}
-            />
-          )}
-
-          {headerActions && headerActions}
-
-          {showCreateButton && onCreateClick && (
-            <Tooltip title={createButtonLabel}>
-              <Button
-                variant="contained"
-                onClick={onCreateClick}
-                size={isMobile ? "small" : createButtonProps?.size || "medium"}
-                sx={{
-                  background: createButtonColor,
-                  color: "#fff",
-                  "&:hover": { background: "#d2a56d" },
-                  borderRadius: 1,
-                  textTransform: "none",
-                  fontWeight: 500,
-                  fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                  px: { xs: 1.5, sm: 2 },
-                  whiteSpace: "nowrap",
-                  ...createButtonProps?.sx,
-                }}
-                startIcon={<Add />}
+          {/* LEFT – Title */}
+          <Box flex={1} minWidth={0}>
+            {headerTitle && (
+              <Typography
+                variant={isMobile ? "h6" : "h5"}
+                component="h1"
+                sx={{ fontWeight: 600, color: "#333", fontSize: { xs: "1rem", sm: "1.25rem", md: "1.5rem" } }}
               >
-                {isMobile ? createButtonLabel.slice(0, 10) : createButtonLabel}
-              </Button>
-            </Tooltip>
-          )}
+                {headerTitle}
+              </Typography>
+            )}
+            {title && !headerTitle && (
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 600, color: "#333", fontSize: { xs: "0.9rem", sm: "1rem", md: "1.1rem" } }}
+              >
+                {title}
+              </Typography>
+            )}
+          </Box>
+
+          {/* RIGHT – Search + Create + Actions */}
+          <Box
+            display="flex"
+            alignItems="center"
+            gap={{ xs: 1, sm: 2 }}
+            flexWrap="wrap"
+            width={{ xs: "100%", sm: "auto" }}
+          >
+            {showSearch && (
+              <TextField
+                size="small"
+                placeholder={searchPlaceholder}
+                value={searchValue}
+                onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
+                InputProps={{
+                  startAdornment: <Search fontSize="small" sx={{ mr: 0.5, color: "action.active" }} />,
+                }}
+                sx={{
+                  width: { xs: "100%", sm: "220px", md: "280px" },
+                  backgroundColor: "white",
+                  "& .MuiOutlinedInput-root": { borderRadius: 1 },
+                  "& input": { fontSize: { xs: "0.8rem", sm: "0.875rem" } },
+                  ...searchFieldProps?.sx,
+                }}
+              />
+            )}
+
+            {headerActions && headerActions}
+
+            {showCreateButton && onCreateClick && (
+              <Tooltip title={createButtonLabel}>
+                <Button
+                  variant="contained"
+                  onClick={onCreateClick}
+                  size={isMobile ? "small" : createButtonProps?.size || "medium"}
+                  sx={{
+                    background: createButtonColor,
+                    color: "#fff",
+                    "&:hover": { background: "#d2a56d" },
+                    borderRadius: 1,
+                    textTransform: "none",
+                    fontWeight: 500,
+                    fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    px: { xs: 1.5, sm: 2 },
+                    whiteSpace: "nowrap",
+                    ...createButtonProps?.sx,
+                  }}
+                  startIcon={<Add />}
+                >
+                  {isMobile ? createButtonLabel.slice(0, 10) : createButtonLabel}
+                </Button>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
-      </Box>
+      )}
 
       {/* ===== TABLE OPTION BUTTONS ROW ===== */}
       {(PDFPrintOption || ExcelPrintOption || MenuButtons.length > 0 || maxHeightOption || ButtonArea) && (
@@ -623,11 +638,13 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
       <TableContainer
         sx={{
           maxHeight: tableHeight,
-          overflowX: "scroll",
+          overflowX: "auto",
           overflowY: "auto",
           WebkitOverflowScrolling: "touch",
           minHeight: 0,
           flex: 1,
+          width: "100%",
+          maxWidth: "100%",
           // Responsive scrollbar sizing
           "&::-webkit-scrollbar": {
             width: { xs: 4, sm: 6, md: 8 },
@@ -654,10 +671,13 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
           // Firefox
           scrollbarWidth: isMobile ? "thin" : "thin",
           scrollbarColor: "#c99f65 #f1f1f1",
-          ...tableProps?.sx,
+          ...(() => {
+            const { minWidth, ...rest } = tableProps?.sx || {};
+            return rest;
+          })(),
         }}
       >
-        <Table stickyHeader size={isMobile ? "small" : CellSize} sx={{ minWidth: { xs: 480, sm: 700, md: 900 } }}>
+        <Table stickyHeader size={isMobile ? "small" : CellSize} sx={{ minWidth: tableProps?.sx?.minWidth !== undefined ? tableProps.sx.minWidth : { xs: 480, sm: 700, md: 900 } }}>
           <TableHead>
             {showMasterTableHeader && (
               <TableRow>
@@ -687,6 +707,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
                 column.isVisible || column.Defult_Display ? (
                   <TableCell
                     key={index}
+                    align={column.align || "left"}
                     sx={{
                       fontSize: `${responsiveHeaderFont}px`,
                       fontWeight: 600,

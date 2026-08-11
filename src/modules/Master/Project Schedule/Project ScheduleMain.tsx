@@ -854,7 +854,40 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   };
 
   return (
-    <>
+    <Box
+      sx={{
+        width: "100%",
+        "& .MuiTableCell-root": {
+          fontSize: "0.88rem !important",
+          fontWeight: "bold !important",
+        },
+        "& .MuiChip-root": {
+          fontSize: "0.8rem !important",
+          fontWeight: "bold !important",
+          height: "28px !important",
+        },
+        "& .MuiChip-label": {
+          fontSize: "0.8rem !important",
+          fontWeight: "bold !important",
+        },
+        "& .MuiTypography-root": {
+          fontSize: "0.95rem !important",
+          fontWeight: "bold !important",
+        },
+        "& .MuiButton-root": {
+          fontSize: "0.88rem !important",
+          fontWeight: "bold !important",
+        },
+        "& .MuiInputBase-input": {
+          fontSize: "0.88rem !important",
+          fontWeight: "bold !important",
+        },
+        "& .MuiInputLabel-root": {
+          fontSize: "0.88rem !important",
+          fontWeight: "bold !important",
+        }
+      }}
+    >
       {error && <Alert severity="error" sx={{ mb: 2, fontSize: "0.75rem", py: 0.5 }}>{error}</Alert>}
 
       <Box sx={{ width: "100%", overflowX: "auto" }}>
@@ -1068,46 +1101,47 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
         }}
         tableProps={{
           sx: {
+            minWidth: "100%",
             "& .MuiTableHead-root .MuiTableCell-root": {
-              fontSize: "0.75rem", fontWeight: 600, padding: "8px 12px",
+              fontSize: "0.7rem", fontWeight: 600, padding: "3px 4px",
               backgroundColor: "#f8f9fa", borderBottom: "2px solid #e0e0e0",
-              whiteSpace: "nowrap"
+              whiteSpace: "normal", textAlign: "center"
             },
             "& .MuiTableBody-root .MuiTableCell-root": {
-              fontSize: "0.75rem", padding: "8px 12px", borderBottom: "1px solid #f0f0f0",
-              whiteSpace: "nowrap"
+              fontSize: "0.7rem", fontWeight: 600, padding: "3px 4px", borderBottom: "1px solid #f0f0f0",
+              whiteSpace: "normal", textAlign: "center"
             },
             "& .MuiTableBody-root .MuiTableRow-root:hover": { backgroundColor: "#f9f9f9" }
           }
         }}
         paginationProps={{
           sx: {
-            "& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows": { fontSize: "0.875rem" }
+            "& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows": { fontSize: "0.8rem" }
           }
         }}
         columns={[
           
           {
-            isVisible: 1, ColumnHeader: "Task Dates", align: "center" as const, isCustomCell: true,
+            isVisible: 0, ColumnHeader: "Task Dates", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as ProjectScheduleDisplay;
               const n = r.taskDates?.length || 0;
               return <span style={{ fontWeight: n > 0 ? 600 : 400, color: n > 0 ? "#1976d2" : "#666" }}>{n}</span>;
             },
           },
-          createCol("schNo", "string", "Schedule No."),
+          createCol("schNo", "string", "Sch No.", "center"),
           {
-            isVisible: 1, ColumnHeader: "Schedule Date", align: "left" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "Sch Date", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               return <span>{formatDateToDDMMYYYY(r.schDate)}</span>;
             },
           },
-          createCol("projectName", "string", "Project Name"),
-          createCol("taskType",    "string", "Task Type"),
-          createCol("taskName",    "string", "Task Name"),
+          createCol("projectName", "string", "Project Name", "center", "center", 1),
+          createCol("taskType",    "string", "Task Type", "center", "center", 1),
+          createCol("taskName",    "string", "Task Name", "center", "center", 1),
           {
-            isVisible: 1, ColumnHeader: "Sch First Start Date", align: "center" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "First Start Date", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               const val = r.schFirstStartDate || (r as any).Sch_First_Start_Date;
@@ -1117,7 +1151,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
             },
           },
           {
-            isVisible: 1, ColumnHeader: "Sch First End Date", align: "center" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "First End Date", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               const val = r.schFirstEndDate || (r as any).Sch_First_End_Date;
@@ -1127,24 +1161,29 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
             },
           },
           {
-            isVisible: 1, ColumnHeader: "Schedule Type", align: "center" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "Sch Type", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               return getScheduleTypeChip(r.schType);
             },
           },
           {
-            isVisible: 1, ColumnHeader: "Plan Type", align: "left" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "Plan", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               return <span>{r.planType}</span>;
             },
           },
           {
-            isVisible: 1, ColumnHeader: "Schedule Period", align: "center" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "Period", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
-              return <span>{formatDateToDDMMYYYY(r.schStartDate)} to {formatDateToDDMMYYYY(r.schEndDate)}</span>;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+                  <span>{formatDateToDDMMYYYY(r.schStartDate)}</span>
+                  <span>{formatDateToDDMMYYYY(r.schEndDate)}</span>
+                </div>
+              );
             },
           },
          
@@ -1162,16 +1201,18 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
                 })[0];
                 return (
                   <Tooltip title={`Latest correction: ${latest.taskWorkDate}`}>
-                    <span style={{ color: "#1976d2", fontWeight: 500 }}>
-                      {formatTimeTo12Hour(latest.taskStartTime)} - {formatTimeTo12Hour(latest.taskEndTime)}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "#1976d2", fontWeight: 600, gap: "1px" }}>
+                      <span>{formatTimeTo12Hour(latest.taskStartTime)}</span>
+                      <span>{formatTimeTo12Hour(latest.taskEndTime)}</span>
+                    </div>
                   </Tooltip>
                 );
               }
               return (
-                <span style={{ color: "#666" }}>
-                  {formatTimeTo12Hour(r.schEstStartTime)} - {formatTimeTo12Hour(r.schEstEndTime)}
-                </span>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "#666", gap: "1px" }}>
+                  <span>{formatTimeTo12Hour(r.schEstStartTime)}</span>
+                  <span>{formatTimeTo12Hour(r.schEstEndTime)}</span>
+                </div>
               );
             },
           },
@@ -1204,7 +1245,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
             },
           },
           {
-            isVisible: 1, ColumnHeader: "Timer Based", align: "center" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "Timer", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               return <span>{r.taskSchTimerBased === 1 ? "Yes" : "No"}</span>;
@@ -1212,7 +1253,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
           },
 
           {
-            isVisible: 1, ColumnHeader: "Employee Count", align: "center" as const, isCustomCell: true,
+            isVisible: 1, ColumnHeader: "Staff", align: "center" as const, isCustomCell: true,
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as projectscheduleData;
               const count = r.empCount || 0;
@@ -1243,19 +1284,19 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
             Cell: ({ row }: { row: Record<string, unknown> }) => {
               const r = row as unknown as ProjectScheduleDisplay;
               return (
-                <Box display="flex" justifyContent="center">
+                <Box display="flex" justifyContent="center" sx={{ px: 0.5, gap: "2px" }}>
                   <Tooltip title="View Corrections">
-                    <IconButton onClick={() => handleViewCorrections(r)} color="info" size="small" sx={{ mr: 1 }}>
+                    <IconButton onClick={() => handleViewCorrections(r)} color="info" size="small" sx={{ p: "2px" }}>
                       <Person fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Edit Schedule">
-                    <IconButton onClick={() => handleEditSchedule(r)} color="primary" size="small" sx={{ mr: 1 }}>
+                    <IconButton onClick={() => handleEditSchedule(r)} color="primary" size="small" sx={{ p: "2px" }}>
                       <Edit fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete Schedule">
-                    <IconButton onClick={() => handleDeleteSchedule(r.schId)} color="error" size="small">
+                    <IconButton onClick={() => handleDeleteSchedule(r.schId)} color="error" size="small" sx={{ p: "2px" }}>
                       <Delete fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -1350,7 +1391,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
           onProjectChange={handleProjectChange}
         />
       )}
-    </>
+    </Box>
   );
 };
 

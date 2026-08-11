@@ -4,6 +4,7 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
+  CircularProgress,
 } from "@mui/material";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
@@ -14,9 +15,8 @@ import {
   findMainMenuByChildPath,
   getSubmenusByMainMenuId 
 } from "../utils/menuManagement";
-import LoadingScreen from "../Components/loadingScreen";
 
-export const MenuGroupPage: React.ComponentType<PageProps> = ({ loadingOn, loadingOff }) => {
+export const MenuGroupPage: React.ComponentType<PageProps> = ({  }) => {
   const { navDetails } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -128,9 +128,7 @@ export const MenuGroupPage: React.ComponentType<PageProps> = ({ loadingOn, loadi
   const handleMenuClick = (menu: MenuTreeNode) => {
     const path = resolveMenuPath(menu);
     if (path && path !== "") {
-      if (loadingOn) loadingOn();
       navigate(path);
-      if (loadingOff) setTimeout(() => loadingOff(), 50);
     } else {
       console.error(`Invalid path for menu: ${menu.title}`, menu);
     }
@@ -275,7 +273,7 @@ export const MenuGroupPage: React.ComponentType<PageProps> = ({ loadingOn, loadi
         alignItems="center"
         minHeight="400px"
       >
-        <LoadingScreen loading={true} message="Loading..." targetId="main-card-inner" />
+        <CircularProgress />
       </Box>
     );
   }

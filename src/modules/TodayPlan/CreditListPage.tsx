@@ -26,7 +26,6 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import TodayIcon from "@mui/icons-material/Today";
 import { toast } from "react-toastify";
 import SearchableSelect from "../../Components/SearchableSelect";
-import LoadingScreen from "../../Components/loadingScreen";
 import {
   getEnrichedTodayPlan,
   getEmployeeDropdown,
@@ -171,15 +170,13 @@ const fetchWorkStatuses = async (
       if (workMasterResponse.success && workMasterResponse.data.length > 0) {
         workMasterResponse.data.forEach((work: any) => {
           if (validEmpIds.includes(work.Emp_Id)) {
-            const workDate = getDateOnly(work.Work_Dt);
-            const taskKey = `${work.Task_Id}_${work.Emp_Id}`;
-            const dateKey = `${taskKey}_${workDate}`;
-
             if (work.Work_Status === "Completed" ||
               work.Work_Status === "Pending" ||
               work.Work_Status === "In Progress" ||
               work.Tot_Minutes > 0) {
-              hasWorkKeysSet.add(dateKey);
+              if (work.Sch_Id) {
+                hasWorkKeysSet.add(String(work.Sch_Id));
+              }
             }
           }
         });
@@ -197,8 +194,7 @@ const getAssignedTaskKey = (task: todayplanData): string =>
   task.Id || `${task.Task_Id}_${task.Emp_Id}_${getDateOnly(task.Task_Assign_dt)}`;
 
 const getWorkExistenceKey = (plan: todayplanData): string => {
-  const taskDate = getDateOnly(plan.Task_Assign_dt || "");
-  return `${plan.Task_Id}_${plan.Emp_Id}_${taskDate}`;
+  return plan.Sch_Id ? String(plan.Sch_Id) : "";
 };
 
 // ✅ SAME color logic as calendar view — reads from timerRunningKeys and hasWorkKeys
@@ -209,7 +205,8 @@ const getTaskBgColor = (
   hasWorkKeys: Set<string>
 ): string => {
   if (timerRunningKeys.has(planRowKey)) return "#e65100";
-  if (hasWorkKeys.has(getWorkExistenceKey(plan))) return "#2e7d32";
+  const workKey = getWorkExistenceKey(plan);
+  if (workKey && hasWorkKeys.has(workKey)) return "#2e7d32";
   return "#ffffff";
 };
 
@@ -553,11 +550,11 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
 
   return (
     <Box width="100%" id="today-plan-inner">
-      <LoadingScreen 
-        loading={loading || isSwitchingCompany} 
-        message={isSwitchingCompany ? "Switching company…" : `Loading tasks for ${currentCompany?.companyName || "company"}…`} 
-        targetId="today-plan-inner" 
-      />
+      {(loading || isSwitchingCompany) && (
+        <Box display="flex" justifyContent="center" py={4}>
+          <CircularProgress />
+        </Box>
+      )}
       <Paper sx={{ borderRadius: 2, boxShadow: 3 }}>
         <Box
           sx={{
@@ -732,6 +729,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
           window.dispatchEvent(new CustomEvent("work-created"));
         }}
         selectedPlan={selectedPlan}
+        isEditMode={false}
         onTimerStart={handleTimerStart}
         onTimerStop={handleTimerStop}
       />

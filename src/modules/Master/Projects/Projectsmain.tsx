@@ -67,10 +67,11 @@ const formatDate = (dateString: string | null) => {
   }
 };
 
-const ProjectMainPage: React.FC<PageProps> = ({
-  loadingOn,
-  loadingOff,
-}) => {
+const noop = () => {};
+
+const ProjectMainPage: React.FC<PageProps> = () => {
+  const loadingOn = noop;
+  const loadingOff = noop;
   const [projects, setProjects] = useState<projectData[]>([]);
   const [companyOptions, setCompanyOptions] = useState<companyDropdown[]>([]);
   const [projectHeadOptions, setProjectHeadOptions] = useState<projectheadDropdown[]>([]);
@@ -481,17 +482,7 @@ const ProjectMainPage: React.FC<PageProps> = ({
     }));
   }, [filteredProjects]);
 
-  // Show loading overlay for table
-  if (isLoadingProjects) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-        <Typography variant="body1" sx={{ ml: 2 }}>
-          Loading projects...
-        </Typography>
-      </Box>
-    );
-  }
+
 
   return (
     <>
@@ -829,8 +820,18 @@ const ProjectMainPage: React.FC<PageProps> = ({
         
        
 
-        // Hide master table details header
+         // Hide master table details header
         showMasterTableHeader={false}
+        emptyMessage={
+          isLoadingProjects ? (
+            <Box display="flex" alignItems="center" justifyContent="center" p={3}>
+              <CircularProgress size={24} sx={{ mr: 2 }} />
+              <Typography variant="body2">Loading projects...</Typography>
+            </Box>
+          ) : (
+            "No records found"
+          )
+        }
 
         tableProps={{
           sx: {

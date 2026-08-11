@@ -1041,6 +1041,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       closeText="Cancel"
       maxWidth="md"
       fullWidth
+      PaperPropsSx={{ maxHeight: "96vh", minHeight: "750px" }}
       extraActions={
         isEditMode ? (
           <Button
@@ -1059,7 +1060,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
           <CircularProgress />
         </Box>
       ) : (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, p: 1 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.2, p: 0.5 }}>
 
           {/* Schedule No */}
           <TextField

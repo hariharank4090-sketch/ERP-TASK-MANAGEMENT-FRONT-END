@@ -25,6 +25,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import EditIcon from "@mui/icons-material/Edit";
 import TableViewIcon from "@mui/icons-material/TableView";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import * as XLSX from "xlsx";
 import {
   getEnrichedWorkMaster,
@@ -890,6 +891,7 @@ const WorkAbstract = () => {
   // ── Edit row ─────────────────────────────────────────────────────────────
   const handleEditRow = (row: WorkMasterData) => {
     setSelectedRowData({
+      SNo: row.SNo,
       AN_No: row.Work_Id,
       Sch_Id: row.Sch_Id,
       Task_Id: row.Task_Id,
@@ -955,7 +957,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", whiteSpace: "nowrap" }}>
           {formatDate(row.Work_Dt as string)}
         </Typography>
       )
@@ -966,7 +968,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", whiteSpace: "nowrap", fontWeight: "bold" }}>
           {String(row.Emp_Name || allUsers.find((e) => e.Emp_Id === row.Emp_Id)?.Emp_Name || "—")}
         </Typography>
       )
@@ -980,7 +982,7 @@ const WorkAbstract = () => {
         const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
         const branch = branchList.find((b) => String(b.BranchId) === String(emp?.BranchId));
         return (
-          <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          <Typography sx={{ fontSize: "inherit", whiteSpace: "nowrap" }}>
             {branch?.BranchName || "—"}
           </Typography>
         );
@@ -994,7 +996,7 @@ const WorkAbstract = () => {
       Cell: ({ row }) => {
         const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
         return (
-          <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          <Typography sx={{ fontSize: "inherit", whiteSpace: "nowrap" }}>
             {emp?.Department || "—"}
           </Typography>
         );
@@ -1008,7 +1010,7 @@ const WorkAbstract = () => {
       Cell: ({ row }) => {
         const emp = allUsers.find((e) => e.Emp_Id === row.Emp_Id);
         return (
-          <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+          <Typography sx={{ fontSize: "inherit", whiteSpace: "nowrap" }}>
             {emp?.Designation || "—"}
           </Typography>
         );
@@ -1020,7 +1022,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", fontWeight: 500, whiteSpace: "normal" }}>
           {String(row.Project_Name || "—")}
         </Typography>
       )
@@ -1031,7 +1033,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", whiteSpace: "normal" }}>
           {getTaskTypeName(row as any)}
         </Typography>
       )
@@ -1042,7 +1044,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", fontWeight: 500, whiteSpace: "normal" }}>
           {String(row.Task_Name || "—")}
         </Typography>
       )
@@ -1053,7 +1055,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", fontWeight: 500, whiteSpace: "nowrap" }}>
           {row.Start_Time
             ? `${formatTime12Hour(row.Start_Time as string)} – ${formatTime12Hour(row.End_Time as string)}`
             : "—"}
@@ -1066,7 +1068,7 @@ const WorkAbstract = () => {
       isVisible: 1,
       isCustomCell: true,
       Cell: ({ row }) => (
-        <Typography sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "inherit", whiteSpace: "nowrap" }}>
           {calculateDuration(row.Start_Time as string, row.End_Time as string)}
         </Typography>
       )
@@ -1083,7 +1085,7 @@ const WorkAbstract = () => {
         return (
           <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
             <Typography
-              sx={{ fontSize: "0.75rem", flex: 1, whiteSpace: "normal", wordBreak: "break-word" }}
+              sx={{ fontSize: "inherit", flex: 1, whiteSpace: "normal", wordBreak: "break-word" }}
             >
               {displayText}
             </Typography>
@@ -1393,7 +1395,7 @@ const WorkAbstract = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ p: { xs: 1, sm: 2, md: 3 }, pt: { xs: 0.5, sm: 1, md: 1.5 }, minHeight: "100vh" }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 0 }, minHeight: "auto", display: "flex", flexDirection: "column" }}>
       {isMobile ? (
         <Box>
           {/* Mobile Header Toolbar */}
@@ -1420,7 +1422,6 @@ const WorkAbstract = () => {
                 onOpenDialog={handleOpenFilterDialog}
                 onCloseDialog={handleCloseFilterDialog}
                 onSearch={handleSearch}
-                onReset={handleResetFilters}
               >
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
                   {/* From Date */}
@@ -1700,33 +1701,53 @@ const WorkAbstract = () => {
                   </Box>
                 </Box>
               </DashboardTopFilterBar>
+              <Tooltip title="Reset Filters & Refresh">
+                <IconButton
+                  onClick={handleResetFilters}
+                  sx={{
+                    backgroundColor: "#ffffff",
+                    border: "1.5px solid #000000",
+                    borderRadius: "50%",
+                    width: 36,
+                    height: 36,
+                    padding: 0,
+                    "&:hover": {
+                      backgroundColor: "#f5f5f5",
+                      border: "1.5px solid #000000",
+                    },
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  <RefreshIcon sx={{ fontSize: 20, color: "#000000" }} />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Box>
 
           {/* Stats Chips */}
-          <Box sx={{ display: "flex", gap: 1, mb: 1.5 }}>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1.5 }}>
             <Chip
-              label={`Total Records: ${displayWorkData.length}`}
+              label={`Records: ${displayWorkData.length}`}
               size="small"
               color="primary"
               variant="outlined"
-              sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+              sx={{ fontWeight: "bold", bgcolor: "#f1f3f5", fontSize: "0.68rem", height: "22px", "& .MuiChip-label": { px: 0.8 } }}
             />
             {appliedUser && appliedUser !== "all" && (
               <>
                 <Chip
-                  label={`Total Duration: ${totalDurationStr}`}
+                  label={`Duration: ${totalDurationStr}`}
                   size="small"
                   color="primary"
                   variant="outlined"
-                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5", fontSize: "0.68rem", height: "22px", "& .MuiChip-label": { px: 0.8 } }}
                 />
                 <Chip
-                  label={`Avg Duration/Day: ${averageDurationInfo.avgStr}`}
+                  label={`Avg/Day: ${averageDurationInfo.avgStr}`}
                   size="small"
                   color="primary"
                   variant="outlined"
-                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5" }}
+                  sx={{ fontWeight: "bold", bgcolor: "#f1f3f5", fontSize: "0.68rem", height: "22px", "& .MuiChip-label": { px: 0.8 } }}
                 />
               </>
             )}
@@ -1935,7 +1956,6 @@ const WorkAbstract = () => {
                 onOpenDialog={handleOpenFilterDialog}
                 onCloseDialog={handleCloseFilterDialog}
                 onSearch={handleSearch}
-                onReset={handleResetFilters}
               >
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
                   {/* From Date */}
@@ -2215,6 +2235,26 @@ const WorkAbstract = () => {
                   </Box>
                 </Box>
                </DashboardTopFilterBar>
+               <Tooltip title="Reset Filters & Refresh">
+                 <IconButton
+                   onClick={handleResetFilters}
+                   sx={{
+                     backgroundColor: "#ffffff",
+                     border: "1.5px solid #000000",
+                     borderRadius: "50%",
+                     width: 36,
+                     height: 36,
+                     padding: 0,
+                     "&:hover": {
+                       backgroundColor: "#f5f5f5",
+                       border: "1.5px solid #000000",
+                     },
+                     boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                   }}
+                 >
+                   <RefreshIcon sx={{ fontSize: 20, color: "#000000" }} />
+                 </IconButton>
+               </Tooltip>
               <Button
                 variant="contained"
                 startIcon={<TableViewIcon />}
@@ -2272,8 +2312,8 @@ const WorkAbstract = () => {
           }
           tableProps={{
             sx: {
-              "& .MuiTableHead-root .MuiTableCell-root": { fontSize: "0.75rem", fontWeight: 600, padding: "8px 12px", backgroundColor: "#f8f9fa", borderBottom: "2px solid #e0e0e0", whiteSpace: "nowrap" },
-              "& .MuiTableBody-root .MuiTableCell-root": { fontSize: "0.75rem", padding: "8px 12px", borderBottom: "1px solid #f0f0f0", whiteSpace: "nowrap" },
+              "& .MuiTableHead-root .MuiTableCell-root": { fontSize: "0.72rem", fontWeight: 600, padding: "4px 6px", backgroundColor: "#f8f9fa", borderBottom: "2px solid #e0e0e0", whiteSpace: "nowrap" },
+              "& .MuiTableBody-root .MuiTableCell-root": { fontSize: "0.72rem", padding: "4px 6px", borderBottom: "1px solid #f0f0f0", whiteSpace: "normal" },
               "& .MuiTableBody-root .MuiTableRow-root:hover": { backgroundColor: "#f9f9f9" }
             }
           }}

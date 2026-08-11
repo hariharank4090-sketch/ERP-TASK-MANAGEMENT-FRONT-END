@@ -9,7 +9,8 @@ import {
   FormControl,
   Select,
   MenuItem,
-  InputLabel
+  InputLabel,
+  CircularProgress
 } from "@mui/material";
 import { Edit, Delete, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
@@ -41,10 +42,11 @@ const numEq = (a: any, b: any) => {
   return Number(a) === Number(b);
 };
 
-const TaskTypeMainPage: React.FC<PageProps> = ({
-  loadingOn,
-  loadingOff,
-}) => {
+const noop = () => {};
+
+const TaskTypeMainPage: React.FC<PageProps> = () => {
+  const loadingOn = noop;
+  const loadingOff = noop;
   const [taskTypes, setTaskTypes] = useState<tasktypeData[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectDropdown[]>([]);
   const [projectsList, setProjectsList] = useState<any[]>([]);
@@ -55,7 +57,7 @@ const TaskTypeMainPage: React.FC<PageProps> = ({
     createDialog: false,
     deleteDialog: false,
   });
-  const [, setIsLoadingTaskTypes] = useState(false);
+  const [isLoadingTaskTypes, setIsLoadingTaskTypes] = useState(false);
   const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -476,6 +478,16 @@ const TaskTypeMainPage: React.FC<PageProps> = ({
         
         // Hide master table details header
         showMasterTableHeader={false}
+        emptyMessage={
+          isLoadingTaskTypes ? (
+            <Box display="flex" alignItems="center" justifyContent="center" p={3}>
+              <CircularProgress size={24} sx={{ mr: 2 }} />
+              <Typography variant="body2">Loading task types...</Typography>
+            </Box>
+          ) : (
+            "No records found"
+          )
+        }
         
         // Table columns
         columns={[

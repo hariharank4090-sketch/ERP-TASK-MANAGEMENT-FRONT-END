@@ -97,6 +97,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   >({});
 
   const [formData, setFormData] = useState<any>({
+    SNo: "",
     Work_Id: "",
     Sch_Id: "",
     Task_Id: "",
@@ -199,6 +200,59 @@ const TodayTaskDialog: React.FC<Props> = ({
     return undefined;
   };
 
+  const extractTimeForInput = (val: any): string => {
+    if (!val) return "";
+    try {
+      if (typeof val === "string" && val.includes("T")) {
+        if (val.includes("1970-01-01") || val.includes("1900-01-01")) {
+          return val.split("T")[1].substring(0, 5);
+        }
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) {
+          const hrs = d.getHours().toString().padStart(2, "0");
+          const mins = d.getMinutes().toString().padStart(2, "0");
+          return `${hrs}:${mins}`;
+        }
+      }
+      if (typeof val === "string" && val.includes(":")) {
+        return val.substring(0, 5);
+      }
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        const hrs = d.getHours().toString().padStart(2, "0");
+        const mins = d.getMinutes().toString().padStart(2, "0");
+        return `${hrs}:${mins}`;
+      }
+    } catch (e) {
+      console.error("Time parse error", e);
+    }
+    return "";
+  };
+
+  const parseTimeToDate = (timeVal: string, dateVal: string): Date | null => {
+    if (!timeVal) return null;
+    if (timeVal.includes("T")) {
+      const d = new Date(timeVal);
+      if (!isNaN(d.getTime())) return d;
+    }
+    try {
+      const d = new Date(`${dateVal}T${timeVal}:00`);
+      if (!isNaN(d.getTime())) return d;
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  const formatTimeForApi = (timeVal: string, dateVal: string) => {
+    if (!timeVal) return null;
+    if (timeVal.includes("T")) return timeVal;
+    try {
+      const d = new Date(`${dateVal}T${timeVal}:00`);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    } catch { /* ignore */ }
+    return timeVal;
+  };
+
+
   useEffect(() => {
     if (sourceData) {
       if (timerRef.current) {
@@ -218,15 +272,16 @@ const TodayTaskDialog: React.FC<Props> = ({
       const workDate = formatDateForInput(sourceData.Work_Dt);
 
       setFormData({
-        Work_Id: sourceData.Work_Id || sourceData.AN_No || "",
+        SNo: sourceData.SNo || "",
+        Work_Id: isEditMode ? (sourceData.Work_Id || sourceData.AN_No || "") : "",
         Sch_Id: String(sourceData.Sch_Id || ""),
         Task_Id: String(sourceData.Task_Id || ""),
         Task_Name: sourceData.Task_Name || "",
         Emp_Id: loggedEmpId || sourceData.Emp_Id || "",
         Emp_Name: sourceData.Emp_Name || "",
         Work_Dt: workDate,
-        Start_Time: sourceData.Start_Time || "",
-        End_Time: sourceData.End_Time || "",
+        Start_Time: isEditMode ? (sourceData.Start_Time || sourceData.startTime || "") : "",
+        End_Time: isEditMode ? (sourceData.End_Time || sourceData.endTime || "") : "",
         Work_Status: statusDisplay,
         Work_Done: sourceData.Work_Done || "",
         Process_Id: sourceData.Process_Id || ""
@@ -492,26 +547,12 @@ const TodayTaskDialog: React.FC<Props> = ({
       .padStart(2, "0")}`;
   };
 
-  const formatTime = (value: string) => {
-    if (!value) return "";
-
-    return new Date(value).toLocaleString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true
-    });
-  };
 
   const calculateMinutes = () => {
-    if (!formData.Start_Time) return 0;
-
-    const start = new Date(formData.Start_Time).getTime();
-
-    const end = formData.End_Time
-      ? new Date(formData.End_Time).getTime()
-      : Date.now();
-
-    return Number(((end - start) / 60000).toFixed(2));
+    const startDate = parseTimeToDate(formData.Start_Time, formData.Work_Dt);
+    if (!startDate) return 0;
+    const endDate = parseTimeToDate(formData.End_Time, formData.Work_Dt) || new Date();
+    return Number(((endDate.getTime() - startDate.getTime()) / 60000).toFixed(2));
   };
 
   const validateForm = (): boolean => {
@@ -567,12 +608,11 @@ const TodayTaskDialog: React.FC<Props> = ({
     try {
       const parameters: WorkParameter[] =
         taskParameters.map((param) => ({
-          Param_Id: param.Param_Id,
+          Param_Id: Number(param.Param_Id),
           Default_Value:
-            param.Default_Value || null,
+            param.Default_Value != null ? String(param.Default_Value) : null,
           Current_Value:
-            paramValues[`param_${param.Param_Id}`] ||
-            null
+            paramValues[`param_${param.Param_Id}`] != null ? String(paramValues[`param_${param.Param_Id}`]) : null
         }));
 
       const apiStatusValue =
@@ -580,32 +620,41 @@ const TodayTaskDialog: React.FC<Props> = ({
           formData.Work_Status
         ] || 1;
 
-      const payload = {
-        Work_Id: parseInt(formData.Work_Id) || 0,
-        Sch_Id: parseInt(formData.Sch_Id) || 0,
-        Task_Id: parseInt(formData.Task_Id) || 0,
-        Emp_Id: parseInt(formData.Emp_Id) || 0,
+      const payload: any = {
+        Sch_Id: formData.Sch_Id && !isNaN(Number(formData.Sch_Id)) ? Number(formData.Sch_Id) : undefined,
+        Task_Id: formData.Task_Id && !isNaN(Number(formData.Task_Id)) ? Number(formData.Task_Id) : undefined,
+        Emp_Id: formData.Emp_Id && !isNaN(Number(formData.Emp_Id)) ? Number(formData.Emp_Id) : undefined,
         Work_Dt: formData.Work_Dt,
         Work_Done: formData.Work_Done,
-        Start_Time: isTimerBased
-          ? formData.Start_Time
+        Start_Time: formData.Start_Time
+          ? formatTimeForApi(formData.Start_Time, formData.Work_Dt)
           : null,
-        End_Time: isTimerBased
-          ? formData.End_Time
+        End_Time: formData.End_Time
+          ? formatTimeForApi(formData.End_Time, formData.Work_Dt)
           : null,
-        Tot_Minutes: isTimerBased
-          ? calculateMinutes()
-          : 0,
+        Tot_Minutes: calculateMinutes() || 0,
         Work_Status: apiStatusValue,
-        Entry_By: parseInt(loggedEmpId || "1"),
-        Process_Id:
-          parseInt(formData.Process_Id) || null,
+        Process_Id: formData.Process_Id && !isNaN(Number(formData.Process_Id)) ? Number(formData.Process_Id) : null,
         Parameters: parameters
       };
 
+      if (isEditMode && formData.Work_Id) {
+        payload.Work_Id = Number(formData.Work_Id);
+      }
+
+      if (isEditMode) {
+        payload.Update_By = parseInt(loggedEmpId || "1");
+      } else {
+        payload.Entry_By = parseInt(loggedEmpId || "1");
+      }
+
+      const isPut = isEditMode && formData.SNo;
+      const apiAddress = isPut ? `${WORK_API}/${formData.SNo}` : WORK_API;
+      const apiMethod = isPut ? "PUT" : "POST";
+
       const res = await fetchLink<any>({
-        address: WORK_API,
-        method: "POST",
+        address: apiAddress,
+        method: apiMethod,
         bodyData: payload
       });
 
@@ -621,19 +670,9 @@ const TodayTaskDialog: React.FC<Props> = ({
         onSuccess?.();
         onClose?.();
       } else {
-        if (
-          res?.message?.includes(
-            "already exists for date"
-          )
-        ) {
-          toast.error(
-            `This Work ID (${formData.Work_Id}) has already been used on ${formData.Work_Dt}. You can only use the same Work ID once per day.`
-          );
-        } else {
-          throw new Error(
-            res?.message || "Failed to save work"
-          );
-        }
+        throw new Error(
+          res?.message || "Failed to save work"
+        );
       }
     } catch (err: any) {
       console.error("Error submitting work:", err);
@@ -663,6 +702,11 @@ const TodayTaskDialog: React.FC<Props> = ({
       fullWidth
       maxWidth="sm"
       aria-labelledby="work-timer-dialog-title"
+      PaperProps={{
+        sx: {
+          zoom: 0.75, // Scale dialog card to 75% size
+        },
+      }}
     >
       <DialogTitle id="work-timer-dialog-title">
         <Box
@@ -826,8 +870,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               variant="caption"
               color="text.secondary"
             >
-              Note: Same Work ID cannot be
-              used on the same date
+              Note: Enter the date for this work entry
             </Typography>
           </Grid>
 
@@ -869,59 +912,53 @@ const TodayTaskDialog: React.FC<Props> = ({
             </TextField>
           </Grid>
 
-          {isTimerBased && (
-            <Grid size={{ xs: 12 }}>
-              <Typography
-                fontWeight={600}
-                gutterBottom
-              >
-                Start Time
-              </Typography>
+          <Grid size={{ xs: 6 }}>
+            <Typography
+              fontWeight={600}
+              gutterBottom
+            >
+              Start Time
+            </Typography>
 
-              <TextField
-                fullWidth
-                value={formatTime(
-                  formData.Start_Time
-                )}
-                disabled
-                size="small"
-                placeholder="Not started yet"
-                error={
-                  !!validationErrors.Start_Time
-                }
-                helperText={
-                  validationErrors.Start_Time
-                }
-              />
-            </Grid>
-          )}
+            <TextField
+              type="time"
+              fullWidth
+              size="small"
+              value={extractTimeForInput(formData.Start_Time)}
+              onChange={(e) => handleInputChange("Start_Time", e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+              error={
+                !!validationErrors.Start_Time
+              }
+              helperText={
+                validationErrors.Start_Time
+              }
+            />
+          </Grid>
 
-          {isTimerBased && (
-            <Grid size={{ xs: 12 }}>
-              <Typography
-                fontWeight={600}
-                gutterBottom
-              >
-                End Time
-              </Typography>
+          <Grid size={{ xs: 6 }}>
+            <Typography
+              fontWeight={600}
+              gutterBottom
+            >
+              End Time
+            </Typography>
 
-              <TextField
-                fullWidth
-                value={formatTime(
-                  formData.End_Time
-                )}
-                disabled
-                size="small"
-                placeholder="Not ended yet"
-                error={
-                  !!validationErrors.End_Time
-                }
-                helperText={
-                  validationErrors.End_Time
-                }
-              />
-            </Grid>
-          )}
+            <TextField
+              type="time"
+              fullWidth
+              size="small"
+              value={extractTimeForInput(formData.End_Time)}
+              onChange={(e) => handleInputChange("End_Time", e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+              error={
+                !!validationErrors.End_Time
+              }
+              helperText={
+                validationErrors.End_Time
+              }
+            />
+          </Grid>
 
           {taskParameters.map((param) => {
             const inputType = getInputType(
@@ -1043,9 +1080,6 @@ const TodayTaskDialog: React.FC<Props> = ({
                 <Button
                   onClick={handleStart}
                   variant="contained"
-                  disabled={
-                    !!formData.End_Time
-                  }
                   sx={{
                     width: 120,
                     height: 120,

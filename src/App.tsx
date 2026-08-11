@@ -9,7 +9,6 @@ import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { CircularProgress } from "@mui/material";
 import { appRoutes } from "./routes/indexRouter";
 import MainMenuList from "./Layout/mainMenu";
-import { LoadingScreen } from "./Components/loadingScreen";
 import type { MenuRow } from "./modules/configuration/types";
 import { getAppMenuData } from "./modules/configuration/api";
 import PageNotFound from "./Components/404page";
@@ -77,13 +76,6 @@ function App() {
     return (
         <>
             <ToastContainer />
-            <LoadingScreen
-                loading={loading || isSwitchingCompany}
-                message={isSwitchingCompany ? "Switching company…" : "Processing the request"}
-                tone="light"
-                logo={<span style={{ fontWeight: 700 }}>ERP</span>}
-                targetId="main-card-inner"
-            />
 
             {/*
              * ✅ FIX: BrowserRouter is the single top-level router.

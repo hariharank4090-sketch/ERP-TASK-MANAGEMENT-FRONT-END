@@ -79,7 +79,17 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
   // Delete Dialog
   if (type === "delete") {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <Dialog 
+        open={open} 
+        onClose={onClose} 
+        maxWidth="xs" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            zoom: 0.75
+          }
+        }}
+      >
         <DialogTitle sx={{ bgcolor: '#fff5f5', color: '#d32f2f' }}>Confirm Delete</DialogTitle>
         <DialogContent>
           <Box sx={{ textAlign: "center", padding: "20px 10px" }}>
@@ -121,7 +131,17 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
   } = formState;
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      fullWidth 
+      maxWidth="md"
+      PaperProps={{
+        sx: {
+          zoom: 0.75
+        }
+      }}
+    >
       <DialogTitle sx={{ bgcolor: '#c99f65', color: 'white' }}>
         {isEditMode ? "Approve / Edit Leave" : "Leave Application"}
       </DialogTitle>

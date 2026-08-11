@@ -23,6 +23,7 @@ interface AppDialogProps {
   isSubmit?: boolean;
   extraActions?: React.ReactNode;
   disableBackdropClick?: boolean;
+  PaperPropsSx?: any;
 }
 
 const AppDialog: React.FC<AppDialogProps> = ({
@@ -38,6 +39,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
   isSubmit = false,
   extraActions,
   disableBackdropClick = false,
+  PaperPropsSx,
 }) => {
   const handleDialogClose = (_event: object, reason: string) => {
     if (disableBackdropClick && (reason === "backdropClick" || reason === "escapeKeyDown")) {
@@ -55,6 +57,11 @@ const AppDialog: React.FC<AppDialogProps> = ({
         sx: {
           borderRadius: "10px",
           overflow: "hidden", // Ensures header corners are rounded
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          zoom: 0.75,
+          ...PaperPropsSx,
         },
       }}
     >
