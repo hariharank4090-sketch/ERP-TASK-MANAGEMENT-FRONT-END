@@ -12,7 +12,7 @@ import type {
 
 const leaveAPI = "masters/leave";
 const leaveTypeAPI = "masters/leaveType/";
-const employeeAPI = "masters/dropdowns/employees";
+const employeeAPI = "masters/employees";
 const departmentAPI = "attendance/salesperson/departments";
 
 // ─── Fetch Leave List ─────────────────────────────────────────────────────────
@@ -55,7 +55,11 @@ export const getLeaveList = async (
     });
 
     if (res && res.success) {
-      return (res.data as unknown as LeaveRecord[]) ?? [];
+      const list = (res.data as unknown as LeaveRecord[]) ?? [];
+      return list.filter((item: any) => {
+        const isDeleted = item.Del_Flag === 1 || item.Del_Flag === "1" || item.del_flag === 1 || item.del_flag === "1";
+        return !isDeleted;
+      });
     } else {
       toast.error(res?.message || "Failed to load leave list");
       return [];
@@ -186,7 +190,25 @@ export const getEmployeeDropdown = async (
     });
 
     if (res && res.success) {
-      return (res.data as unknown as EmployeeDropdown[]) ?? [];
+      const list = (res.data as any[]) ?? [];
+      return list
+        .filter((emp: any) => {
+          const isDeleted =
+            emp.Del_Flag === 1 ||
+            emp.Del_Flag === "1" ||
+            emp.Del_Flag === true ||
+            emp.del_flag === 1 ||
+            emp.del_flag === "1" ||
+            emp.del_flag === true ||
+            emp.UDel_Flag === 1 ||
+            emp.UDel_Flag === "1" ||
+            emp.UDel_Flag === true;
+          return !isDeleted;
+        })
+        .map((emp: any) => ({
+          value: emp.Emp_Id,
+          label: emp.Emp_Name,
+        })) as EmployeeDropdown[];
     } else {
       toast.error(res?.message || "Failed to load employees");
       return [];

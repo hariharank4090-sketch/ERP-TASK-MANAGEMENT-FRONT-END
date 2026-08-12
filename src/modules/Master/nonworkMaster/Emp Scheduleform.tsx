@@ -1,30 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
   TextField,
   Box,
   Alert,
   Typography,
   Paper,
-  IconButton,
   Chip,
   OutlinedInput,
   FormControl,
-  InputLabel,
   Checkbox,
   ListItemText,
   type SelectChangeEvent
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
-import CloseIcon from "@mui/icons-material/Close";
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
 import SearchableSelect from "../../../Components/SearchableSelect";
+import AppDialog from "../../../Components/appDialog";
 
 const WORK_API = "masters/workMaster";
 const TASK_PARAM_API = "masters/taskParameterDetails";
@@ -560,6 +554,9 @@ const TodayTaskDialog: React.FC<Props> = ({
   };
 
   const handleSubmit = async () => {
+    if (loading || (isTimerBased && isRunning)) {
+      return;
+    }
     if (!validateForm()) {
       toast.error("Please fix validation errors before saving");
       return;
@@ -669,211 +666,196 @@ const TodayTaskDialog: React.FC<Props> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">{isEditMode ? "Edit Work" : "Work Timer"}</Typography>
-          <IconButton onClick={handleClose} size="small">
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      </DialogTitle>
+    <AppDialog
+      open={open}
+      onClose={handleClose}
+      title={isEditMode ? "Edit Work" : "Work Timer"}
+      onSubmit={handleSubmit}
+      submitText={loading ? "Saving..." : isEditMode ? "Update" : "Save"}
+      closeText="Cancel"
+      maxWidth="sm"
+      fullWidth
+      PaperPropsSx={{ zoom: 0.75 }}
+    >
+      {submitError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSubmitError(null)}>
+          {submitError}
+        </Alert>
+      )}
 
-      <DialogContent dividers>
-        {submitError && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSubmitError(null)}>
-            {submitError}
-          </Alert>
-        )}
+      <Grid container spacing={1.25}>
+        <Grid size={{ xs: 12 }}>
+          <Typography fontWeight={600} gutterBottom>Task Name</Typography>
+          <TextField fullWidth value={formData.Task_Name} disabled size="small" />
+        </Grid>
 
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12 }}>
-            <Typography fontWeight={600} gutterBottom>Task Name</Typography>
-            <TextField fullWidth value={formData.Task_Name} disabled size="small" />
-          </Grid>
-
-          <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth size="small" error={!!validationErrors.Emp_Id}>
-              <Typography fontWeight={600} gutterBottom>
-                Employee(s) <span style={{ color: "red" }}>*</span>
+        <Grid size={{ xs: 12 }}>
+          <Typography fontWeight={600} gutterBottom>
+            Employee(s) <span style={{ color: "red" }}>*</span>
+          </Typography>
+          <FormControl fullWidth size="small" error={!!validationErrors.Emp_Id}>
+            <SearchableSelect
+              multiple
+              value={selectedEmployees}
+              onChange={handleEmployeeChange as any}
+              input={<OutlinedInput />}
+              renderValue={(selected: any) => (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                  {(selected as number[]).map((value) => (
+                    <Chip
+                      key={value}
+                      label={getEmployeeName(value)}
+                      size="small"
+                      onDelete={() => handleRemoveEmployee(value)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                  ))}
+                </Box>
+              )}
+              disabled={loadingEmployees}
+              searchPlaceholder="Search employees..."
+              options={employees.map((employee) => ({
+                value: employee.Emp_Id,
+                label: (
+                  <>
+                    <Checkbox checked={selectedEmployees.indexOf(employee.Emp_Id) > -1} />
+                    <ListItemText
+                      primary={employee.Emp_Name}
+                      secondary={employee.Emp_Code}
+                    />
+                  </>
+                ),
+                searchText: `${employee.Emp_Name} ${employee.Emp_Code}`
+              }))}
+            />
+            {validationErrors.Emp_Id && (
+              <Typography variant="caption" color="error">
+                {validationErrors.Emp_Id}
               </Typography>
-              <InputLabel>Select Employees</InputLabel>
-              <SearchableSelect
-                multiple
-                value={selectedEmployees}
-                onChange={handleEmployeeChange as any}
-                input={<OutlinedInput label="Select Employees" />}
-                renderValue={(selected: any) => (
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                    {(selected as number[]).map((value) => (
-                      <Chip
-                        key={value}
-                        label={getEmployeeName(value)}
-                        size="small"
-                        onDelete={() => handleRemoveEmployee(value)}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      />
-                    ))}
-                  </Box>
-                )}
-                disabled={loadingEmployees}
-                searchPlaceholder="Search employees..."
-                options={employees.map((employee) => ({
-                  value: employee.Emp_Id,
-                  label: (
-                    <>
-                      <Checkbox checked={selectedEmployees.indexOf(employee.Emp_Id) > -1} />
-                      <ListItemText
-                        primary={employee.Emp_Name}
-                        secondary={employee.Emp_Code}
-                      />
-                    </>
-                  ),
-                  searchText: `${employee.Emp_Name} ${employee.Emp_Code}`
-                }))}
-              />
-              {validationErrors.Emp_Id && (
-                <Typography variant="caption" color="error">
-                  {validationErrors.Emp_Id}
-                </Typography>
-              )}
-              {selectedEmployees.length > 0 && (
-                <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: "block" }}>
-                  Selected: {selectedEmployees.length} employee(s)
-                </Typography>
-              )}
-            </FormControl>
-          </Grid>
+            )}
+            {selectedEmployees.length > 0 && (
+              <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: "block" }}>
+                Selected: {selectedEmployees.length} employee(s)
+              </Typography>
+            )}
+          </FormControl>
+        </Grid>
 
-          <Grid size={{ xs: 12 }}>
-            <Typography fontWeight={600} gutterBottom>
-              Work Done <span style={{ color: "red" }}>*</span>
+        <Grid size={{ xs: 12 }}>
+          <Typography fontWeight={600} gutterBottom>
+            Work Done <span style={{ color: "red" }}>*</span>
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            value={formData.Work_Done}
+            onChange={(e) => handleInputChange("Work_Done", e.target.value)}
+            error={!!validationErrors.Work_Done}
+            helperText={validationErrors.Work_Done}
+            placeholder="Describe the work done..."
+          />
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <Typography fontWeight={600} gutterBottom>Work Date</Typography>
+          <TextField
+            type="date"
+            fullWidth
+            size="small"
+            value={formData.Work_Dt}
+            onChange={(e) => handleInputChange("Work_Dt", e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+          />
+        </Grid>
+
+        <Grid size={{ xs: 6 }}>
+          <Typography fontWeight={600} gutterBottom>Start Time</Typography>
+          <TextField
+            type="time"
+            fullWidth
+            size="small"
+            value={extractTimeForInput(formData.Start_Time)}
+            onChange={(e) => handleInputChange("Start_Time", e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+          />
+        </Grid>
+
+        <Grid size={{ xs: 6 }}>
+          <Typography fontWeight={600} gutterBottom>End Time</Typography>
+          <TextField
+            type="time"
+            fullWidth
+            size="small"
+            value={extractTimeForInput(formData.End_Time)}
+            onChange={(e) => handleInputChange("End_Time", e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+          />
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <Typography fontWeight={600} gutterBottom>Work Status</Typography>
+          <FormControl fullWidth>
+            <SearchableSelect
+              value={formData.Work_Status}
+              onChange={(e) => handleInputChange("Work_Status", e.target.value)}
+              searchPlaceholder="Search status..."
+              options={[
+                { value: "Pending", label: "Pending" },
+                { value: "In Progress", label: "In Progress" },
+                { value: "Completed", label: "Completed" }
+              ]}
+            />
+          </FormControl>
+        </Grid>
+
+        {taskParameters.map((param) => (
+          <Grid size={{ xs: 12 }} key={param.Param_Id}>
+            <Typography fontWeight={600}>
+              {param.Paramet_Name} ({param.Para_Display_Name})
             </Typography>
             <TextField
               fullWidth
-              multiline
-              rows={3}
-              value={formData.Work_Done}
-              onChange={(e) => handleInputChange("Work_Done", e.target.value)}
-              error={!!validationErrors.Work_Done}
-              helperText={validationErrors.Work_Done}
-              placeholder="Describe the work done..."
-            />
-          </Grid>
-
-          <Grid size={{ xs: 12 }}>
-            <Typography fontWeight={600} gutterBottom>Work Date</Typography>
-            <TextField
-              type="date"
-              fullWidth
               size="small"
-              value={formData.Work_Dt}
-              onChange={(e) => handleInputChange("Work_Dt", e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
+              type={getInputType(param.Para_Display_Name)}
+              value={paramValues[`param_${param.Param_Id}`] || ""}
+              onChange={(e) => handleParamChange(param, e.target.value)}
+              error={!!validationErrors[`param_${param.Param_Id}`]}
+              helperText={validationErrors[`param_${param.Param_Id}`]}
             />
           </Grid>
+        ))}
+      </Grid>
 
-          <Grid size={{ xs: 6 }}>
-            <Typography fontWeight={600} gutterBottom>Start Time</Typography>
-            <TextField
-              type="time"
-              fullWidth
-              size="small"
-              value={extractTimeForInput(formData.Start_Time)}
-              onChange={(e) => handleInputChange("Start_Time", e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-          </Grid>
+      {isTimerBased && (
+        <>
+          <Paper sx={{ p: 3, textAlign: "center", mt: 3 }}>
+            <Typography variant="h3">{formatTimer(elapsedSeconds)}</Typography>
+            <Typography variant="caption">Total Minutes: {calculateMinutes()}</Typography>
+          </Paper>
 
-          <Grid size={{ xs: 6 }}>
-            <Typography fontWeight={600} gutterBottom>End Time</Typography>
-            <TextField
-              type="time"
-              fullWidth
-              size="small"
-              value={extractTimeForInput(formData.End_Time)}
-              onChange={(e) => handleInputChange("End_Time", e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-          </Grid>
-
-          <Grid size={{ xs: 12 }}>
-            <Typography fontWeight={600} gutterBottom>Work Status</Typography>
-            <FormControl fullWidth>
-              <SearchableSelect
-                value={formData.Work_Status}
-                onChange={(e) => handleInputChange("Work_Status", e.target.value)}
-                searchPlaceholder="Search status..."
-                options={[
-                  { value: "Pending", label: "Pending" },
-                  { value: "In Progress", label: "In Progress" },
-                  { value: "Completed", label: "Completed" }
-                ]}
-              />
-            </FormControl>
-          </Grid>
-
-          {taskParameters.map((param) => (
-            <Grid size={{ xs: 12 }} key={param.Param_Id}>
-              <Typography fontWeight={600}>
-                {param.Paramet_Name} ({param.Para_Display_Name})
-              </Typography>
-              <TextField
-                fullWidth
-                size="small"
-                type={getInputType(param.Para_Display_Name)}
-                value={paramValues[`param_${param.Param_Id}`] || ""}
-                onChange={(e) => handleParamChange(param, e.target.value)}
-                error={!!validationErrors[`param_${param.Param_Id}`]}
-                helperText={validationErrors[`param_${param.Param_Id}`]}
-              />
-            </Grid>
-          ))}
-        </Grid>
-
-        {isTimerBased && (
-          <>
-            <Paper sx={{ p: 3, textAlign: "center", mt: 3 }}>
-              <Typography variant="h3">{formatTimer(elapsedSeconds)}</Typography>
-              <Typography variant="caption">Total Minutes: {calculateMinutes()}</Typography>
-            </Paper>
-
-            <Box display="flex" justifyContent="center" gap={2} mt={3}>
-              {!isRunning ? (
-                <Button
-                  onClick={handleStart}
-                  variant="contained"
-                  sx={{ width: 120, height: 120, borderRadius: "50%" }}
-                >
-                  START
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleStop}
-                  variant="contained"
-                  sx={{ width: 120, height: 120, borderRadius: "50%", bgcolor: "#f44336" }}
-                >
-                  STOP
-                </Button>
-              )}
-            </Box>
-          </>
-        )}
-      </DialogContent>
-
-      <DialogActions>
-        <Button onClick={handleClose} disabled={loading}>
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={loading || (isTimerBased && isRunning)}
-        >
-          {loading ? "Saving..." : isEditMode ? "Update" : "Save"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          <Box display="flex" justifyContent="center" gap={2} mt={3}>
+            {!isRunning ? (
+              <Button
+                onClick={handleStart}
+                variant="contained"
+                sx={{ width: 120, height: 120, borderRadius: "50%" }}
+              >
+                START
+              </Button>
+            ) : (
+              <Button
+                onClick={handleStop}
+                variant="contained"
+                sx={{ width: 120, height: 120, borderRadius: "50%", bgcolor: "#f44336" }}
+              >
+                STOP
+              </Button>
+            )}
+          </Box>
+        </>
+      )}
+    </AppDialog>
   );
 };
 

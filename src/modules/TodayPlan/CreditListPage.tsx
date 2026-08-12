@@ -175,7 +175,8 @@ const fetchWorkStatuses = async (
               work.Work_Status === "In Progress" ||
               work.Tot_Minutes > 0) {
               if (work.Sch_Id) {
-                hasWorkKeysSet.add(String(work.Sch_Id));
+                const workDate = work.Work_Dt ? getDateOnly(work.Work_Dt) : "";
+                hasWorkKeysSet.add(`${work.Sch_Id}_${workDate}_${work.Emp_Id}`);
               }
             }
           }
@@ -194,7 +195,8 @@ const getAssignedTaskKey = (task: todayplanData): string =>
   task.Id || `${task.Task_Id}_${task.Emp_Id}_${getDateOnly(task.Task_Assign_dt)}`;
 
 const getWorkExistenceKey = (plan: todayplanData): string => {
-  return plan.Sch_Id ? String(plan.Sch_Id) : "";
+  const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+  return plan.Sch_Id ? `${plan.Sch_Id}_${planDate}_${plan.Emp_Id}` : "";
 };
 
 // ✅ SAME color logic as calendar view — reads from timerRunningKeys and hasWorkKeys

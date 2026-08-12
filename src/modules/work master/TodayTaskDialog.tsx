@@ -287,8 +287,7 @@ const TodayTaskDialog: React.FC<Props> = ({
         Process_Id: sourceData.Process_Id || ""
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceData, loggedEmpId, todayDate]);
+  }, [sourceData, loggedEmpId, todayDate, open]);
 
   // ==========================================================
   // 3. RESTORE TIMER useEffect
@@ -632,23 +631,26 @@ const TodayTaskDialog: React.FC<Props> = ({
         End_Time: formData.End_Time
           ? formatTimeForApi(formData.End_Time, formData.Work_Dt)
           : null,
-        Tot_Minutes: calculateMinutes() || 0,
+        Tot_Minutes: Math.max(0, Math.round(calculateMinutes())),
         Work_Status: apiStatusValue,
         Process_Id: formData.Process_Id && !isNaN(Number(formData.Process_Id)) ? Number(formData.Process_Id) : null,
         Parameters: parameters
       };
 
-      if (isEditMode && formData.Work_Id) {
-        payload.Work_Id = Number(formData.Work_Id);
+      const originalDate = formatDateForInput(sourceData?.Work_Dt);
+      const isDateChanged = isEditMode && formData.Work_Dt !== originalDate;
+
+      if (isEditMode && formData.Work_Id && !isDateChanged) {
+        payload.Work_Id = isNaN(Number(formData.Work_Id)) ? formData.Work_Id : Number(formData.Work_Id);
       }
 
-      if (isEditMode) {
+      if (isEditMode && !isDateChanged) {
         payload.Update_By = parseInt(loggedEmpId || "1");
       } else {
         payload.Entry_By = parseInt(loggedEmpId || "1");
       }
 
-      const isPut = isEditMode && formData.SNo;
+      const isPut = isEditMode && formData.SNo && !isDateChanged;
       const apiAddress = isPut ? `${WORK_API}/${formData.SNo}` : WORK_API;
       const apiMethod = isPut ? "PUT" : "POST";
 
@@ -662,7 +664,7 @@ const TodayTaskDialog: React.FC<Props> = ({
         clearTimerState();
 
         toast.success(
-          isEditMode
+          (isEditMode && !isDateChanged)
             ? "Work updated successfully!"
             : "Work saved successfully!"
         );

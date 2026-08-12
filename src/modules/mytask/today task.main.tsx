@@ -433,7 +433,8 @@ const CreditListPage = () => {
             work.Work_Status === "In Progress" ||
             work.Tot_Minutes > 0) {
             if (work.Sch_Id) {
-              hasWorkKeysSet.add(String(work.Sch_Id));
+              const workDate = work.Work_Dt ? getDateOnly(work.Work_Dt) : "";
+              hasWorkKeysSet.add(`${work.Sch_Id}_${workDate}_${work.Emp_Id}`);
             }
           }
         });
@@ -688,7 +689,7 @@ const CreditListPage = () => {
       const key = getAssignedTaskKey(task);
       const isRunning = timerRunningKeys.has(key);
       const taskDate = getDateOnly(task.Task_Assign_dt);
-      const hasWork = task.Sch_Id ? hasWorkKeys.has(String(task.Sch_Id)) : false;
+      const hasWork = task.Sch_Id ? hasWorkKeys.has(`${task.Sch_Id}_${taskDate}_${task.Emp_Id}`) : false;
 
       // ✅ Color computed from state — updates instantly when timer starts/stops
       let bgColor = "#1976d2";

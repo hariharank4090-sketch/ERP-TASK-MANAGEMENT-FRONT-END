@@ -911,7 +911,7 @@ const WorkAbstract = () => {
     setEditDialogOpen(true);
   };
   const handleEditSuccess = () => {
-    handleSearch();
+    fetchDataForParams(appliedFromDate, appliedToDate, appliedUser);
   };
 
   // ✅ Listen for work-created events to auto-reload data (e.g. from TodayPlanCard)

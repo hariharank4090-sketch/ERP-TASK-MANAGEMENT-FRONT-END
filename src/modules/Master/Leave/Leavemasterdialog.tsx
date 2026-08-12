@@ -277,11 +277,20 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
                 const opt = users.find(o => String(o.value) === String(selectedVal));
                 update({ selectedInCharge: opt ? { value: opt.value as number, label: opt.label } : null });
               }}
-              options={users.map(o => ({ value: o.value, label: o.label }))}
-              disabled={isLoading}
+              displayEmpty
+              renderValue={(selected: any) => {
+                if (!selected) return "Select In-Charge";
+                const user = users.find((u) => String(u.value) === String(selected));
+                return user?.label || selected;
+              }}
               searchPlaceholder="Search in-charge..."
               allOptionLabel="Select In-Charge"
               allOptionValue=""
+              options={users.map((o) => ({
+                value: o.value.toString(),
+                label: o.label
+              }))}
+              disabled={isLoading}
             />
           </Box>
 

@@ -694,9 +694,20 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                 const opt = [{ value: 0, label: "ALL" }, ...employees].find(o => String(o.value) === String(selectedVal));
                 if (opt) setHomeSelectedEmployee(opt as any);
               }}
-              options={[{ value: 0, label: "ALL" }, ...employees]}
-              disabled={isHomeDropdownDisabled || isLoading}
+              displayEmpty
+              renderValue={(selected: any) => {
+                if (!selected || selected === 0 || selected === "0") return "ALL";
+                const emp = employees.find((e) => String(e.value) === String(selected));
+                return emp?.label || selected;
+              }}
               searchPlaceholder="Search employee..."
+              allOptionLabel="ALL"
+              allOptionValue={0}
+              options={employees.map((emp) => ({
+                value: emp.value.toString(),
+                label: emp.label
+              }))}
+              disabled={isHomeDropdownDisabled || isLoading}
             />
           </Box>
 
@@ -752,9 +763,20 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                 const opt = [{ value: 0, label: "ALL" }, ...allEmployees].find(o => String(o.value) === String(selectedVal));
                 if (opt) setApproveSelectedEmployee(opt as any);
               }}
-              options={[{ value: 0, label: "ALL" }, ...allEmployees]}
-              disabled={isLoading}
+              displayEmpty
+              renderValue={(selected: any) => {
+                if (!selected || selected === 0 || selected === "0") return "ALL";
+                const emp = allEmployees.find((e) => String(e.value) === String(selected));
+                return emp?.label || selected;
+              }}
               searchPlaceholder="Search employee..."
+              allOptionLabel="ALL"
+              allOptionValue={0}
+              options={allEmployees.map((emp) => ({
+                value: emp.value.toString(),
+                label: emp.label
+              }))}
+              disabled={isLoading}
             />
           </Box>
 

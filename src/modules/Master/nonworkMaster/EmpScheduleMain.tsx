@@ -17,12 +17,10 @@ import {
   Button,
   IconButton,
   Tooltip,
-  InputAdornment,
 } from "@mui/material";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import { toast } from "react-toastify";
 
 import { fetchLink } from "../../../Components/customFetch";
@@ -1115,15 +1113,6 @@ const EmpSchedulesMainPage: React.FC = () => {
                       size="small"
                       value={workDateFilter}
                       onChange={handleWorkDateFilterChange}
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <CalendarTodayIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
                       sx={{ width: 170, backgroundColor: "#fff", borderRadius: 1 }}
                     />
                   </Box>

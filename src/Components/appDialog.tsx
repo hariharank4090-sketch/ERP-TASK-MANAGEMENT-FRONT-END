@@ -100,9 +100,11 @@ const AppDialog: React.FC<AppDialogProps> = ({
           paddingTop: "16px",   // Reduced from 20px to 16px
           paddingBottom: "8px",
           paddingX: "20px",
+          overflowY: "auto",
           // Remove default padding adjustments
           "&.MuiDialogContent-root": {
             paddingTop: "16px",
+            overflowY: "auto",
           }
         }}
       >
