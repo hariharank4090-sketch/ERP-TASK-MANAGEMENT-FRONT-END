@@ -358,21 +358,53 @@ const ProjectMainPage: React.FC<PageProps> = () => {
     
     const projectStatus = row.Project_Status ?? row.IsActive ?? 1;
     
-    const editData: projectCreateInput = {
+    // Resolve Company value key with casing safety
+    let resolvedCompanyId = row.Company_Id ?? (row as any).companyId ?? (row as any).CompanyId ?? (row as any).company_id ?? null;
+    
+    // Resolve by company name fallback if ID is missing but name exists
+    if (!resolvedCompanyId && row.Company_Name) {
+      const match = companyOptions.find(c => c.label.toLowerCase() === row.Company_Name?.toLowerCase());
+      if (match) {
+        resolvedCompanyId = match.value;
+      }
+    }
+    
+    // Fallback to first company option if still not resolved
+    if (!resolvedCompanyId && companyOptions.length > 0) {
+      resolvedCompanyId = companyOptions[0].value;
+    }
+
+    // Resolve Project Head with casing safety
+    const resolvedHeadId = row.Project_Head ?? (row as any).projectHead ?? (row as any).ProjectHead ?? (row as any).project_head ?? null;
+    
+    // Resolve Company Name
+    let resolvedCompanyName = row.Company_Name ?? (row as any).companyName ?? (row as any).CompanyName ?? (row as any).company_name;
+    if (!resolvedCompanyName && resolvedCompanyId) {
+      const match = companyOptions.find(c => c.value === resolvedCompanyId);
+      if (match) {
+        resolvedCompanyName = match.label;
+      }
+    }
+    if (!resolvedCompanyName && companyOptions.length > 0) {
+      resolvedCompanyName = companyOptions[0].label;
+    }
+    
+    const editData: any = {
       Project_Name: row.Project_Name || "",
       Project_Desc: row.Project_Desc || null,
-      Company_Id: row.Company_Id || null,
-      Project_Head: row.Project_Head || null,
+      Company_Id: resolvedCompanyId,
+      Project_Head: resolvedHeadId,
       Est_Start_Dt: row.Est_Start_Dt || null,
       Est_End_Dt: row.Est_End_Dt || null,
       Project_Status: projectStatus,
-      IsActive: projectStatus
+      IsActive: projectStatus,
+      Company_Name: resolvedCompanyName
     };
     
     console.log("Edit Project Data:", editData);
     setProjectObj(editData);
     setDialog(prev => ({ ...prev, createDialog: true }));
-  }, []);
+  }, [companyOptions]);
 
   // Delete Project
   const handleDelete = useCallback((id: number) => {

@@ -101,13 +101,6 @@ import type {
 import type { PageProps } from "../../../routes/indexRouter";
 
 // ─── Debounce ─────────────────────────────────────────────────────────────────
-const debounce = <T extends (...args: any[]) => any>(fn: T, wait: number) => {
-  let t: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), wait);
-  };
-};
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 const numEq = (a: any, b: any) => {
@@ -1241,8 +1234,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const debouncedSetSearch = useMemo(() => debounce(setSearchTerm, 300), []);
-  const handleSearchChange = useCallback((v: string) => debouncedSetSearch(v), [debouncedSetSearch]);
+
 
   // Get filtered projects based on selected task type and task
   const getFilteredProjectsForDropdown = useMemo(() => {
@@ -1938,7 +1930,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
           );
         }}
         showSearch searchPlaceholder="Search Task, Description, Project or Type…"
-        searchValue={searchTerm} onSearchChange={handleSearchChange}
+        searchValue={searchTerm} onSearchChange={setSearchTerm}
         showCreateButton createButtonLabel="Add Task" onCreateClick={handleCreateTask}
         searchFieldProps={{ size: "small", sx: { width: "300px", "& .MuiOutlinedInput-root": { height: "36px", fontSize: "0.875rem" }, "& .MuiInputBase-input": { padding: "8px 12px", fontSize: "0.875rem" } } }}
         createButtonProps={{ size: "medium", sx: { height: "36px", fontSize: "0.875rem", padding: "6px 16px", minWidth: "130px", backgroundColor: "#c99f65", color: "white", borderRadius: "4px", textTransform: "none", "&:hover": { backgroundColor: "#b88a4f" } } }}

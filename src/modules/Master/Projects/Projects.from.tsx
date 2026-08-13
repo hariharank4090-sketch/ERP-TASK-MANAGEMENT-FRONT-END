@@ -62,10 +62,45 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
 
   // Get company name for display
   const getCompanyDisplayName = (): string => {
-    if (currentProjectObj.Company_Id) {
-      const company = companyOptions.find(c => c.value === currentProjectObj.Company_Id);
-      return company?.label || '';
+    console.log("getCompanyDisplayName called:");
+    console.log("  currentProjectObj:", currentProjectObj);
+    console.log("  companyOptions:", companyOptions);
+    
+    const fallbackName = (currentProjectObj as any).Company_Name ?? (currentProjectObj as any).companyName ?? (currentProjectObj as any).CompanyName ?? (currentProjectObj as any).company_name;
+    console.log("  Fallback name:", fallbackName);
+    if (fallbackName && String(fallbackName).trim() !== '') {
+      return fallbackName;
     }
+
+    if (currentProjectObj.Company_Id) {
+      const company = companyOptions.find(c => String(c.value) === String(currentProjectObj.Company_Id));
+      console.log("  Matched company by ID:", company);
+      if (company) return company.label;
+    }
+
+    // Try to get company from current logged in user session
+    try {
+      const sessionCompany = localStorage.getItem("currentCompany");
+      if (sessionCompany) {
+        const parsed = JSON.parse(sessionCompany);
+        const name = parsed.companyName || parsed.CompanyName || parsed.company_Name;
+        if (name) return name;
+      }
+      const sessionUser = localStorage.getItem("user");
+      if (sessionUser) {
+        const parsed = JSON.parse(sessionUser);
+        const name = parsed.Company_Name || parsed.companyName || parsed.CompanyName;
+        if (name) return name;
+      }
+    } catch (e) {
+      console.error("Error reading session company:", e);
+    }
+
+    if (companyOptions.length > 0) {
+      console.log("  Fallback to first option:", companyOptions[0].label);
+      return companyOptions[0].label;
+    }
+    console.log("  Returning empty string");
     return '';
   };
 

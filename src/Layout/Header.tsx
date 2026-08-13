@@ -209,6 +209,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
           <IconButton
             size="small"
             sx={{ color: "#000", backgroundColor: "#fff", "&:hover": { backgroundColor: "#e0e0e0" }, width: 32, height: 32, borderRadius: "50%" }}
+            onClick={() => navigate("/notifications")}
           >
             <Notifications fontSize="small" />
           </IconButton>
@@ -247,7 +248,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
             </MenuItem>
             {/* Show Notifications in mobile menu */}
             {isMobile && (
-              <MenuItem>
+              <MenuItem onClick={() => { handleClose(); navigate("/notifications"); }}>
                 <Notifications fontSize="small" sx={{ mr: 1 }} />
                 Notifications
               </MenuItem>

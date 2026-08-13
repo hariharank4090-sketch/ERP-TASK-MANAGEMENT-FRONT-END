@@ -1148,6 +1148,25 @@ const CreditListPage = () => {
             <Box
               sx={{
                 height: isMobile ? 500 : 850,
+                width: "100%",
+                "& .fc": {
+                  width: "100% !important",
+                },
+                "& .fc table": {
+                  width: "100% !important",
+                },
+                "& .fc-timegrid-body": {
+                  width: "100% !important",
+                },
+                "& .fc-timegrid-slots": {
+                  width: "100% !important",
+                },
+                "& .fc-timegrid-cols": {
+                  width: "100% !important",
+                },
+                "& .fc-daygrid-body": {
+                  width: "100% !important",
+                },
                 ...(!isMobile && {
                   "& .fc": {
                     fontSize: "0.85rem",
@@ -1381,6 +1400,25 @@ const CreditListPage = () => {
             <Box
               sx={{
                 height: isMobile ? 500 : 850,
+                width: "100%",
+                "& .fc": {
+                  width: "100% !important",
+                },
+                "& .fc table": {
+                  width: "100% !important",
+                },
+                "& .fc-timegrid-body": {
+                  width: "100% !important",
+                },
+                "& .fc-timegrid-slots": {
+                  width: "100% !important",
+                },
+                "& .fc-timegrid-cols": {
+                  width: "100% !important",
+                },
+                "& .fc-daygrid-body": {
+                  width: "100% !important",
+                },
                 ...(!isMobile && {
                   "& .fc": {
                     fontSize: "0.85rem",
