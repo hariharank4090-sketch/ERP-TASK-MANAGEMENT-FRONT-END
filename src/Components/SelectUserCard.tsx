@@ -5,6 +5,7 @@ import {
   Typography,
   Box,
   Avatar,
+  Tooltip,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
@@ -124,39 +125,51 @@ const SelectUserCard: React.FC<SelectUserCardProps> = ({
           </Avatar>
 
           {/* Name - Below Avatar */}
-          <Typography 
-            fontWeight={600} 
-            fontSize={15} 
-            sx={{
-              lineHeight: 1.2,
-              mb: 0.5,
-              width: "100%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              px: 1,
-              color: selected ? "#d2a56d" : "text.primary",
-            }}
-          >
-            {name}
-          </Typography>
+          <Tooltip title={name} enterDelay={300} arrow>
+            <Typography 
+              fontWeight={600} 
+              fontSize={15} 
+              sx={{
+                lineHeight: 1.2,
+                mb: 0.5,
+                width: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                whiteSpace: "normal",
+                wordBreak: "break-word",
+                px: 1,
+                color: selected ? "#d2a56d" : "text.primary",
+              }}
+            >
+              {name}
+            </Typography>
+          </Tooltip>
 
           {/* Company - Below Name */}
-          <Typography 
-            fontSize={12} 
-            color="text.secondary"
-            sx={{
-              lineHeight: 1.2,
-              mb: 0.5,
-              width: "100%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              px: 1,
-            }}
-          >
-            {company}
-          </Typography>
+          <Tooltip title={company} enterDelay={300} arrow>
+            <Typography 
+              fontSize={12} 
+              color="text.secondary"
+              sx={{
+                lineHeight: 1.2,
+                mb: 0.5,
+                width: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                whiteSpace: "normal",
+                wordBreak: "break-word",
+                px: 1,
+              }}
+            >
+              {company}
+            </Typography>
+          </Tooltip>
 
           {/* Tech Badge - Below Company */}
           <Typography 

@@ -136,6 +136,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(enhancedUser);
             localStorage.setItem("token", newToken);
             writeStorage("user", enhancedUser);
+            if (newUser.Company_Id) {
+                localStorage.setItem("companyId", String(newUser.Company_Id));
+            }
 
             if (companies && companies.length > 0) {
                 setAvailableCompanies(companies);
@@ -149,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (current) {
                     setCurrentCompany(current);
                     writeStorage("currentCompany", current);
+                    localStorage.setItem("companyId", String(current.companyId));
 
                     if (current.UserTypeId !== undefined) {
                         const userWithCompanyRole: User = {
@@ -241,6 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 writeStorage("user", updatedUser);
                 writeStorage("currentCompany", updatedCompany);
                 writeStorage("availableCompanies", updatedCompanies);
+                localStorage.setItem("companyId", String(companyId));
 
                 // Reset nav and caches
                 setNavDetails([]);
@@ -280,7 +285,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentPage(null);
         setAvailableCompanies([]);
         setCurrentCompany(null);
-        removeStorage("token", "user", "availableCompanies", "currentCompany");
+        removeStorage("token", "user", "availableCompanies", "currentCompany", "companyId");
     }, []);
 
     // ─── updateUser ───────────────────────────

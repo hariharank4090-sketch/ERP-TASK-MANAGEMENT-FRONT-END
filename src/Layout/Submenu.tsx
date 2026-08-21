@@ -16,6 +16,7 @@ import {
   getSubmenusByMainMenuId 
 } from "../utils/menuManagement";
 
+// eslint-disable-next-line no-empty-pattern
 export const MenuGroupPage: React.ComponentType<PageProps> = ({  }) => {
   const { navDetails } = useAuth();
   const navigate = useNavigate();

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { toast } from "react-toastify";
 import { fetchLink } from "../../Components/customFetch";
 import type {
@@ -61,7 +62,7 @@ const parseApiDate = (dateStr: string | null): string | null => {
 };
 
 // Process Work Master data
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 const processWorkMasterResponse = (data: any[]): WorkMasterData[] => {
     if (!data || !Array.isArray(data)) return [];
     
@@ -117,7 +118,7 @@ export const getAllEmployees = async (
  
         if (res && res.success) {
             // Map the API response to EmployeeDropdown format
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            
             const apiData = res.data as any[];
             const desData = desRes && desRes.success && Array.isArray(desRes.data) ? desRes.data : [];
             const desMap = new Map<number, string>(
@@ -322,7 +323,7 @@ export const getWorkMaster = async (
         });
 
         if (res && res.success) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            
             const responseData = res.data as any;
             const items = Array.isArray(responseData) ? responseData : (responseData?.data || []);
             

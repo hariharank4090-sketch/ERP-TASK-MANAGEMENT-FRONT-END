@@ -65,6 +65,91 @@ const StatusMapping = {
   } as Record<number, string>
 };
 
+const getTodayDate = () => new Date().toISOString().split("T")[0];
+
+const formatDateForInput = (dateString: string | null): string => {
+  const today = getTodayDate();
+  if (!dateString) return today;
+  try {
+    if (dateString.includes("T")) {
+      return dateString.split("T")[0];
+    }
+    if (dateString.includes(" ")) {
+      return dateString.split(" ")[0];
+    }
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateString;
+    }
+
+    const date = new Date(dateString);
+
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split("T")[0];
+    }
+
+    return today;
+  } catch {
+    return today;
+  }
+};
+
+const getDisplayStatus = (status: any): string => {
+  if (status === null || status === undefined) return "Pending";
+  const statusStr = String(status).trim();
+  if (statusStr === "1" || statusStr === "Pending") return "Pending";
+  if (statusStr === "2" || statusStr === "In Progress") return "In Progress";
+  if (statusStr === "3" || statusStr === "Completed") return "Completed";
+  return "Pending";
+};
+
+const getTimestampFromStartTime = (startTimeStr: string, workDateStr: string): number => {
+  if (!startTimeStr) return Date.now();
+  try {
+    let normalized = startTimeStr.trim();
+    if (normalized.includes(" ") && !normalized.includes("T")) {
+      normalized = normalized.replace(" ", "T");
+    }
+
+    // If it's a sentinel date, extract the time part and parse it as local time on workDateStr
+    if (normalized.includes("1970-01-01") || normalized.includes("1900-01-01")) {
+      const parts = normalized.split("T");
+      if (parts[1]) {
+        const timePart = parts[1].substring(0, 8); // e.g. "15:28:00"
+        const localDate = new Date(`${workDateStr}T${timePart}`);
+        if (!isNaN(localDate.getTime())) {
+          return localDate.getTime();
+        }
+      }
+    }
+
+    // If it's just a time string like "HH:MM" or "HH:MM:SS"
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
+      const localDate = new Date(`${workDateStr}T${normalized}`);
+      if (!isNaN(localDate.getTime())) {
+        return localDate.getTime();
+      }
+    }
+
+    // If it does not contain timezone info (neither 'Z', '+XX:XX', nor '-XX:XX')
+    if (!normalized.includes("Z") && !/\+\d{2}:\d{2}$/.test(normalized) && !/-\d{2}:\d{2}$/.test(normalized)) {
+      // Check if it is a full ISO date-time string
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)) {
+        // Since we save it in UTC (d.toISOString()), if the database returned it without Z,
+        // it is a UTC string. Append 'Z' to parse it correctly as UTC.
+        normalized = normalized + "Z";
+      }
+    }
+
+    const d = new Date(normalized);
+    if (!isNaN(d.getTime())) {
+      return d.getTime();
+    }
+  } catch (e) {
+    console.error("Error parsing start time:", e);
+  }
+  return Date.now();
+};
+
 const TodayTaskDialog: React.FC<Props> = ({
   open,
   onClose,
@@ -81,7 +166,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loggedEmpId = localStorage.getItem("Emp_Id");
-  const todayDate = new Date().toISOString().split("T")[0];
+  const todayDate = getTodayDate();
 
   const sourceData = isEditMode && existingWork ? existingWork : selectedPlan;
   const isTimerBased = Number(sourceData?.Schedule_Task_Sch_Timer_Based) === 1;
@@ -95,6 +180,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
   >({});
+  const [matchedWorkRecord, setMatchedWorkRecord] = useState<any>(null);
 
   const [formData, setFormData] = useState<any>({
     SNo: "",
@@ -118,51 +204,9 @@ const TodayTaskDialog: React.FC<Props> = ({
   // 1. LOCAL STORAGE FUNCTIONS
   // ==========================================================
 
-  const getTimerStorageKey = () => {
-    return `todayTaskTimer_${formData.Task_Id}_${formData.Work_Id}`;
-  };
+  // Local storage timer methods removed to use backend sync instead
 
-  const saveTimerState = (startTime: string) => {
-    localStorage.setItem(
-      getTimerStorageKey(),
-      JSON.stringify({
-        isRunning: true,
-        startTime,
-        taskId: formData.Task_Id,
-        workId: formData.Work_Id
-      })
-    );
-  };
 
-  const clearTimerState = () => {
-    localStorage.removeItem(getTimerStorageKey());
-  };
-
-  // Helper function to format date for input field (YYYY-MM-DD)
-  const formatDateForInput = (dateString: string | null): string => {
-    if (!dateString) return todayDate;
-    try {
-      if (dateString.includes("T")) {
-        return dateString.split("T")[0];
-      }
-      if (dateString.includes(" ")) {
-        return dateString.split(" ")[0];
-      }
-      if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        return dateString;
-      }
-
-      const date = new Date(dateString);
-
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split("T")[0];
-      }
-
-      return todayDate;
-    } catch {
-      return todayDate;
-    }
-  };
 
   const getInputType = (param: any): string => {
     const display = String(param?.Para_Display_Name || "").toLowerCase();
@@ -202,53 +246,77 @@ const TodayTaskDialog: React.FC<Props> = ({
 
   const extractTimeForInput = (val: any): string => {
     if (!val) return "";
+    
+    // If it's already in HH:MM format, return it directly
+    if (typeof val === "string" && /^\d{2}:\d{2}$/.test(val)) {
+      return val;
+    }
+    if (typeof val === "string" && /^\d{2}:\d{2}:\d{2}$/.test(val)) {
+      return val.substring(0, 5);
+    }
+
     try {
-      if (typeof val === "string" && val.includes("T")) {
-        if (val.includes("1970-01-01") || val.includes("1900-01-01")) {
-          return val.split("T")[1].substring(0, 5);
+      let dateObj: Date | null = null;
+      if (val instanceof Date) {
+        dateObj = val;
+      } else if (typeof val === "string") {
+        let normalized = val.trim();
+        if (normalized.includes(" ") && !normalized.includes("T")) {
+          normalized = normalized.replace(" ", "T");
         }
-        const d = new Date(val);
-        if (!isNaN(d.getTime())) {
-          const hrs = d.getHours().toString().padStart(2, "0");
-          const mins = d.getMinutes().toString().padStart(2, "0");
-          return `${hrs}:${mins}`;
+        
+        if (normalized.includes("1970-01-01") || normalized.includes("1900-01-01")) {
+          const timePart = normalized.split("T")[1];
+          if (timePart) return timePart.substring(0, 5);
         }
+        
+        dateObj = new Date(normalized);
       }
-      if (typeof val === "string" && val.includes(":")) {
-        return val.substring(0, 5);
-      }
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        const hrs = d.getHours().toString().padStart(2, "0");
-        const mins = d.getMinutes().toString().padStart(2, "0");
+
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        const hrs = dateObj.getHours().toString().padStart(2, "0");
+        const mins = dateObj.getMinutes().toString().padStart(2, "0");
         return `${hrs}:${mins}`;
       }
     } catch (e) {
       console.error("Time parse error", e);
     }
+    
+    if (typeof val === "string") {
+      const timeMatch = val.match(/(\d{2}):(\d{2})/);
+      if (timeMatch) {
+        return `${timeMatch[1]}:${timeMatch[2]}`;
+      }
+    }
+    
     return "";
   };
 
   const parseTimeToDate = (timeVal: string, dateVal: string): Date | null => {
     if (!timeVal) return null;
-    if (timeVal.includes("T")) {
-      const d = new Date(timeVal);
-      if (!isNaN(d.getTime())) return d;
-    }
     try {
-      const d = new Date(`${dateVal}T${timeVal}:00`);
-      if (!isNaN(d.getTime())) return d;
+      const extractedTime = extractTimeForInput(timeVal);
+      if (extractedTime) {
+        const d = new Date(`${dateVal}T${extractedTime}:00`);
+        if (!isNaN(d.getTime())) return d;
+      }
     } catch { /* ignore */ }
     return null;
   };
 
   const formatTimeForApi = (timeVal: string, dateVal: string) => {
     if (!timeVal) return null;
-    if (timeVal.includes("T")) return timeVal;
     try {
-      const d = new Date(`${dateVal}T${timeVal}:00`);
-      if (!isNaN(d.getTime())) return d.toISOString();
-    } catch { /* ignore */ }
+      const extractedTime = extractTimeForInput(timeVal);
+      if (extractedTime) {
+        const d = new Date(`${dateVal}T${extractedTime}:00`);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString();
+        }
+      }
+    } catch (e) {
+      console.error("formatTimeForApi error", e);
+    }
     return timeVal;
   };
 
@@ -265,9 +333,7 @@ const TodayTaskDialog: React.FC<Props> = ({
       setSubmitError(null);
       setValidationErrors({});
 
-      const statusDisplay = sourceData.Work_Status
-        ? sourceData.Work_Status
-        : "Pending";
+      const statusDisplay = getDisplayStatus(sourceData.Work_Status);
 
       const workDate = formatDateForInput(sourceData.Work_Dt);
 
@@ -287,55 +353,115 @@ const TodayTaskDialog: React.FC<Props> = ({
         Process_Id: sourceData.Process_Id || ""
       });
     }
-  }, [sourceData, loggedEmpId, todayDate, open]);
+  }, [sourceData, loggedEmpId, todayDate, open, isEditMode]);
 
   // ==========================================================
   // 3. RESTORE TIMER useEffect
   // ==========================================================
 
   useEffect(() => {
-    if (!isTimerBased) return;
+    if (!isTimerBased || !sourceData) return;
 
-    const savedTimer = localStorage.getItem(
-      `todayTaskTimer_${sourceData?.Task_Id}_${sourceData?.Work_Id || sourceData?.AN_No}`
-    );
+    let active = true;
 
-    if (savedTimer) {
-      const parsed = JSON.parse(savedTimer);
+    const fetchExistingWorkRecord = async () => {
+      const workDate = formatDateForInput(sourceData.Work_Dt);
+      
+      try {
+        const response: any = await fetchLink<any>({
+          address: `${WORK_API}?fromDate=${workDate}&toDate=${workDate}`,
+          method: "GET"
+        });
 
-      if (parsed?.isRunning) {
-        const startTime = new Date(parsed.startTime).getTime();
+        if (!active) return;
 
-        setFormData((prev: any) => ({
-          ...prev,
-          Start_Time: parsed.startTime
-        }));
+        if (response?.success && response?.data) {
+          const items = Array.isArray(response.data)
+            ? response.data
+            : (response.data.items || response.data.data || []);
 
-        setIsRunning(true);
+          // Match by Sch_Id or Task_Id and Emp_Id
+          const match = items.find((work: any) => {
+            const sameSch = work.Sch_Id && String(work.Sch_Id) === String(sourceData.Sch_Id);
+            const sameTask = String(work.Task_Id) === String(sourceData.Task_Id);
+            const sameEmp = String(work.Emp_Id) === String(loggedEmpId || sourceData.Emp_Id);
+            
+            // If in edit mode, we can match any work status.
+            // If not in edit mode (e.g. from CreditListPage), we ONLY match running timers.
+            const isTimerRunning = !!work.Start_Time && !work.End_Time && 
+              (work.Work_Status === null || work.Work_Status === undefined || String(work.Work_Status) === "null" || String(work.Work_Status) === "2" || work.Work_Status === "In Progress" || String(work.Work_Status) === "");
 
-        const updateTimer = () => {
-          const now = Date.now();
-          const seconds = Math.floor((now - startTime) / 1000);
+            return (sameSch || sameTask) && sameEmp && (isEditMode || isTimerRunning);
+          });
 
-          setElapsedSeconds(seconds);
-        };
+          if (match) {
+            setMatchedWorkRecord(match);
 
-        updateTimer();
+            setFormData((prev: any) => ({
+              ...prev,
+              SNo: match.SNo || prev.SNo,
+              Work_Id: match.Work_Id || prev.Work_Id,
+              Start_Time: match.Start_Time || prev.Start_Time,
+              End_Time: match.End_Time || prev.End_Time,
+              Work_Status: getDisplayStatus(match.Work_Status || prev.Work_Status),
+              Work_Done: match.Work_Done === "In Progress" ? "" : (match.Work_Done || prev.Work_Done),
+              Process_Id: match.Process_Id || prev.Process_Id
+            }));
 
-        intervalRef.current = setInterval(updateTimer, 1000);
+            // Check if timer is running (Start_Time is set but End_Time is empty, status is In Progress)
+            const isTimerRunning = !!match.Start_Time && !match.End_Time && 
+              (match.Work_Status === null || match.Work_Status === undefined || String(match.Work_Status) === "null" || String(match.Work_Status) === "2" || match.Work_Status === "In Progress" || String(match.Work_Status) === "");
+
+            if (isTimerRunning) {
+              setIsRunning(true);
+              const startTimeMs = getTimestampFromStartTime(match.Start_Time, workDate);
+
+              const updateTimer = () => {
+                const now = Date.now();
+                const seconds = Math.floor((now - startTimeMs) / 1000);
+                setElapsedSeconds(seconds >= 0 ? seconds : 0);
+              };
+
+              updateTimer();
+
+              if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+              }
+              intervalRef.current = setInterval(updateTimer, 1000);
+              
+              onTimerStart?.();
+            } else if (match.Start_Time && match.End_Time) {
+              const startTimeMs = getTimestampFromStartTime(match.Start_Time, workDate);
+              const endTimeMs = getTimestampFromStartTime(match.End_Time, workDate);
+              const seconds = Math.floor((endTimeMs - startTimeMs) / 1000);
+              setElapsedSeconds(seconds >= 0 ? seconds : 0);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching existing work record:", err);
       }
+    };
+
+    if (isOpen) {
+      fetchExistingWorkRecord();
     }
 
     return () => {
+      active = false;
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    isOpen,
     isTimerBased,
     sourceData?.Task_Id,
+    sourceData?.Sch_Id,
     sourceData?.Work_Id,
-    sourceData?.AN_No
+    sourceData?.AN_No,
+    loggedEmpId
   ]);
 
   useEffect(() => {
@@ -356,7 +482,7 @@ const TodayTaskDialog: React.FC<Props> = ({
 
           setTaskParameters(taskParams);
 
-          let rawSavedParams = sourceData?.Parameters || sourceData?.parameters || [];
+          const rawSavedParams = sourceData?.Parameters || sourceData?.parameters || matchedWorkRecord?.parameters || matchedWorkRecord?.Parameters || [];
           let savedParams: any[] = [];
           
           if (typeof rawSavedParams === 'string') {
@@ -374,9 +500,9 @@ const TodayTaskDialog: React.FC<Props> = ({
           taskParams.forEach((param: TaskParameter) => {
             let existingValue = "";
             
-            if (isEditMode && savedParams && Array.isArray(savedParams)) {
+            if ((isEditMode || matchedWorkRecord) && savedParams && Array.isArray(savedParams)) {
               const savedParam = savedParams.find((p: any) => {
-                const sourceWorkId = String(sourceData.Work_Id || sourceData.SNo || sourceData.AN_No);
+                const sourceWorkId = String(sourceData.Work_Id || sourceData.SNo || sourceData.AN_No || (matchedWorkRecord && (matchedWorkRecord.Work_Id || matchedWorkRecord.SNo)));
                 const workIdMatch = !p.Work_Id || String(p.Work_Id) === sourceWorkId;
                 const taskIdMatch = !p.Task_Id || String(p.Task_Id) === String(sourceData.Task_Id);
                 
@@ -410,49 +536,107 @@ const TodayTaskDialog: React.FC<Props> = ({
     };
 
     fetchTaskParameters();
-  }, [sourceData?.Task_Id, sourceData?.Work_Id, sourceData?.AN_No, isOpen, isEditMode]);
+  }, [
+    sourceData?.Task_Id,
+    sourceData?.Work_Id,
+    sourceData?.AN_No,
+    sourceData?.SNo,
+    sourceData?.Parameters,
+    sourceData?.parameters,
+    isOpen,
+    isEditMode,
+    matchedWorkRecord
+  ]);
 
   // ==========================================================
   // 4. handleStart FUNCTION
   // ==========================================================
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (isRunning) return;
 
     const now = new Date();
+    const startTimeISO = now.toISOString();
 
-    setFormData((prev: any) => ({
-      ...prev,
-      Start_Time: now.toISOString(),
-      End_Time: ""
+    const apiStatusValue = StatusMapping.displayToApi["In Progress"] || 2;
+    
+    const parameters: WorkParameter[] = taskParameters.map((param) => ({
+      Param_Id: Number(param.Param_Id),
+      Default_Value: param.Default_Value != null ? String(param.Default_Value) : null,
+      Current_Value: paramValues[`param_${param.Param_Id}`] != null ? String(paramValues[`param_${param.Param_Id}`]) : null
     }));
 
-    setIsRunning(true);
-
-    saveTimerState(now.toISOString());
-
-    const startTime = now.getTime();
-
-    const updateTimer = () => {
-      const current = Date.now();
-
-      const seconds = Math.floor(
-        (current - startTime) / 1000
-      );
-
-      setElapsedSeconds(seconds);
+    const payload: any = {
+      Sch_Id: formData.Sch_Id && !isNaN(Number(formData.Sch_Id)) ? Number(formData.Sch_Id) : undefined,
+      Task_Id: formData.Task_Id && !isNaN(Number(formData.Task_Id)) ? Number(formData.Task_Id) : undefined,
+      Emp_Id: formData.Emp_Id && !isNaN(Number(formData.Emp_Id)) ? Number(formData.Emp_Id) : undefined,
+      Work_Dt: formData.Work_Dt,
+      Work_Done: formData.Work_Done || "",
+      Start_Time: formatTimeForApi(startTimeISO, formData.Work_Dt),
+      End_Time: null,
+      Tot_Minutes: 0,
+      Work_Status: apiStatusValue,
+      Process_Id: formData.Process_Id && !isNaN(Number(formData.Process_Id)) ? Number(formData.Process_Id) : null,
+      Parameters: parameters,
+      Entry_By: parseInt(loggedEmpId || "1")
     };
 
-    updateTimer();
+    setLoading(true);
+    setSubmitError(null);
 
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
+    try {
+      const res: any = await fetchLink<any>({
+        address: WORK_API,
+        method: "POST",
+        bodyData: payload
+      });
+
+      if (res?.success) {
+        const createdWork = res.data;
+        setMatchedWorkRecord(createdWork);
+
+        setFormData((prev: any) => ({
+          ...prev,
+          SNo: createdWork?.SNo || prev.SNo,
+          Work_Id: createdWork?.Work_Id || prev.Work_Id,
+          Start_Time: startTimeISO,
+          End_Time: "",
+          Work_Status: "In Progress",
+          Work_Done: ""
+        }));
+
+        setIsRunning(true);
+
+        const startTime = now.getTime();
+        const updateTimer = () => {
+          const current = Date.now();
+          const seconds = Math.floor((current - startTime) / 1000);
+          setElapsedSeconds(seconds >= 0 ? seconds : 0);
+        };
+
+        updateTimer();
+
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+        intervalRef.current = setInterval(updateTimer, 1000);
+
+        // ✅ Notify parent that timer has started so it can change row color
+        onTimerStart?.();
+
+        const planRowKey = `${formData.Task_Id}_${formData.Emp_Id}_${formData.Work_Dt}`;
+        window.dispatchEvent(new CustomEvent("timer-start", { detail: { rowKey: planRowKey } }));
+        window.dispatchEvent(new CustomEvent("work-created"));
+      } else {
+        throw new Error(res?.message || "Failed to start work timer in backend");
+      }
+    } catch (err: any) {
+      console.error("Error starting timer in backend:", err);
+      setSubmitError(err.message || "Failed to start timer in backend");
+      toast.error(err.message || "Failed to start timer in backend");
+    } finally {
+      setLoading(false);
     }
-
-    intervalRef.current = setInterval(updateTimer, 1000);
-
-    // ✅ Notify parent that timer has started so it can change row color
-    onTimerStart?.();
   };
 
   // ==========================================================
@@ -469,17 +653,19 @@ const TodayTaskDialog: React.FC<Props> = ({
 
     setFormData((prev: any) => ({
       ...prev,
-      End_Time: now.toISOString()
+      End_Time: now.toISOString(),
+      Work_Status: "Completed"
     }));
 
     setIsRunning(false);
 
     setElapsedSeconds((prev) => prev);
 
-    clearTimerState();
-
     // ✅ Notify parent that timer has stopped so it can revert row color
     onTimerStop?.();
+
+    const planRowKey = `${formData.Task_Id}_${formData.Emp_Id}_${formData.Work_Dt}`;
+    window.dispatchEvent(new CustomEvent("timer-stop", { detail: { rowKey: planRowKey } }));
   };
 
   // ✅ CLEANUP
@@ -557,7 +743,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
-    if (!formData.Work_Done?.trim()) {
+    if (!formData.Work_Done?.trim() || formData.Work_Done.trim() === "In Progress") {
       errors.Work_Done = "Work description is required";
     }
 
@@ -567,7 +753,7 @@ const TodayTaskDialog: React.FC<Props> = ({
           "Please start the timer first";
       }
 
-      if (!formData.End_Time) {
+      if (formData.Work_Status !== "In Progress" && !formData.End_Time) {
         errors.End_Time =
           "Please stop the timer first";
       }
@@ -638,19 +824,19 @@ const TodayTaskDialog: React.FC<Props> = ({
       };
 
       const originalDate = formatDateForInput(sourceData?.Work_Dt);
-      const isDateChanged = isEditMode && formData.Work_Dt !== originalDate;
+      const isDateChanged = (isEditMode || formData.SNo) && formData.Work_Dt !== originalDate;
 
-      if (isEditMode && formData.Work_Id && !isDateChanged) {
+      if ((isEditMode || formData.SNo) && formData.Work_Id && !isDateChanged) {
         payload.Work_Id = isNaN(Number(formData.Work_Id)) ? formData.Work_Id : Number(formData.Work_Id);
       }
 
-      if (isEditMode && !isDateChanged) {
+      if ((isEditMode || formData.SNo) && !isDateChanged) {
         payload.Update_By = parseInt(loggedEmpId || "1");
       } else {
         payload.Entry_By = parseInt(loggedEmpId || "1");
       }
 
-      const isPut = isEditMode && formData.SNo && !isDateChanged;
+      const isPut = (isEditMode || formData.SNo) && formData.SNo && !isDateChanged;
       const apiAddress = isPut ? `${WORK_API}/${formData.SNo}` : WORK_API;
       const apiMethod = isPut ? "PUT" : "POST";
 
@@ -661,10 +847,8 @@ const TodayTaskDialog: React.FC<Props> = ({
       });
 
       if (res?.success) {
-        clearTimerState();
-
         toast.success(
-          (isEditMode && !isDateChanged)
+          isPut
             ? "Work updated successfully!"
             : "Work saved successfully!"
         );
@@ -899,6 +1083,8 @@ const TodayTaskDialog: React.FC<Props> = ({
               }
               size="small"
               required
+              error={!!validationErrors.Work_Status}
+              helperText={validationErrors.Work_Status}
             >
               <MenuItem value="Pending">
                 Pending

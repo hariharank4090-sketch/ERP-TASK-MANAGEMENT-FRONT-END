@@ -132,13 +132,20 @@ const formatTime = (timeStr: any): string => {
       const h12 = t.hours % 12 || 12;
       return `${h12}:${String(t.minutes).padStart(2, "0")} ${ampm}`;
     }
-    if (typeof timeStr === "string" && timeStr.includes(":")) {
-      const [h, m] = timeStr.split(":");
+    
+    const trimmed = String(timeStr).trim();
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const [h, m] = trimmed.split(":");
       const hours = parseInt(h, 10);
       const ampm = hours >= 12 ? "PM" : "AM";
       return `${hours % 12 || 12}:${(m ?? "00").padStart(2, "0")} ${ampm}`;
     }
-    const d = new Date(timeStr);
+    
+    let normalized = trimmed;
+    if (normalized.includes(" ") && !normalized.includes("T")) {
+      normalized = normalized.replace(" ", "T");
+    }
+    const d = new Date(normalized);
     if (!isNaN(d.getTime())) {
       return d.toLocaleTimeString([], {
         hour: "2-digit",
@@ -316,7 +323,7 @@ const getAssignedTaskKey = (task: AssignedTask): string =>
    MAIN PAGE
 ================================================================ */
 
-const WorkDoneBox = ({ lines, isMobile }: { lines: string[]; islistDay?: boolean; isMobile?: boolean }) => {
+const WorkDoneBox = ({ lines, isMobile, isCompactView }: { lines: string[]; islistDay?: boolean; isMobile?: boolean; isCompactView?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
   
   const flatText = lines.join(" ");
@@ -331,12 +338,14 @@ const WorkDoneBox = ({ lines, isMobile }: { lines: string[]; islistDay?: boolean
         }
       }}
       style={{
-        fontSize: isMobile ? "0.63rem" : "0.95rem",
+        fontSize: isCompactView
+          ? "0.6rem"
+          : (isMobile ? "0.63rem" : "0.95rem"),
         opacity: 0.9,
         marginTop: "3px",
         background: "rgba(0,0,0,0.15)",
         borderRadius: "4px",
-        padding: "4px 6px",
+        padding: isCompactView ? "2px 4px" : "4px 6px",
         overflow: expanded ? "visible" : "hidden",
         lineHeight: 1.4,
         cursor: isLong ? "pointer" : "inherit"
@@ -381,6 +390,7 @@ const CreditListPage = () => {
   const [scopedExecuted, setScopedExecuted] = useState<ExecutedTask[]>([]);
 
   const [hasWorkKeys, setHasWorkKeys] = useState<Set<string>>(new Set());
+  const [dbRunningKeys, setDbRunningKeys] = useState<Set<string>>(new Set());
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
@@ -413,11 +423,12 @@ const CreditListPage = () => {
     aEnd: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _companyId?: number | null
-  ): Promise<Set<string>> => {
-    if (!token || tasks.length === 0) return new Set();
+  ): Promise<{ hasWorkKeys: Set<string>; dbRunningKeys: Set<string> }> => {
+    if (!token || tasks.length === 0) return { hasWorkKeys: new Set(), dbRunningKeys: new Set() };
 
     try {
       const hasWorkKeysSet = new Set<string>();
+      const dbRunningKeysSet = new Set<string>();
 
       // Fetch ALL work data in ONE request instead of N sequential requests to fix the massive waterfall delay!
       const workMasterResponse = await getWorkMaster(
@@ -427,23 +438,34 @@ const CreditListPage = () => {
       );
 
       if (workMasterResponse.success && workMasterResponse.data.length > 0) {
-        workMasterResponse.data.forEach((work: any) => {
-          if (work.Work_Status === "Completed" ||
-            work.Work_Status === "Pending" ||
-            work.Work_Status === "In Progress" ||
-            work.Tot_Minutes > 0) {
-            if (work.Sch_Id) {
-              const workDate = work.Work_Dt ? getDateOnly(work.Work_Dt) : "";
-              hasWorkKeysSet.add(`${work.Sch_Id}_${workDate}_${work.Emp_Id}`);
+        tasks.forEach((plan) => {
+          const planRowKey = getAssignedTaskKey(plan);
+          const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+
+          workMasterResponse.data.forEach((work: any) => {
+            const sameSch = work.Sch_Id && String(work.Sch_Id) === String(plan.Sch_Id);
+            const sameTask = String(work.Task_Id) === String(plan.Task_Id);
+            const sameEmp = String(work.Emp_Id) === String(plan.Emp_Id);
+            const sameDate = work.Work_Dt ? getDateOnly(work.Work_Dt) === planDate : false;
+
+            if ((sameSch || sameTask) && sameEmp && sameDate) {
+              const isCompleted = work.Work_Status === "Completed" || String(work.Work_Status) === "3";
+              const isInProgress = work.Work_Status === "In Progress" || String(work.Work_Status) === "2" || (work.Start_Time && !work.End_Time);
+
+              if (isCompleted || work.Tot_Minutes > 0 || work.End_Time) {
+                hasWorkKeysSet.add(planRowKey);
+              } else if (isInProgress || work.Start_Time) {
+                dbRunningKeysSet.add(planRowKey);
+              }
             }
-          }
+          });
         });
       }
 
-      return hasWorkKeysSet;
+      return { hasWorkKeys: hasWorkKeysSet, dbRunningKeys: dbRunningKeysSet };
     } catch (err) {
       console.error("Error fetching work statuses:", err);
-      return new Set();
+      return { hasWorkKeys: new Set(), dbRunningKeys: new Set() };
     }
   }, [token]);
 
@@ -515,10 +537,11 @@ const CreditListPage = () => {
             ? uniqueExecuted.filter((t) => allowedEmpIds.has(Number(t.Emp_Id)))
             : uniqueExecuted;
 
-        const workKeys = await fetchWorkStatuses(scopedA, aStart, aEnd, companyId);
+        const { hasWorkKeys: workKeys, dbRunningKeys: runKeys } = await fetchWorkStatuses(scopedA, aStart, aEnd, companyId);
 
         if (isMounted.current) {
           setHasWorkKeys(workKeys);
+          setDbRunningKeys(runKeys);
           setAllAssigned(uniqueAssigned);
           setScopedAssigned(scopedA);
           setAllExecuted(uniqueExecuted);
@@ -687,9 +710,9 @@ const CreditListPage = () => {
       const end = combineDateWithTime(task.Task_Assign_dt, task.EN_Time);
 
       const key = getAssignedTaskKey(task);
-      const isRunning = timerRunningKeys.has(key);
       const taskDate = getDateOnly(task.Task_Assign_dt);
-      const hasWork = task.Sch_Id ? hasWorkKeys.has(`${task.Sch_Id}_${taskDate}_${task.Emp_Id}`) : false;
+      const isRunning = timerRunningKeys.has(key) || dbRunningKeys.has(key);
+      const hasWork = hasWorkKeys.has(key);
 
       // ✅ Color computed from state — updates instantly when timer starts/stops
       let bgColor = "#1976d2";
@@ -703,26 +726,47 @@ const CreditListPage = () => {
         borderColor = "#1b5e20";
       }
 
+      if (start && end) {
+        return {
+          id: `assigned-${key}`,
+          title: task.Task_Name || `Task ${task.Task_Id}`,
+          start,
+          end,
+          allDay: false,
+          backgroundColor: bgColor,
+          borderColor: borderColor,
+          extendedProps: {
+            ...task,
+            type: "assigned",
+            displayStartTime: formatTime(task.Sch_Time),
+            displayEndTime: formatTime(task.EN_Time),
+            _rowKey: key,
+            _hasWork: hasWork,
+            // ✅ store the task date so count filtering can match it
+            _taskDate: taskDate,
+          },
+        };
+      }
+
       return {
         id: `assigned-${key}`,
         title: task.Task_Name || `Task ${task.Task_Id}`,
-        start: start || undefined,
-        end: end || undefined,
+        start: taskDate,
+        allDay: true,
         backgroundColor: bgColor,
         borderColor: borderColor,
         extendedProps: {
           ...task,
           type: "assigned",
-          displayStartTime: formatTime(task.Sch_Time),
-          displayEndTime: formatTime(task.EN_Time),
+          displayStartTime: "--:--",
+          displayEndTime: "--:--",
           _rowKey: key,
           _hasWork: hasWork,
           // ✅ store the task date so count filtering can match it
           _taskDate: taskDate,
         },
       };
-    })
-    .filter((e) => e.start != null && e.end != null);
+    });
 
   const executedEvents: EventInput[] = filteredExecuted.map((task) => {
     const startRaw = task.Start_Time || task.Sch_Est_Start_Time || null;
@@ -769,7 +813,7 @@ const CreditListPage = () => {
       id: `executed-${exKey}`,
       title: task.Task_Name || `Task ${task.Task_Id}`,
       start: workDate,
-      allDay: false,
+      allDay: true,
       backgroundColor: bgColor,
       borderColor: bgColor,
       extendedProps: {
@@ -850,6 +894,8 @@ const CreditListPage = () => {
     const start = task.displayStartTime || "--:--";
     const end = task.displayEndTime || "--:--";
     const hasWork = task._hasWork;
+    const isAllDay = info.event.allDay;
+    const isCompact = info.view?.type === "dayGridMonth" || info.view?.type === "timeGridWeek";
 
     return (
       <div style={{ cursor: "pointer", width: "100%", padding: "1px 3px", overflow: "hidden", boxSizing: "border-box" }}>
@@ -857,9 +903,11 @@ const CreditListPage = () => {
           style={{
             display: "flex",
             alignItems: "center",
-            flexWrap: (info.view?.type.includes("list") || (isMobile && info.view?.type === "dayGridMonth")) ? "wrap" : "nowrap",
+            flexWrap: (info.view?.type.includes("list") || isCompact) ? "wrap" : "nowrap",
             gap: "4px",
-            fontSize: isMobile ? "0.75rem" : "0.85rem",
+            fontSize: isCompact
+              ? (isMobile ? "0.65rem" : "0.7rem")
+              : (isMobile ? "0.75rem" : "0.85rem"),
             lineHeight: 1.4,
           }}
         >
@@ -881,7 +929,9 @@ const CreditListPage = () => {
               display: "inline-block",
               padding: "0 6px",
               borderRadius: "10px",
-              fontSize: isMobile ? "0.65rem" : "0.75rem",
+              fontSize: isCompact
+                ? "0.6rem"
+                : (isMobile ? "0.65rem" : "0.75rem"),
               fontWeight: 600,
               background: stat.bg,
               color: stat.color,
@@ -896,7 +946,9 @@ const CreditListPage = () => {
                 display: "inline-block",
                 padding: "0 6px",
                 borderRadius: "10px",
-                fontSize: isMobile ? "0.65rem" : "0.75rem",
+                fontSize: isCompact
+                  ? "0.6rem"
+                  : (isMobile ? "0.65rem" : "0.75rem"),
                 fontWeight: 600,
                 background: "#4caf50",
                 color: "#fff",
@@ -907,16 +959,26 @@ const CreditListPage = () => {
             </span>
           )}
         </div>
-        <div style={{ fontSize: isMobile ? "0.68rem" : "0.75rem", opacity: 0.9, marginTop: "1px" }}>
-          {isMobile && info.view?.type === "dayGridMonth" ? (
-            <>
-              <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{start}</div>
-              <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{end}</div>
-            </>
-          ) : (
-            `${start} – ${end}`
-          )}
-        </div>
+        {!isAllDay && (
+          <div
+            style={{
+              fontSize: isCompact
+                ? "0.6rem"
+                : (isMobile ? "0.68rem" : "0.75rem"),
+              opacity: 0.9,
+              marginTop: "1px"
+            }}
+          >
+            {isCompact ? (
+              <>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{start}</div>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{end}</div>
+              </>
+            ) : (
+              `${start} – ${end}`
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -929,6 +991,7 @@ const CreditListPage = () => {
     const isAllDay = info.event.allDay;
     const workDoneLines = parseWorkDone(task.Work_Done);
     const hasWorkDone = workDoneLines.length > 0;
+    const isCompact = info.view?.type === "dayGridMonth" || info.view?.type === "timeGridWeek";
 
     return (
       <div style={{ cursor: "pointer", width: "100%", padding: "1px 3px", overflow: "hidden", boxSizing: "border-box" }}>
@@ -936,9 +999,11 @@ const CreditListPage = () => {
           style={{
             display: "flex",
             alignItems: "center",
-            flexWrap: (info.view?.type.includes("list") || (isMobile && info.view?.type === "dayGridMonth")) ? "wrap" : "nowrap",
+            flexWrap: (info.view?.type.includes("list") || isCompact) ? "wrap" : "nowrap",
             gap: "4px",
-            fontSize: isMobile ? "0.75rem" : "0.85rem",
+            fontSize: isCompact
+              ? (isMobile ? "0.65rem" : "0.7rem")
+              : (isMobile ? "0.75rem" : "0.85rem"),
             lineHeight: 1.4,
           }}
           title={info.event.title}
@@ -961,7 +1026,9 @@ const CreditListPage = () => {
               display: "inline-block",
               padding: "0 6px",
               borderRadius: "10px",
-              fontSize: isMobile ? "0.65rem" : "0.75rem",
+              fontSize: isCompact
+                ? "0.6rem"
+                : (isMobile ? "0.65rem" : "0.75rem"),
               fontWeight: 600,
               background: info.view?.type.includes("list") ? badge.bg : "rgba(255,255,255,0.3)",
               color: info.view?.type.includes("list") ? badge.color : "#fff",
@@ -972,8 +1039,16 @@ const CreditListPage = () => {
           </span>
         </div>
         {!isAllDay && (
-          <div style={{ fontSize: isMobile ? "0.68rem" : "0.75rem", opacity: 0.9, marginTop: "1px" }}>
-            {isMobile && info.view?.type === "dayGridMonth" ? (
+          <div
+            style={{
+              fontSize: isCompact
+                ? "0.6rem"
+                : (isMobile ? "0.68rem" : "0.75rem"),
+              opacity: 0.9,
+              marginTop: "1px"
+            }}
+          >
+            {isCompact ? (
               <>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{start}</div>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{end}</div>
@@ -984,7 +1059,12 @@ const CreditListPage = () => {
           </div>
         )}
         {hasWorkDone && (
-          <WorkDoneBox lines={workDoneLines} islistDay={info.view?.type.includes("list")} isMobile={isMobile} />
+          <WorkDoneBox
+            lines={workDoneLines}
+            islistDay={info.view?.type.includes("list")}
+            isMobile={isMobile}
+            isCompactView={isCompact}
+          />
         )}
       </div>
     );
@@ -1299,7 +1379,7 @@ const CreditListPage = () => {
                 buttonText={buttonText}
                 height="100%"
                 nowIndicator
-                allDaySlot={false}
+                allDaySlot={true}
                 slotDuration="00:30:00"
                 slotLabelInterval="01:00:00"
                 expandRows
@@ -1549,7 +1629,7 @@ const CreditListPage = () => {
                   right: "timeGridDay,timeGridWeek,dayGridMonth,listDay",
                 }}
                 buttonText={buttonText}
-                allDaySlot={false}
+                allDaySlot={true}
                 height="100%"
                 nowIndicator
                 slotDuration="00:30:00"

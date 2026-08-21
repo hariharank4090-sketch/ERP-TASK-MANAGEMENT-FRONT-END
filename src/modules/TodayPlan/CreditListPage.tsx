@@ -93,13 +93,20 @@ const formatTime = (timeStr: any): string => {
       const h12 = t.hours % 12 || 12;
       return `${h12}:${String(t.minutes).padStart(2, "0")} ${ampm}`;
     }
-    if (typeof timeStr === "string" && timeStr.includes(":")) {
-      const [h, m] = timeStr.split(":");
+    
+    const trimmed = String(timeStr).trim();
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const [h, m] = trimmed.split(":");
       const hours = parseInt(h, 10);
       const ampm = hours >= 12 ? "PM" : "AM";
       return `${hours % 12 || 12}:${(m ?? "00").padStart(2, "0")} ${ampm}`;
     }
-    const d = new Date(timeStr);
+    
+    let normalized = trimmed;
+    if (normalized.includes(" ") && !normalized.includes("T")) {
+      normalized = normalized.replace(" ", "T");
+    }
+    const d = new Date(normalized);
     if (!isNaN(d.getTime())) {
       return d.toLocaleTimeString([], {
         hour: "2-digit",
@@ -174,8 +181,8 @@ const fetchWorkStatuses = async (
               work.Work_Status === "Pending" ||
               work.Work_Status === "In Progress" ||
               work.Tot_Minutes > 0) {
-              if (work.Sch_Id) {
-                const workDate = work.Work_Dt ? getDateOnly(work.Work_Dt) : "";
+            if (work.Sch_Id) {
+              const workDate = work.Work_Dt ? getDateOnly(work.Work_Dt) : "";
                 hasWorkKeysSet.add(`${work.Sch_Id}_${workDate}_${work.Emp_Id}`);
               }
             }
@@ -388,8 +395,32 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
         const todayplanDataArray = scopedA.map(convertToTodayplanData);
         const workKeys = await fetchWorkStatuses(todayplanDataArray);
 
+        const runningKeys = new Set<string>();
+        scopedA.forEach((plan) => {
+          const convertedPlan = convertToTodayplanData(plan);
+          const planRowKey = getAssignedTaskKey(convertedPlan);
+          const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+
+          const hasRunningWork = processedWork.some((work: any) => {
+            const sameSch = work.Sch_Id && String(work.Sch_Id) === String(plan.Sch_Id);
+            const sameTask = String(work.Task_Id) === String(plan.Task_Id);
+            const sameEmp = String(work.Emp_Id) === String(plan.Emp_Id);
+            const sameDate = work.Work_Dt ? getDateOnly(work.Work_Dt) === planDate : false;
+            
+            const isTimerRunning = work.Start_Time && !work.End_Time && 
+              (work.Work_Status === null || work.Work_Status === undefined || String(work.Work_Status) === "null" || String(work.Work_Status) === "2" || work.Work_Status === "In Progress");
+
+            return (sameSch || sameTask) && sameEmp && sameDate && isTimerRunning;
+          });
+
+          if (hasRunningWork) {
+            runningKeys.add(planRowKey);
+          }
+        });
+
         if (isMounted.current) {
           setHasWorkKeys(workKeys);
+          setTimerRunningKeys(runningKeys);
           setAllAssigned(uniqueAssigned);
           setScopedAssigned(scopedA);
           setAllExecuted(uniqueExecuted);
@@ -628,7 +659,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
         </Box>
 
         {!collapsed && (
-          <Box p={1.5}>
+          <Box sx={{ p: { xs: 0.75, sm: 1.5 } }}>
             {refreshing && (
               <Box display="flex" justifyContent="center" p={3}>
                 <CircularProgress size={32} />
@@ -648,13 +679,13 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
             )}
 
             {!refreshing && !error && filteredPlans.length > 0 && (
-              <TableContainer sx={{ mt: 1, maxHeight: { xs: "calc(100vh - 260px)", sm: 500 } }}>
-                <Table size="small" stickyHeader>
+              <TableContainer sx={{ mt: 1, maxHeight: { xs: "calc(100vh - 260px)", sm: 500 }, overflowX: "auto", width: "100%" }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 260 }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell><strong>Task Name</strong></TableCell>
-                      <TableCell><strong>Time</strong></TableCell>
-                      <TableCell align="center"><strong>Action</strong></TableCell>
+                      <TableCell sx={{ px: 0.75, py: 1 }}><strong>Task Name</strong></TableCell>
+                      <TableCell sx={{ px: 0.75, py: 1, fontSize: "0.95rem" }}><strong>Time</strong></TableCell>
+                      <TableCell align="center" sx={{ px: 0.75, py: 1, fontSize: "0.95rem" }}><strong>Action</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -682,17 +713,17 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
                             "&:hover": { filter: "brightness(0.92)" },
                           }}
                         >
-                          <TableCell>
-                            <Typography variant="body2" fontWeight={600} color={textColor}>
+                          <TableCell sx={{ px: 0.75, py: 1 }}>
+                            <Typography variant="body2" fontWeight={600} color={textColor} sx={{ fontSize: "1rem" }}>
                               {displayTaskName}
                             </Typography>
                           </TableCell>
-                          <TableCell>
+                          <TableCell sx={{ px: 0.75, py: 1 }}>
                             <Tooltip title={`Start: ${startTime || "Not set"} | End: ${endTime || "Not set"}`}>
-                              <Typography variant="body2" color={textColor}>{timeDisplay}</Typography>
+                              <Typography variant="body2" color={textColor} sx={{ fontSize: "0.95rem" }}>{timeDisplay}</Typography>
                             </Tooltip>
                           </TableCell>
-                          <TableCell align="center">
+                          <TableCell align="center" sx={{ px: 0.75, py: 1 }}>
                             <Button
                               variant="contained"
                               size="small"
@@ -703,6 +734,8 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
                                 backgroundColor: "rgba(255,255,255,0.25)",
                                 color: textColor,
                                 fontWeight: 700,
+                                minWidth: 50,
+                                fontSize: "0.95rem",
                                 "&:hover": { backgroundColor: "rgba(255,255,255,0.4)" },
                               }}
                             >

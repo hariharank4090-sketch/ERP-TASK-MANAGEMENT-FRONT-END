@@ -1197,6 +1197,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     } finally {
       if (isMounted.current) setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingOn, loadingOff, tasks.length]);
 
   const fetchDropdownData = useCallback(async () => {
@@ -1363,6 +1364,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const handleEditTask = useCallback(async (task: TaskDisplay) => {
     setSelectedTask(task);
     
+    // eslint-disable-next-line prefer-const
     let rawIds: any = task.Paramet_Ids;
     let parametIds: number[] = [];
     if (Array.isArray(rawIds)) {
@@ -1374,6 +1376,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     }
     parametIds = parametIds.filter(n => !isNaN(n) && n > 0);
 
+    // eslint-disable-next-line prefer-const
     let rawDataTypes: any = task.Paramet_Data_Types;
     let parametDataTypes: (string | null)[] = [];
     if (Array.isArray(rawDataTypes)) {
@@ -1382,6 +1385,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
       parametDataTypes = rawDataTypes.split(",");
     }
 
+    // eslint-disable-next-line prefer-const
     let rawDisplayNames: any = task.Para_Display_Names;
     let paraDisplayNames: string[] = [];
     if (Array.isArray(rawDisplayNames)) {

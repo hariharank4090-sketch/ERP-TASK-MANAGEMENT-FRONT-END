@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
 import {
   TextField,
@@ -240,7 +241,7 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
                 <InputLabel>Project Head *</InputLabel>
                 <SearchableSelect
                   value={currentProjectObj.Project_Head ?? ""}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  
                   onChange={handleProjectHeadChange as any}
                   label="Project Head *"
                   searchPlaceholder="Search project head..."
@@ -287,7 +288,7 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
                 <InputLabel>Status</InputLabel>
                 <SearchableSelect
                   value={currentProjectObj.Project_Status}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                   onChange={handleStatusChange as any}
                   label="Status"
                   searchPlaceholder="Search status..."

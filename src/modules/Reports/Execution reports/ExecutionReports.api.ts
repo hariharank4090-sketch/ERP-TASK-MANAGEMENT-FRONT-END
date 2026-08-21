@@ -27,6 +27,16 @@ const taskUsersCache: Map<number, UserDropdown[]> = new Map();
 let scheduleEmpDataCache: ProjectScheduleEmp[] | null = null;
 let workMasterDataCache: WorkMasterData[] | null = null;
 
+// Promise caches to avoid duplicate/overlapping API requests during the mounted lifecycle
+let projectMasterPromise: Promise<projectData[]> | null = null;
+let activeProjectMasterPromise: Promise<projectData[]> | null = null;
+let allTasksPromise: Promise<TaskData[]> | null = null;
+let rawEmployeesPromise: Promise<any[]> | null = null;
+let projectScheduleEmpPromise: Promise<ProjectScheduleEmp[]> | null = null;
+let workMasterDataPromise: Promise<WorkMasterData[]> | null = null;
+let projectSchedulePromise: Promise<ProjectScheduleResponse[]> | null = null;
+let taskTypesPromise: Promise<import("./variables").TaskTypeDropdown[]> | null = null;
+
 export const getCachedScheduleEmpData = (): ProjectScheduleEmp[] => scheduleEmpDataCache || [];
 export const getCachedWorkMasterData = (): WorkMasterData[] => workMasterDataCache || [];
 
@@ -37,24 +47,29 @@ export const getProjectMaster = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<projectData[]> => {
-  try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: projectAPI,
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      return (res.data as unknown as projectData[]) || [];
-    } else {
-      toast.error(res?.message || "Failed to load projects");
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("getProjectMaster Error:", e);
-    toast.error("Network error loading projects");
-    return [];
+  if (!projectMasterPromise) {
+    projectMasterPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: projectAPI,
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          return (res.data as unknown as projectData[]) || [];
+        } else {
+          toast.error(res?.message || "Failed to load projects");
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("getProjectMaster Error:", e);
+        toast.error("Network error loading projects");
+        return [];
+      }
+    })();
   }
+  return projectMasterPromise;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,24 +79,29 @@ export const getActiveProjectMaster = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<projectData[]> => {
-  try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: `${projectAPI}active`,
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      return (res.data as unknown as projectData[]) || [];
-    } else {
-      toast.error(res?.message || "Failed to load active projects");
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("getActiveProjectMaster Error:", e);
-    toast.error("Network error loading active projects");
-    return [];
+  if (!activeProjectMasterPromise) {
+    activeProjectMasterPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: `${projectAPI}active`,
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          return (res.data as unknown as projectData[]) || [];
+        } else {
+          toast.error(res?.message || "Failed to load active projects");
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("getActiveProjectMaster Error:", e);
+        toast.error("Network error loading active projects");
+        return [];
+      }
+    })();
   }
+  return activeProjectMasterPromise;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,54 +111,76 @@ export const getAllTasks = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<TaskData[]> => {
-  try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: tasksAPI,
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      return (res.data as unknown as TaskData[]) || [];
-    } else {
-      toast.error(res?.message || "Failed to load tasks");
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("getAllTasks Error:", e);
-    toast.error("Network error loading tasks");
-    return [];
+  if (!allTasksPromise) {
+    allTasksPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: tasksAPI,
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          return (res.data as unknown as TaskData[]) || [];
+        } else {
+          toast.error(res?.message || "Failed to load tasks");
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("getAllTasks Error:", e);
+        toast.error("Network error loading tasks");
+        return [];
+      }
+    })();
   }
+  return allTasksPromise;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Get all employees (users)
 // ─────────────────────────────────────────────────────────────────────────────
+const getRawEmployees = async (
+  loadingOn?: () => void,
+  loadingOff?: () => void
+): Promise<any[]> => {
+  if (!rawEmployeesPromise) {
+    rawEmployeesPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: "masters/employees/",
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          return (res.data as any[]) || [];
+        } else {
+          toast.error(res?.message || "Failed to load employees");
+          return [];
+        }
+      } catch (e) {
+        console.error("getRawEmployees Error:", e);
+        toast.error("Network error loading employees");
+        return [];
+      }
+    })();
+  }
+  return rawEmployeesPromise;
+};
+
 export const getAllEmployees = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<UserDropdown[]> => {
   try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: "masters/employees/",
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      const data = res.data as any[];
-      return data.map((u) => ({
-        User_Id: u.Emp_Id,
-        User_Name: u.Emp_Name,
-        User_Mgt_Id: u.User_Mgt_Id,
-      }));
-    } else {
-      toast.error(res?.message || "Failed to load users");
-      return [];
-    }
+    const data = await getRawEmployees(loadingOn, loadingOff);
+    return data.map((u) => ({
+      User_Id: u.Emp_Id,
+      User_Name: u.Emp_Name,
+      User_Mgt_Id: u.User_Mgt_Id,
+    }));
   } catch (e) {
     console.error("getAllEmployees Error:", e);
-    toast.error("Network error loading users");
     return [];
   }
 };
@@ -148,23 +190,14 @@ export const getAllEmployees = async (
 // ─────────────────────────────────────────────────────────────────────────────
 const fetchEmployeeNames = async (): Promise<Map<number, string>> => {
   try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: "masters/employees/",
-      method: "GET",
-    });
-    if (res && res.success) {
-      const employees = res.data as unknown as Array<{
-        Emp_Id: number;
-        Emp_Name: string;
-      }>;
-      const map = new Map<number, string>();
-      employees.forEach((emp) => map.set(emp.Emp_Id, emp.Emp_Name));
-      return map;
-    }
+    const employees = await getRawEmployees();
+    const map = new Map<number, string>();
+    employees.forEach((emp) => map.set(emp.Emp_Id, emp.Emp_Name));
+    return map;
   } catch (e) {
     console.error("fetchEmployeeNames Error:", e);
+    return new Map();
   }
-  return new Map();
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,33 +207,38 @@ export const getProjectScheduleEmpWithStaffNames = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<ProjectScheduleEmp[]> => {
-  try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: projectScheduleEmpAPI,
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      const data = (res.data as unknown as ProjectScheduleEmp[]) || [];
-      const employeeNameMap = await fetchEmployeeNames();
-      scheduleEmpDataCache = data.map((item) => ({
-        ...item,
-        Staff_Name:
-          employeeNameMap.get(item.Emp_Id) ||
-          `Unknown Staff (ID: ${item.Emp_Id})`,
-        Original_Emp_Id: item.Emp_Id,
-      }));
-      return scheduleEmpDataCache;
-    } else {
-      toast.error(res?.message || "Failed to load employee schedule data");
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("getProjectScheduleEmpWithStaffNames Error:", e);
-    toast.error("Network error loading employee schedule data");
-    return [];
+  if (!projectScheduleEmpPromise) {
+    projectScheduleEmpPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: projectScheduleEmpAPI,
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          const data = (res.data as unknown as ProjectScheduleEmp[]) || [];
+          const employeeNameMap = await fetchEmployeeNames();
+          scheduleEmpDataCache = data.map((item) => ({
+            ...item,
+            Staff_Name:
+              employeeNameMap.get(item.Emp_Id) ||
+              `Unknown Staff (ID: ${item.Emp_Id})`,
+            Original_Emp_Id: item.Emp_Id,
+          }));
+          return scheduleEmpDataCache;
+        } else {
+          toast.error(res?.message || "Failed to load employee schedule data");
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("getProjectScheduleEmpWithStaffNames Error:", e);
+        toast.error("Network error loading employee schedule data");
+        return [];
+      }
+    })();
   }
+  return projectScheduleEmpPromise;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,23 +248,30 @@ export const getWorkMasterData = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<WorkMasterData[]> => {
-  try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: workMasterAPI,
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      return (res.data as unknown as WorkMasterData[]) || [];
-    } else {
-      console.error("Failed to fetch work master data:", res?.message);
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("getWorkMasterData Error:", e);
-    return [];
+  if (!workMasterDataPromise) {
+    workMasterDataPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: workMasterAPI,
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          const data = (res.data as unknown as WorkMasterData[]) || [];
+          workMasterDataCache = data;
+          return data;
+        } else {
+          console.error("Failed to fetch work master data:", res?.message);
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("getWorkMasterData Error:", e);
+        return [];
+      }
+    })();
   }
+  return workMasterDataPromise;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,24 +281,29 @@ export const getProjectSchedule = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<ProjectScheduleResponse[]> => {
-  try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: `${projectScheduleAPI}?limit=100000`,
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      return (res.data as unknown as ProjectScheduleResponse[]) || [];
-    } else {
-      toast.error(res?.message || "Failed to load project schedule data");
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("getProjectSchedule Error:", e);
-    toast.error("Network error loading project schedule data");
-    return [];
+  if (!projectSchedulePromise) {
+    projectSchedulePromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: `${projectScheduleAPI}?limit=100000`,
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          return (res.data as unknown as ProjectScheduleResponse[]) || [];
+        } else {
+          toast.error(res?.message || "Failed to load project schedule data");
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("getProjectSchedule Error:", e);
+        toast.error("Network error loading project schedule data");
+        return [];
+      }
+    })();
   }
+  return projectSchedulePromise;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -664,30 +714,39 @@ export const fetchTaskTypesByProject = async (
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<import("./variables").TaskTypeDropdown[]> => {
+  if (!taskTypesPromise) {
+    taskTypesPromise = (async () => {
+      try {
+        const res = await fetchLink<BasicApiResponse>({
+          address: "masters/taskType/",
+          method: "GET",
+          loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+          loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+        });
+        if (res && res.success) {
+          const data = (res.data as unknown as any[]) || [];
+          return data.map((tt) => ({
+            Task_Type_Id: Number(tt.Task_Type_Id),
+            Task_Type: tt.Task_Type || "",
+            Project_Id: Number(tt.Project_Id),
+          }));
+        } else {
+          toast.error(res?.message || "Failed to load task types");
+          return [];
+        }
+      } catch (e: unknown) {
+        console.error("fetchTaskTypesByProject Error:", e);
+        toast.error("Network error loading task types");
+        return [];
+      }
+    })();
+  }
+
   try {
-    const res = await fetchLink<BasicApiResponse>({
-      address: "masters/taskType/",
-      method: "GET",
-      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
-    });
-    if (res && res.success) {
-      
-      const data = (res.data as unknown as any[]) || [];
-      return data
-        .filter((tt) => projectId === null || Number(tt.Project_Id) === projectId)
-        .map((tt) => ({
-          Task_Type_Id: Number(tt.Task_Type_Id),
-          Task_Type: tt.Task_Type || "",
-          Project_Id: Number(tt.Project_Id),
-        }));
-    } else {
-      toast.error(res?.message || "Failed to load task types");
-      return [];
-    }
-  } catch (e: unknown) {
-    console.error("fetchTaskTypesByProject Error:", e);
-    toast.error("Network error loading task types");
+    const data = await taskTypesPromise;
+    return data.filter((tt) => projectId === null || Number(tt.Project_Id) === projectId);
+  } catch (e) {
+    console.error("fetchTaskTypesByProject filter Error:", e);
     return [];
   }
 };
@@ -788,6 +847,16 @@ export const clearTaskUsersCache = (): void => {
   taskUsersCache.clear();
   scheduleEmpDataCache = null;
   workMasterDataCache = null;
+  
+  // Clear promise caches
+  projectMasterPromise = null;
+  activeProjectMasterPromise = null;
+  allTasksPromise = null;
+  rawEmployeesPromise = null;
+  projectScheduleEmpPromise = null;
+  workMasterDataPromise = null;
+  projectSchedulePromise = null;
+  taskTypesPromise = null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

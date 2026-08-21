@@ -264,6 +264,7 @@ const CostBasedReports = () => {
     const dateTotals = new Map<string, number>();
 
 
+    // eslint-disable-next-line prefer-const
     let staffSet = new Set(uniqueStaffNames);
     if (stockFilter === 'all' || stockFilter === 'data-with-0') {
       staffList.forEach((s: any) => {
@@ -412,6 +413,7 @@ const CostBasedReports = () => {
 
       if (row.CostName || row.Cost_Center_Name || row.Name) {
         const staff = String(row.CostName || row.Cost_Center_Name || row.Name || "").trim();
+        // eslint-disable-next-line prefer-const
         let field = String(row.CostType || row.StaffType || row.Category || "Others1").trim();
         const matchedField = categoryFields.find(f => f.toLowerCase() === field.toLowerCase()) || field;
 

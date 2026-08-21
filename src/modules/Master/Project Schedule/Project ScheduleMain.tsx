@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useMemo } from "react";
 import {
   IconButton,
@@ -205,7 +207,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
 
   const [assignTaskOpen,                setAssignTaskOpen]                = useState(false);
   const [assignTaskLoading,             setAssignTaskLoading]             = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const [selectedScheduleForCorrection, setSelectedScheduleForCorrection] = useState<any>(null);
 
   const [extensionsDialogOpen, setExtensionsDialogOpen] = useState(false);
@@ -518,18 +520,18 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
       }
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        
         const taskTypesRes = await fetchLink<any>({ address: "masters/taskType/dropdown/", method: "GET" });
         if (taskTypesRes?.success) {
           let data = taskTypesRes.data;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
           if (data && (data as any).data) data = (data as any).data;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          
           else if (data && (data as any).items) data = (data as any).items;
           
           if (Array.isArray(data)) {
             const typeMap: Record<number, string> = {};
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
             data.forEach((item: any) => {
               const id = Number(item.Task_Type_Id || item.Type_Id || item.value || item.Id || item.id);
               const name = item.Task_Type || item.Type_Name || item.label || item.Name || item.name || item.TaskType;

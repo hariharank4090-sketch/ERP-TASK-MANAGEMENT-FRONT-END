@@ -56,6 +56,7 @@ export const getLeaveList = async (
 
     if (res && res.success) {
       const list = (res.data as unknown as LeaveRecord[]) ?? [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return list.filter((item: any) => {
         const isDeleted = item.Del_Flag === 1 || item.Del_Flag === "1" || item.del_flag === 1 || item.del_flag === "1";
         return !isDeleted;
@@ -190,8 +191,10 @@ export const getEmployeeDropdown = async (
     });
 
     if (res && res.success) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const list = (res.data as any[]) ?? [];
       return list
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((emp: any) => {
           const isDeleted =
             emp.Del_Flag === 1 ||
@@ -205,6 +208,7 @@ export const getEmployeeDropdown = async (
             emp.UDel_Flag === true;
           return !isDeleted;
         })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((emp: any) => ({
           value: emp.Emp_Id,
           label: emp.Emp_Name,

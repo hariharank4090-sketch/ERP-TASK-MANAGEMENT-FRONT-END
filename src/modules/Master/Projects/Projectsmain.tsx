@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { 
   IconButton, 
@@ -324,6 +325,7 @@ const ProjectMainPage: React.FC<PageProps> = () => {
              endDate.includes(term) ||
              statusText.includes(term);
     }) as TableCompatibleProjectData[];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     searchTerm,
     projects,

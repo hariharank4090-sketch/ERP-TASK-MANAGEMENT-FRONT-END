@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Paper,
@@ -19,7 +19,12 @@ import {
   useTheme,
   useMediaQuery,
   Tooltip,
+  CircularProgress,
 } from "@mui/material";
+import TicketDetailsDialog from "./TicketDetailsDialog";
+import ImagePreviewDialog from "../../Components/imagePreview";
+import { useAuth } from "../../auth/authContext";
+import { fetchLink } from "../../Components/customFetch";
 import {
   Notifications as NotificationsIcon,
   Assignment as AssignmentIcon,
@@ -39,66 +44,168 @@ interface NotificationItem {
   category: "task" | "status" | "alert" | "info";
   isRead: boolean;
   important?: boolean;
+  ticketCode?: string;
+  subject?: string;
+  customer?: string;
+  From_Company_Name?: string;
+  categoryName?: string;
+  priority?: string;
+  status?: string;
+  createdDate?: string;
+  description?: string;
+  imageUrl?: string;
+  estSchStartDate?: string;
+  estSchEndDate?: string;
+  T_Sch_Id?: string;
+  Employee_Involved_Id?: string;
+  ticketId?: string;
+  From_CompanyId?: string;
+  To_CompanyId?: string;
+  rawEstSchStartDate?: string;
+  rawEstSchEndDate?: string;
 }
 
-const initialNotifications: NotificationItem[] = [
-  {
-    id: "1",
-    title: "New Task Assigned",
-    message: "You have been assigned to the task 'Design UI Mockups' for Project ERP-TASK.",
-    time: "10 mins ago",
-    category: "task",
-    isRead: false,
-    important: true,
-  },
-  {
-    id: "2",
-    title: "Task Status Updated",
-    message: "John Doe changed the status of 'Database Migration' to Completed.",
-    time: "1 hour ago",
-    category: "status",
-    isRead: false,
-  },
-  {
-    id: "3",
-    title: "System Maintenance Alert",
-    message: "The server will be undergoing scheduled maintenance tonight from 12:00 AM to 2:00 AM EST.",
-    time: "4 hours ago",
-    category: "alert",
-    isRead: false,
-    important: true,
-  },
-  {
-    id: "4",
-    title: "Leave Approved",
-    message: "Your leave request for August 20th, 2026 has been approved by Admin.",
-    time: "1 day ago",
-    category: "info",
-    isRead: true,
-  },
-  {
-    id: "5",
-    title: "Task Deadline Reminder",
-    message: "The task 'API Integration' is due in 3 hours. Please submit your progress.",
-    time: "1 day ago",
-    category: "alert",
-    isRead: true,
-  },
-  {
-    id: "6",
-    title: "Project Kickoff Meeting",
-    message: "Meeting scheduled for the new project kickoff tomorrow at 10:00 AM.",
-    time: "2 days ago",
-    category: "task",
-    isRead: true,
-  },
-];
+const getRelativeTime = (dateString?: string | Date) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (isNaN(diffMs)) return String(dateString);
+  
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
+  
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+};
 
 const NotificationScreen: React.FC = () => {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<number>(0);
+  const [selectedTicket, setSelectedTicket] = useState<NotificationItem | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
+  const fetchTickets = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const userId = user.Global_User_ID || user.id || "";
+      const companyId = user.Company_Id || user.Company_Id || "";
+      
+      const res = await fetchLink({
+        address: `masters/tickets?User_Id=${userId}&Company_Id=${companyId}`,
+        method: "GET",
+      });
+
+      if (res && res.success && Array.isArray(res.data)) {
+        const localReadIdsKey = `read_notifications_${userId}`;
+        const localDeletedIdsKey = `deleted_notifications_${userId}`;
+        const localReadIds: string[] = JSON.parse(localStorage.getItem(localReadIdsKey) || "[]");
+        const localDeletedIds: string[] = JSON.parse(localStorage.getItem(localDeletedIdsKey) || "[]");
+
+        const seenTicketIds = new Set<string>();
+
+        const mapped: NotificationItem[] = res.data
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((ticket: any) => {
+            const ticketCompanyId = (ticket.To_CompanyId === null || String(ticket.To_CompanyId) === "null" || !ticket.To_CompanyId)
+              ? ticket.From_CompanyId 
+              : ticket.To_CompanyId;
+            if (String(ticketCompanyId) !== String(companyId)) return false;
+
+            const uniqueKey = ticket.T_Sch_Id ? `${ticket.Id}_${ticket.T_Sch_Id}` : String(ticket.Id);
+            if (localDeletedIds.includes(uniqueKey)) return false;
+
+            const isAdmin = user?.UserTypeId === 0 || user?.UserTypeId === 1;
+            if (!isAdmin) {
+              if (ticket.Employee_Involved_Id && String(ticket.Employee_Involved_Id) !== String(userId)) {
+                return false;
+              }
+            } else {
+              if (seenTicketIds.has(uniqueKey)) {
+                return false;
+              }
+              seenTicketIds.add(uniqueKey);
+            }
+
+            return true;
+          })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((ticket: any) => {
+            const priorityLower = String(ticket.Priority || "").toLowerCase();
+            const category: NotificationItem["category"] = 
+              priorityLower === "high" || priorityLower === "critical" ? "alert" :
+              priorityLower === "medium" ? "task" :
+              priorityLower === "low" ? "info" : "status";
+
+            const formatDate = (dateStr?: string | Date) => {
+              if (!dateStr) return "N/A";
+              const date = new Date(dateStr);
+              if (isNaN(date.getTime())) return String(dateStr);
+              return date.toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              });
+            };
+
+            const uniqueKey = ticket.T_Sch_Id ? `${ticket.Id}_${ticket.T_Sch_Id}` : String(ticket.Id);
+
+            return {
+              id: uniqueKey,
+              title: ticket.Subject || `Ticket #${ticket.Id}`,
+              message: ticket.Description || "No Description",
+              time: getRelativeTime(ticket.Created_At),
+              category,
+              isRead:
+                localReadIds.includes(uniqueKey) ||
+                ["in progress", "inprocess", "in process", "resolved", "closed"].includes(
+                  String(ticket.Status || "").toLowerCase().trim()
+                ),
+              important: priorityLower === "high" || priorityLower === "critical",
+              ticketCode: `TCK-${String(ticket.Id).padStart(4, "0")}`,
+              subject: ticket.Subject || "N/A",
+              customer: ticket.Created_By_Name || "N/A",
+              From_Company_Name: ticket.From_Company_Name || "N/A",
+              categoryName: ticket.Category_Name || ticket.Category || "N/A",
+              priority: ticket.Priority || "Low",
+              status: ticket.Status || "New",
+              createdDate: formatDate(ticket.Created_At),
+              description: ticket.Description || "No Description",
+              imageUrl: ticket.Image_Url || undefined,
+              estSchStartDate: formatDate(ticket.Est_Sch_Start_Date),
+              estSchEndDate: formatDate(ticket.Est_Sch_End_Date),
+              T_Sch_Id: ticket.T_Sch_Id ? String(ticket.T_Sch_Id) : undefined,
+              Employee_Involved_Id: ticket.Employee_Involved_Id ? String(ticket.Employee_Involved_Id) : undefined,
+              ticketId: ticket.Id ? String(ticket.Id) : undefined,
+              From_CompanyId: ticket.From_CompanyId ? String(ticket.From_CompanyId) : undefined,
+              To_CompanyId: ticket.To_CompanyId ? String(ticket.To_CompanyId) : undefined,
+              rawEstSchStartDate: ticket.Est_Sch_Start_Date || undefined,
+              rawEstSchEndDate: ticket.Est_Sch_End_Date || undefined,
+            };
+          });
+        setNotifications(mapped);
+        window.dispatchEvent(new Event("notification-update"));
+      }
+    } catch (error) {
+      console.error("Error fetching tickets:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -131,18 +238,62 @@ const NotificationScreen: React.FC = () => {
     setNotifications((prev) =>
       prev.map((notif) => (notif.id === id ? { ...notif, isRead: true } : notif))
     );
+    const userId = user?.Global_User_ID || user?.id || "";
+    if (userId) {
+      const localReadIdsKey = `read_notifications_${userId}`;
+      const localReadIds: string[] = JSON.parse(localStorage.getItem(localReadIdsKey) || "[]");
+      if (!localReadIds.includes(id)) {
+        localReadIds.push(id);
+        localStorage.setItem(localReadIdsKey, JSON.stringify(localReadIds));
+      }
+      window.dispatchEvent(new Event("notification-update"));
+    }
   };
 
   const deleteNotification = (id: string) => {
     setNotifications((prev) => prev.filter((notif) => notif.id !== id));
+    const userId = user?.Global_User_ID || user?.id || "";
+    if (userId) {
+      const localDeletedIdsKey = `deleted_notifications_${userId}`;
+      const localDeletedIds: string[] = JSON.parse(localStorage.getItem(localDeletedIdsKey) || "[]");
+      if (!localDeletedIds.includes(id)) {
+        localDeletedIds.push(id);
+        localStorage.setItem(localDeletedIdsKey, JSON.stringify(localDeletedIds));
+      }
+      window.dispatchEvent(new Event("notification-update"));
+    }
   };
 
   const markAllRead = () => {
     setNotifications((prev) => prev.map((notif) => ({ ...notif, isRead: true })));
+    const userId = user?.Global_User_ID || user?.id || "";
+    if (userId) {
+      const localReadIdsKey = `read_notifications_${userId}`;
+      const localReadIds: string[] = JSON.parse(localStorage.getItem(localReadIdsKey) || "[]");
+      notifications.forEach((notif) => {
+        if (!localReadIds.includes(notif.id)) {
+          localReadIds.push(notif.id);
+        }
+      });
+      localStorage.setItem(localReadIdsKey, JSON.stringify(localReadIds));
+      window.dispatchEvent(new Event("notification-update"));
+    }
   };
 
   const deleteAll = () => {
     setNotifications([]);
+    const userId = user?.Global_User_ID || user?.id || "";
+    if (userId) {
+      const localDeletedIdsKey = `deleted_notifications_${userId}`;
+      const localDeletedIds: string[] = JSON.parse(localStorage.getItem(localDeletedIdsKey) || "[]");
+      notifications.forEach((notif) => {
+        if (!localDeletedIds.includes(notif.id)) {
+          localDeletedIds.push(notif.id);
+        }
+      });
+      localStorage.setItem(localDeletedIdsKey, JSON.stringify(localDeletedIds));
+      window.dispatchEvent(new Event("notification-update"));
+    }
   };
 
   const filteredNotifications = notifications.filter((notif) => {
@@ -303,7 +454,11 @@ const NotificationScreen: React.FC = () => {
         </Box>
 
         {/* Notifications List */}
-        {filteredNotifications.length === 0 ? (
+        {loading ? (
+          <Box display="flex" justifyContent="center" alignItems="center" py={8}>
+            <CircularProgress sx={{ color: "#b9925f" }} />
+          </Box>
+        ) : filteredNotifications.length === 0 ? (
           <Box py={8} textAlign="center">
             <NotificationsIcon sx={{ fontSize: 60, color: "#e0d3c1", mb: 2 }} />
             <Typography variant="body1" color="text.secondary" fontWeight={500}>
@@ -319,14 +474,21 @@ const NotificationScreen: React.FC = () => {
               <Fade in key={notif.id}>
                 <Box>
                   <ListItem
+                    onClick={() => {
+                      setSelectedTicket(notif);
+                      setDetailsOpen(true);
+                    }}
                     secondaryAction={
                       <Box display="flex" gap={0.5}>
-                        {!notif.isRead && (
+                        {!notif.isRead ? (
                           <Tooltip title="Mark as read">
                             <IconButton
                               edge="end"
                               size="small"
-                              onClick={() => markAsRead(notif.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAsRead(notif.id);
+                              }}
                               sx={{
                                 color: "#b9925f",
                                 "&:hover": { bgcolor: "rgba(185, 146, 95, 0.08)" },
@@ -335,23 +497,28 @@ const NotificationScreen: React.FC = () => {
                               <DoneIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
+                        ) : (
+                          <Tooltip title="Delete">
+                            <IconButton
+                              edge="end"
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteNotification(notif.id);
+                              }}
+                              sx={{
+                                color: "text.secondary",
+                                "&:hover": { color: "#d32f2f", bgcolor: "rgba(211, 47, 47, 0.08)" },
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         )}
-                        <Tooltip title="Delete">
-                          <IconButton
-                            edge="end"
-                            size="small"
-                            onClick={() => deleteNotification(notif.id)}
-                            sx={{
-                              color: "text.secondary",
-                              "&:hover": { color: "#d32f2f", bgcolor: "rgba(211, 47, 47, 0.08)" },
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
                       </Box>
                     }
                     sx={{
+                      cursor: "pointer",
                       borderRadius: 2,
                       mb: 1.5,
                       p: isMobile ? 1.5 : 2,
@@ -373,9 +540,22 @@ const NotificationScreen: React.FC = () => {
                         invisible={notif.isRead}
                         anchorOrigin={{ vertical: "top", horizontal: "right" }}
                       >
-                        <Avatar sx={{ bgcolor: getCategoryColor(notif.category), width: 40, height: 40 }}>
-                          {getCategoryIcon(notif.category)}
-                        </Avatar>
+                        {notif.imageUrl ? (
+                          <span onClick={(e) => e.stopPropagation()}>
+                            <ImagePreviewDialog url={notif.imageUrl}>
+                              <Avatar
+                                src={notif.imageUrl}
+                                sx={{ bgcolor: getCategoryColor(notif.category), width: 40, height: 40 }}
+                              />
+                            </ImagePreviewDialog>
+                          </span>
+                        ) : (
+                          <Avatar
+                            sx={{ bgcolor: getCategoryColor(notif.category), width: 40, height: 40 }}
+                          >
+                            {getCategoryIcon(notif.category)}
+                          </Avatar>
+                        )}
                       </Badge>
                     </ListItemAvatar>
                     <ListItemText
@@ -430,6 +610,17 @@ const NotificationScreen: React.FC = () => {
           </List>
         )}
       </Paper>
+
+      {/* Ticket Details Dialog */}
+      <TicketDetailsDialog
+        open={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false);
+          setSelectedTicket(null);
+        }}
+        ticket={selectedTicket}
+        onConfirmSuccess={fetchTickets}
+      />
     </Box>
   );
 };

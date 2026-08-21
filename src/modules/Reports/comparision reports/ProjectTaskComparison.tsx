@@ -2010,6 +2010,9 @@ interface CombinedTaskRow {
   projectId?: number | string | null;
 }
 
+let cachedProjectSchedulePromise: Promise<any> | null = null;
+let cachedTaskTypePromise: Promise<any> | null = null;
+
 const ProjectTaskComparison = () => {
   const { token, currentCompany, isSwitchingCompany } = useAuth();
   
@@ -2053,15 +2056,27 @@ const ProjectTaskComparison = () => {
     }
     
     try {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+        cachedProjectSchedulePromise = null;
+        cachedTaskTypePromise = null;
+      } else {
+        setLoading(true);
+      }
+
+      if (!cachedProjectSchedulePromise) {
+        cachedProjectSchedulePromise = fetchLink({ address: "masters/projectSchedule/", method: "GET" });
+      }
+      if (!cachedTaskTypePromise) {
+        cachedTaskTypePromise = fetchLink({ address: "masters/taskType/", method: "GET" });
+      }
 
       const [todayRes, workRes, scheduleRes, empRes, taskTypeRes] = await Promise.all([
         getEnrichedTodayPlan({}, currentCompany.companyId),
         getEnrichedWorkMaster({}),
-        fetchLink({ address: "masters/projectSchedule/", method: "GET" }),
+        cachedProjectSchedulePromise,
         getEmployeeDropdown(currentCompany.companyId),
-        fetchLink({ address: "masters/taskType/", method: "GET" })
+        cachedTaskTypePromise
       ]);
 
       let todayItems: any[] = [];
@@ -2142,6 +2157,10 @@ const ProjectTaskComparison = () => {
   useEffect(() => {
     if(isSwitchingCompany) return;
     loadData();
+    return () => {
+      cachedProjectSchedulePromise = null;
+      cachedTaskTypePromise = null;
+    };
   }, [loadData, isSwitchingCompany]);
 
   const combinedRows = useMemo(() => {

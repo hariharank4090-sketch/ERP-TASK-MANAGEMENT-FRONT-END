@@ -28,6 +28,11 @@ const tasksCache   = new Map<string, TaskDropdown[]>();
 const employeesCache = new Map<string, EmployeeDropdown[]>();
 const projectsCache  = new Map<string, ProjectDropdown[]>();
 
+// Promise caches to avoid duplicate/overlapping API requests
+const tasksPromises = new Map<string, Promise<TaskDropdown[]>>();
+const employeesPromises = new Map<string, Promise<EmployeeDropdown[]>>();
+const projectsPromises = new Map<string, Promise<ProjectDropdown[]>>();
+
 // Track the last company so we can detect a switch
 let lastCompanyId: string | null = null;
 
@@ -36,6 +41,9 @@ export const clearAllCaches = () => {
     tasksCache.clear();
     employeesCache.clear();
     projectsCache.clear();
+    tasksPromises.clear();
+    employeesPromises.clear();
+    projectsPromises.clear();
     lastCompanyId = null;
 };
 
@@ -47,6 +55,9 @@ export const clearCaches = (companyId?: number | null) => {
         tasksCache.clear();
         employeesCache.clear();
         projectsCache.clear();
+        tasksPromises.clear();
+        employeesPromises.clear();
+        projectsPromises.clear();
     }
     lastCompanyId = key;
 };
@@ -125,30 +136,39 @@ export const getTaskDropdown = async (
     loadingOff?: () => void,
     forceRefresh: boolean = false
 ): Promise<TaskDropdown[]> => {
-    const key = companyId != null ? String(companyId) : "__default__";
+    const key = (companyId != null ? String(companyId) : lastCompanyId) || "__default__";
     if (tasksCache.has(key) && !forceRefresh) {
         return tasksCache.get(key)!;
     }
-    try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: taskAPI,
-            method: "GET",
-            loadingOn,
-            loadingOff
-        });
-        if (res && res.success) {
-            const data = (res.data as unknown as TaskDropdown[]) || [];
-            tasksCache.set(key, data);
-            return data;
-        } else {
-            toast.error(res?.message || "Failed to load Tasks");
-            return [];
-        }
-    } catch (e: unknown) {
-        console.error("getTaskDropdown Error:", e);
-        toast.error("Network error loading Tasks");
-        return [];
+    if (tasksPromises.has(key) && !forceRefresh) {
+        return tasksPromises.get(key)!;
     }
+    const promise = (async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({
+                address: taskAPI,
+                method: "GET",
+                loadingOn,
+                loadingOff
+            });
+            if (res && res.success) {
+                const data = (res.data as unknown as TaskDropdown[]) || [];
+                tasksCache.set(key, data);
+                return data;
+            } else {
+                toast.error(res?.message || "Failed to load Tasks");
+                return [];
+            }
+        } catch (e: unknown) {
+            console.error("getTaskDropdown Error:", e);
+            toast.error("Network error loading Tasks");
+            return [];
+        } finally {
+            tasksPromises.delete(key);
+        }
+    })();
+    tasksPromises.set(key, promise);
+    return promise;
 };
 
 // ✅ FIX: Accept companyId as cache key; always bypass cache on company switch
@@ -158,30 +178,39 @@ export const getEmployeeDropdown = async (
     loadingOff?: () => void,
     forceRefresh: boolean = false
 ): Promise<EmployeeDropdown[]> => {
-    const key = companyId != null ? String(companyId) : "__default__";
+    const key = (companyId != null ? String(companyId) : lastCompanyId) || "__default__";
     if (employeesCache.has(key) && !forceRefresh) {
         return employeesCache.get(key)!;
     }
-    try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: employeeAPI,
-            method: "GET",
-            loadingOn,
-            loadingOff
-        });
-        if (res && res.success) {
-            const data = (res.data as unknown as EmployeeDropdown[]) || [];
-            employeesCache.set(key, data);
-            return data;
-        } else {
-            toast.error(res?.message || "Failed to load Employees");
-            return [];
-        }
-    } catch (e: unknown) {
-        console.error("getEmployeeDropdown Error:", e);
-        toast.error("Network error loading Employees");
-        return [];
+    if (employeesPromises.has(key) && !forceRefresh) {
+        return employeesPromises.get(key)!;
     }
+    const promise = (async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({
+                address: employeeAPI,
+                method: "GET",
+                loadingOn,
+                loadingOff
+            });
+            if (res && res.success) {
+                const data = (res.data as unknown as EmployeeDropdown[]) || [];
+                employeesCache.set(key, data);
+                return data;
+            } else {
+                toast.error(res?.message || "Failed to load Employees");
+                return [];
+            }
+        } catch (e: unknown) {
+            console.error("getEmployeeDropdown Error:", e);
+            toast.error("Network error loading Employees");
+            return [];
+        } finally {
+            employeesPromises.delete(key);
+        }
+    })();
+    employeesPromises.set(key, promise);
+    return promise;
 };
 
 // ✅ FIX: Accept companyId as cache key; always bypass cache on company switch
@@ -191,29 +220,38 @@ export const getProjectDropdown = async (
     loadingOff?: () => void,
     forceRefresh: boolean = false
 ): Promise<ProjectDropdown[]> => {
-    const key = companyId != null ? String(companyId) : "__default__";
+    const key = (companyId != null ? String(companyId) : lastCompanyId) || "__default__";
     if (projectsCache.has(key) && !forceRefresh) {
         return projectsCache.get(key)!;
     }
-    try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: projectAPI,
-            method: "GET",
-            loadingOn,
-            loadingOff
-        });
-        if (res && res.success) {
-            const data = (res.data as unknown as ProjectDropdown[]) || [];
-            projectsCache.set(key, data);
-            return data;
-        } else {
-            toast.error(res?.message || "Failed to load Projects");
-            return [];
-        }
-    } catch (e: unknown) {
-        console.error("getProjectDropdown Error:", e);
-        return [];
+    if (projectsPromises.has(key) && !forceRefresh) {
+        return projectsPromises.get(key)!;
     }
+    const promise = (async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({
+                address: projectAPI,
+                method: "GET",
+                loadingOn,
+                loadingOff
+            });
+            if (res && res.success) {
+                const data = (res.data as unknown as ProjectDropdown[]) || [];
+                projectsCache.set(key, data);
+                return data;
+            } else {
+                toast.error(res?.message || "Failed to load Projects");
+                return [];
+            }
+        } catch (e: unknown) {
+            console.error("getProjectDropdown Error:", e);
+            return [];
+        } finally {
+            projectsPromises.delete(key);
+        }
+    })();
+    projectsPromises.set(key, promise);
+    return promise;
 };
 
 // Get work statistics

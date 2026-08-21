@@ -152,6 +152,16 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
     [projectOptions]
   );
 
+  // ── Filter projects for selected task type ───────────────────────────────
+  const filteredProjects = useMemo<ProjectDropdown[]>(() => {
+    if (taskObj.Task_Type_Id == null) return validProjects;
+    const selectedGroup = availableTaskGroups.find(
+      (g) => g.Task_Type_Id === taskObj.Task_Type_Id
+    );
+    if (!selectedGroup || selectedGroup.Project_Id == null) return validProjects;
+    return validProjects.filter((p) => p.Project_Id === selectedGroup.Project_Id);
+  }, [validProjects, availableTaskGroups, taskObj.Task_Type_Id]);
+
   const validParameters = useMemo(
     () => parameterOptions.filter((p) => p.Paramet_Id != null),
     [parameterOptions]
@@ -237,7 +247,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
             searchPlaceholder="Search project..."
             allOptionLabel="Select Project"
             allOptionValue=""
-            options={validProjects.map((p) => ({
+            options={filteredProjects.map((p) => ({
               value: String(p.Project_Id),
               label: p.Project_Name
             }))}

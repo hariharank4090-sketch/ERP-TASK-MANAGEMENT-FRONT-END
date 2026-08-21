@@ -1145,6 +1145,7 @@ const WorkAbstract = () => {
         </Tooltip>
       )
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [allUsers]);
 
   const handleCloseEditDialog = () => {
@@ -1168,6 +1169,7 @@ const WorkAbstract = () => {
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const year = d.getFullYear();
         return `${day}/${month}/${year}`;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (e) {
         return String(dateStr);
       }

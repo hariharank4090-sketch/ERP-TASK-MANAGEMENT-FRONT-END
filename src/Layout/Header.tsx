@@ -12,6 +12,7 @@ import {
   Divider,
   useMediaQuery,
   useTheme,
+  Badge,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import {
@@ -25,6 +26,7 @@ import { useAuth } from "../auth/authContext";
 import { parseJSON } from "../utils/helper";
 import MainMenuList from "./mainMenu";
 import { useNavigate } from "react-router-dom";
+import { fetchLink } from "../Components/customFetch";
 
 interface LayoutHeaderProps {
   onToggleTodayPlan?: () => void;
@@ -46,9 +48,84 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
   loadingOn,
   loadingOff,
 }) => {
-  const { currentPage, navDetails, logout } = useAuth();
+  const { currentPage, navDetails, logout, user } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
+  const [unreadCount, setUnreadCount] = React.useState<number>(0);
+
+  const fetchUnreadCount = React.useCallback(async () => {
+    if (!user) return;
+    try {
+      const userId = user.Global_User_ID || user.id || "";
+      const companyId = user.Company_Id || user.Company_Id || "";
+      if (!userId || !companyId) return;
+
+      const res = await fetchLink({
+        address: `masters/tickets?User_Id=${userId}&Company_Id=${companyId}`,
+        method: "GET",
+      });
+
+      if (res && res.success && Array.isArray(res.data)) {
+        const localReadIdsKey = `read_notifications_${userId}`;
+        const localDeletedIdsKey = `deleted_notifications_${userId}`;
+        const localReadIds: string[] = JSON.parse(localStorage.getItem(localReadIdsKey) || "[]");
+        const localDeletedIds: string[] = JSON.parse(localStorage.getItem(localDeletedIdsKey) || "[]");
+
+        const seenTicketIds = new Set<string>();
+
+        const filtered = res.data.filter((ticket: any) => {
+          const ticketCompanyId = (ticket.To_CompanyId === null || String(ticket.To_CompanyId) === "null" || !ticket.To_CompanyId)
+            ? ticket.From_CompanyId 
+            : ticket.To_CompanyId;
+          if (String(ticketCompanyId) !== String(companyId)) return false;
+
+          const uniqueKey = ticket.T_Sch_Id ? `${ticket.Id}_${ticket.T_Sch_Id}` : String(ticket.Id);
+          if (localDeletedIds.includes(uniqueKey)) return false;
+
+          const isAdmin = user?.UserTypeId === 0 || user?.UserTypeId === 1;
+          if (!isAdmin) {
+            if (ticket.Employee_Involved_Id && String(ticket.Employee_Involved_Id) !== String(userId)) {
+              return false;
+            }
+          } else {
+            if (seenTicketIds.has(uniqueKey)) {
+              return false;
+            }
+            seenTicketIds.add(uniqueKey);
+          }
+
+          return true;
+        });
+
+        const unread = filtered.filter((ticket: any) => {
+          const uniqueKey = ticket.T_Sch_Id ? `${ticket.Id}_${ticket.T_Sch_Id}` : String(ticket.Id);
+          const isRead =
+            localReadIds.includes(uniqueKey) ||
+            ["in progress", "inprocess", "in process", "resolved", "closed"].includes(
+              String(ticket.Status || "").toLowerCase().trim()
+            );
+          return !isRead;
+        });
+
+        setUnreadCount(unread.length);
+      }
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  }, [user]);
+
+  React.useEffect(() => {
+    fetchUnreadCount();
+
+    const handleUpdate = () => {
+      fetchUnreadCount();
+    };
+
+    window.addEventListener("notification-update", handleUpdate);
+    return () => {
+      window.removeEventListener("notification-update", handleUpdate);
+    };
+  }, [fetchUnreadCount]);
 
   let displayTitle = currentPage?.title;
   if (!displayTitle && navDetails) {
@@ -189,38 +266,77 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
 
         {/* RIGHT – User Info + Actions */}
         <RightSection>
-          {/* Show name only on tablet+ */}
-          {!isMobile && userDetails?.name && (
-            <Typography sx={{ color: "#000", fontSize: { sm: 12, md: 13 }, opacity: 0.9, mr: 0.5, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
-              {userDetails.name}
-            </Typography>
-          )}
-
           {/* Settings icon */}
           <IconButton
             size="small"
-            sx={{ color: "#000", backgroundColor: "#fff", "&:hover": { backgroundColor: "#e0e0e0" }, width: 32, height: 32, borderRadius: "50%" }}
+            sx={{ color: "#000", backgroundColor: "#fff", "&:hover": { backgroundColor: "#e0e0e0" }, width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: "50%" }}
             onClick={handleSettings}
           >
-            <Settings fontSize="small" />
+            <Settings fontSize="medium" />
           </IconButton>
 
           {/* Notifications icon */}
           <IconButton
             size="small"
-            sx={{ color: "#000", backgroundColor: "#fff", "&:hover": { backgroundColor: "#e0e0e0" }, width: 32, height: 32, borderRadius: "50%" }}
+            sx={{ color: "#000", backgroundColor: "#fff", "&:hover": { backgroundColor: "#e0e0e0" }, width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: "50%" }}
             onClick={() => navigate("/notifications")}
           >
-            <Notifications fontSize="small" />
+            <Badge badgeContent={unreadCount} color="error">
+              <Notifications fontSize="medium" />
+            </Badge>
           </IconButton>
 
-          {/* Avatar + Dropdown */}
-          <IconButton onClick={handleAvatarClick} size="small" sx={{ p: 0, ml: { xs: 0.5, sm: 0 } }}>
-            <Avatar
-              src="/admin.png"
-              sx={{ width: { xs: 26, sm: 28 }, height: { xs: 26, sm: 28 }, border: "2px solid rgba(0,0,0,0.2)", cursor: "pointer" }}
-            />
-          </IconButton>
+          {/* Avatar + Username (stacked vertically) */}
+          <Box 
+            display="flex" 
+            flexDirection="column" 
+            alignItems="center" 
+            justifyContent="center"
+            sx={{ 
+              ml: { xs: 1.5, sm: 3 },
+              mr: { xs: 1, sm: 1.5 },
+              position: "relative",
+              height: "100%"
+            }}
+          >
+            <IconButton onClick={handleAvatarClick} size="small" sx={{ p: 0, mt: "-5px" }}>
+              <Avatar
+                sx={{ 
+                  width: { xs: 30, sm: 36 }, 
+                  height: { xs: 30, sm: 36 }, 
+                  border: "1.5px solid rgba(0,0,0,0.12)", 
+                  cursor: "pointer",
+                  bgcolor: "#fff",
+                  color: "#354854",
+                  fontSize: { xs: 13, sm: 18 },
+                  fontWeight: 800
+                }}
+              >
+                {userDetails?.name ? userDetails.name.charAt(0).toUpperCase() : "U"}
+              </Avatar>
+            </IconButton>
+            {!isMobile && userDetails?.name && (
+              <Typography 
+                sx={{ 
+                  color: "#354854", 
+                  fontSize: 12.5, 
+                  fontWeight: 800,
+                  opacity: 0.9, 
+                  whiteSpace: "nowrap", 
+                  maxWidth: 90, 
+                  overflow: "hidden", 
+                  textOverflow: "ellipsis",
+                  position: "absolute",
+                  bottom: 2,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  lineHeight: 1
+                }}
+              >
+                {userDetails.name}
+              </Typography>
+            )}
+          </Box>
 
           <Menu
             anchorEl={anchorEl}
@@ -249,7 +365,9 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
             {/* Show Notifications in mobile menu */}
             {isMobile && (
               <MenuItem onClick={() => { handleClose(); navigate("/notifications"); }}>
-                <Notifications fontSize="small" sx={{ mr: 1 }} />
+                <Badge badgeContent={unreadCount} color="error" sx={{ mr: 1.5 }}>
+                  <Notifications fontSize="small" />
+                </Badge>
                 Notifications
               </MenuItem>
             )}
@@ -288,6 +406,7 @@ const RightSection = styled(Box)(({ theme }) => ({
   display: "flex",
   alignItems: "center",
   justifyContent: "flex-end",
+  height: "100%",
   gap: 4,
   minWidth: 40,
   [theme.breakpoints.up("sm")]: { gap: 6, minWidth: 120 },

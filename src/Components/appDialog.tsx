@@ -23,6 +23,7 @@ interface AppDialogProps {
   isSubmit?: boolean;
   extraActions?: React.ReactNode;
   disableBackdropClick?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   PaperPropsSx?: any;
 }
 

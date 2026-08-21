@@ -347,6 +347,7 @@ const Login: React.FC<LoginProps> = ({
                     Local_User_ID: c.Local_User_ID ?? null,
                 }));
 
+                localStorage.setItem("companyId", String(companyId));
                 login(finalToken, userWithCompany, companiesData);
 
                 toast.success(

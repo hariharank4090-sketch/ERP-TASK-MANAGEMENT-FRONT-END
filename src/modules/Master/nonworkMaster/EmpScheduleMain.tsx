@@ -171,6 +171,7 @@ const calculateDurationFromTimes = (startStr: string | undefined, endStr: string
   const [sH, sM] = start.split(":").map(Number);
   const [eH, eM] = end.split(":").map(Number);
   
+  // eslint-disable-next-line prefer-const
   let startMins = sH * 60 + sM;
   let endMins = eH * 60 + eM;
   

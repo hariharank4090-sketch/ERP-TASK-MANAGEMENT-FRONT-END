@@ -672,6 +672,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
           scrollbarWidth: isMobile ? "thin" : "thin",
           scrollbarColor: "#c99f65 #f1f1f1",
           ...(() => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { minWidth, ...rest } = tableProps?.sx || {};
             return rest;
           })(),

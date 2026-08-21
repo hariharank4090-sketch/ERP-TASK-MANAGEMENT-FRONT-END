@@ -2702,6 +2702,12 @@ const All = () => {
     () => {
       const projectMap: Record<string, any> = {};
 
+      const schedCountMap = new Map<number, number>();
+      projectSchedules.forEach((s: any) => {
+        const tid = s?.Task_Id || s?.taskId;
+        if (tid) schedCountMap.set(Number(tid), (schedCountMap.get(Number(tid)) || 0) + 1);
+      });
+
       // 1. Initialize map with all projects matching the IsActive filter
       const projectsToInclude = projectIsActiveFilter === "ALL" 
         ? projects 
@@ -2714,7 +2720,7 @@ const All = () => {
         const projectId = p.Project_Id != null ? Number(p.Project_Id) : null;
         
         let maxEndDate = "";
-        const pStatusCounts = { Completed: 0, Pending: 0, "In Progress": 0 };
+        const pStatusCounts = { Completed: 0, Pending: 0, Inprocess: 0 };
         let projectTasksCount = 0;
         let projectStaffCount = 0;
         
@@ -2740,6 +2746,16 @@ const All = () => {
                 });
             }
             projectTasksCount = projectTasks.length;
+
+            let noScheduleTasksCount = 0;
+            projectTasks.forEach((t: any) => {
+                const tid = t.Task_Id || t.taskId;
+                const count = schedCountMap.get(Number(tid)) || 0;
+                if (count === 0) {
+                    noScheduleTasksCount++;
+                }
+            });
+            pStatusCounts.Pending += noScheduleTasksCount;
 
             const projectSchs = projectSchedules.filter((s: any) => 
                 (s.Project_Id != null ? Number(s.Project_Id) : s.project_id != null ? Number(s.project_id) : null) === projectId
@@ -2774,7 +2790,7 @@ const All = () => {
                 
                 projectSchs.forEach((sch: any) => {
                     const st = Number(sch.Sch_Status || sch.schStatus) || 1;
-                    if (st === 1) pStatusCounts["In Progress"]++;
+                    if (st === 1) pStatusCounts.Inprocess++;
                     else if (st === 2) pStatusCounts.Pending++;
                     else if (st === 3) pStatusCounts.Completed++;
                 });
@@ -2821,13 +2837,45 @@ const All = () => {
         if (!projectMap[project]) {
           let estEndDt = "";
           let estStartDt = "";
-          const pStatusCounts = { Completed: 0, Pending: 0, "In Progress": 0 };
+          const pStatusCounts = { Completed: 0, Pending: 0, Inprocess: 0 };
           
           if (projectId != null) {
             const foundProject = projects.find(p => Number(p.Project_Id) === projectId);
             if (foundProject) {
               estStartDt = foundProject.Est_Start_Dt || "";
             }
+
+            let projectTasks = tasks.filter((t: any) => 
+                (t.Project_Id != null ? Number(t.Project_Id) : Number(t.project_id)) === projectId
+            );
+            if (appliedEmployeeId !== "ALL") {
+                projectTasks = projectTasks.filter(task => {
+                    const hasSch = projectSchedules.some((sch: any) => {
+                        const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+                        const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
+                        if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
+                        
+                        const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+                        return projectEmpSchedules.some((emp: any) => {
+                            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+                            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+                            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+                        });
+                    });
+                    return hasSch;
+                });
+            }
+
+            let noScheduleTasksCount = 0;
+            projectTasks.forEach((t: any) => {
+                const tid = t.Task_Id || t.taskId;
+                const count = schedCountMap.get(Number(tid)) || 0;
+                if (count === 0) {
+                    noScheduleTasksCount++;
+                }
+            });
+            pStatusCounts.Pending += noScheduleTasksCount;
+
             if (projectSchedules.length > 0) {
               const projectSchs = projectSchedules.filter((s: any) => 
                   (s.Project_Id != null ? Number(s.Project_Id) : s.project_id != null ? Number(s.project_id) : null) === projectId
@@ -2848,7 +2896,7 @@ const All = () => {
                   // Calculate status counts based on schedule status (1: Inprocess, 2: Pending, 3: Completed)
                   projectSchs.forEach((sch: any) => {
                       const st = Number(sch.Sch_Status || sch.schStatus) || 1;
-                      if (st === 1) pStatusCounts["In Progress"]++;
+                      if (st === 1) pStatusCounts.Inprocess++;
                       else if (st === 2) pStatusCounts.Pending++;
                       else if (st === 3) pStatusCounts.Completed++;
                   });
@@ -2995,15 +3043,20 @@ const All = () => {
     },
     {
       Field_Name: "Est_End_Dt", ColumnHeader: "Actual End Date",
-      Fied_Data: "date", align: "left", isVisible: 1,
+      Fied_Data: "date", align: "left", isVisible: 1, isCustomCell: true,
       Cell: ({ row }) => {
         const d = (row as unknown as ProjectRow).Est_End_Dt;
-        if (!d) return "—";
-        try {
-          return new Date(d).toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
-        } catch {
-          return d;
+        if (!d) return "N/A";
+        const ymd = toYMD(d);
+        if (!ymd) return d;
+        const parts = ymd.split("-");
+        if (parts.length === 3) {
+          const year = parts[0];
+          const month = parts[1];
+          const day = parts[2];
+          return `${day}/${month}/${year}`;
         }
+        return d;
       },
     },
     {
@@ -3011,6 +3064,7 @@ const All = () => {
       Fied_Data: "string", align: "center", isVisible: 1,
       Cell: ({ row }) => {
         const count = (row as unknown as ProjectRow).Task_Name;
+        if (Number(count) === 0) return null;
         return (
           <Chip
             label={count}
@@ -3026,12 +3080,17 @@ const All = () => {
       Field_Name: "Emp_Name", ColumnHeader: "Staff Members",
       Fied_Data: "string", align: "center", isVisible: 1,
       Cell: ({ row }) => {
-        const count = (row as unknown as ProjectRow).Emp_Name;
+        const projectRow = row as unknown as ProjectRow;
+        const taskCount = Number(projectRow.Task_Name);
+        if (taskCount === 0) return null;
+        
+        const count = projectRow.Emp_Name;
+        if (Number(count) <= 0) return <span>0</span>;
         return (
           <Chip
             label={count}
             size="small"
-            color={Number(count) > 0 ? "info" : "default"}
+            color="info"
             icon={<Person />}
             sx={{ fontWeight: 600, px: 1 }}
           />
@@ -3042,12 +3101,47 @@ const All = () => {
       Field_Name: "statusCounts", ColumnHeader: "Status",
       Fied_Data: "string", align: "left", isVisible: 1, isCustomCell: true,
       Cell: ({ row }) => {
-        const s = (row as unknown as ProjectRow).statusCounts;
+        const projectRow = row as unknown as ProjectRow;
+        const taskCount = Number(projectRow.Task_Name);
+        if (taskCount === 0) {
+          return (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, color: "#ed6c02" }}>
+              <span style={{ fontSize: "1.1rem", display: "inline-flex", alignItems: "center" }}>⚠️</span>
+              <span style={{ fontWeight: 600, fontSize: "0.82rem" }}>Project works not started yet</span>
+            </Box>
+          );
+        }
+        
+        const s = projectRow.statusCounts;
+        const hasActualSchedules = s.Completed > 0 || ((s as any).Inprocess ?? s["In Progress"] ?? 0) > 0;
+        if (!hasActualSchedules) {
+          return (
+            <Chip label={`Not Started (${s.Pending})`} sx={{ background: "#ed6c02", color: "#fff", fontWeight: 600 }} />
+          );
+        }
+        const completedVal = s.Completed;
+        const pendingVal = s.Pending;
+        const inprocessVal = (s as any).Inprocess ?? s["In Progress"] ?? 0;
+
+        const items = [
+          { name: "Completed", count: completedVal },
+          { name: "Pending", count: pendingVal },
+          { name: "Inprocess", count: inprocessVal }
+        ];
+
+        // Sort descending by count
+        const sorted = [...items].sort((a, b) => b.count - a.count);
+        const rankColors = ["#2e7d32", "#0288d1", "#d32f2f"];
+        const colorMap: Record<string, string> = {};
+        sorted.forEach((item, index) => {
+          colorMap[item.name] = rankColors[index];
+        });
+
         return (
           <Stack direction="row" spacing={1}>
-            <Chip label={`Completed (${s.Completed})`} sx={{ background: "#2e7d32", color: "#fff", fontWeight: 600 }} />
-            <Chip label={`Pending (${s.Pending})`} sx={{ background: "#ed6c02", color: "#fff", fontWeight: 600 }} />
-            <Chip label={`In Progress (${s["In Progress"]})`} sx={{ background: "#0288d1", color: "#fff", fontWeight: 600 }} />
+            <Chip label={`Completed (${completedVal})`} sx={{ background: colorMap["Completed"], color: "#fff", fontWeight: 600 }} />
+            <Chip label={`Pending (${pendingVal})`} sx={{ background: colorMap["Pending"], color: "#fff", fontWeight: 600 }} />
+            <Chip label={`Inprocess (${inprocessVal})`} sx={{ background: colorMap["Inprocess"], color: "#fff", fontWeight: 600 }} />
           </Stack>
         );
       },
@@ -3057,7 +3151,7 @@ const All = () => {
       Fied_Data: "string", align: "left", isVisible: 1, isCustomCell: true,
       Cell: ({ row }) => {
         const s = (row as unknown as ProjectRow).statusCounts;
-        const total = s.Completed + s.Pending + s["In Progress"];
+        const total = s.Completed + s.Pending + ((s as any).Inprocess ?? s["In Progress"] ?? 0);
         const pct = total === 0 ? 0 : Math.round((s.Completed / total) * 100);
         return (
           <Box sx={{ width: 160 }}>

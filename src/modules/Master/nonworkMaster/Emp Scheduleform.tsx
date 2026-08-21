@@ -161,42 +161,60 @@ const TodayTaskDialog: React.FC<Props> = ({
 
   const extractTimeForInput = (val: any): string => {
     if (!val) return "";
+    
+    // If it's already in HH:MM format, return it directly
+    if (typeof val === "string" && /^\d{2}:\d{2}$/.test(val)) {
+      return val;
+    }
+    if (typeof val === "string" && /^\d{2}:\d{2}:\d{2}$/.test(val)) {
+      return val.substring(0, 5);
+    }
+
     try {
-      if (typeof val === "string" && val.includes("T")) {
-        if (val.includes("1970-01-01") || val.includes("1900-01-01")) {
-          return val.split("T")[1].substring(0, 5);
+      let dateObj: Date | null = null;
+      if (val instanceof Date) {
+        dateObj = val;
+      } else if (typeof val === "string") {
+        let normalized = val.trim();
+        if (normalized.includes(" ") && !normalized.includes("T")) {
+          normalized = normalized.replace(" ", "T");
         }
-        const d = new Date(val);
-        if (!isNaN(d.getTime())) {
-          const hrs = d.getHours().toString().padStart(2, "0");
-          const mins = d.getMinutes().toString().padStart(2, "0");
-          return `${hrs}:${mins}`;
+        
+        if (normalized.includes("1970-01-01") || normalized.includes("1900-01-01")) {
+          const timePart = normalized.split("T")[1];
+          if (timePart) return timePart.substring(0, 5);
         }
+        
+        dateObj = new Date(normalized);
       }
-      if (typeof val === "string" && val.includes(":")) {
-        return val.substring(0, 5);
-      }
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        const hrs = d.getHours().toString().padStart(2, "0");
-        const mins = d.getMinutes().toString().padStart(2, "0");
+
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        const hrs = dateObj.getHours().toString().padStart(2, "0");
+        const mins = dateObj.getMinutes().toString().padStart(2, "0");
         return `${hrs}:${mins}`;
       }
     } catch (e) {
       console.error("Time parse error", e);
     }
+    
+    if (typeof val === "string") {
+      const timeMatch = val.match(/(\d{2}):(\d{2})/);
+      if (timeMatch) {
+        return `${timeMatch[1]}:${timeMatch[2]}`;
+      }
+    }
+    
     return "";
   };
 
   const parseTimeToDate = (timeVal: string, dateVal: string): Date | null => {
     if (!timeVal) return null;
-    if (timeVal.includes("T")) {
-      const d = new Date(timeVal);
-      if (!isNaN(d.getTime())) return d;
-    }
     try {
-      const d = new Date(`${dateVal}T${timeVal}:00`);
-      if (!isNaN(d.getTime())) return d;
+      const extractedTime = extractTimeForInput(timeVal);
+      if (extractedTime) {
+        const d = new Date(`${dateVal}T${extractedTime}:00`);
+        if (!isNaN(d.getTime())) return d;
+      }
     } catch { /* ignore */ }
     return null;
   };
@@ -270,6 +288,7 @@ const TodayTaskDialog: React.FC<Props> = ({
             (param: TaskParameter) => param.Task_Id === String(sourceData.Task_Id)
           );
           setTaskParameters(taskParams);
+          // eslint-disable-next-line prefer-const
           let rawSavedParams = sourceData?.Parameters || sourceData?.parameters || [];
           let savedParams: any[] = [];
           
@@ -320,6 +339,7 @@ const TodayTaskDialog: React.FC<Props> = ({
       }
     };
     fetchTaskParameters();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceData?.Task_Id, open]);
 
   const handleStart = () => {
@@ -459,11 +479,17 @@ const TodayTaskDialog: React.FC<Props> = ({
 
   const formatTimeForApi = (timeVal: string, dateVal: string) => {
     if (!timeVal) return null;
-    if (timeVal.includes("T")) return timeVal;
     try {
-      const d = new Date(`${dateVal}T${timeVal}:00`);
-      if (!isNaN(d.getTime())) return d.toISOString();
-    } catch { /* ignore */ }
+      const extractedTime = extractTimeForInput(timeVal);
+      if (extractedTime) {
+        const d = new Date(`${dateVal}T${extractedTime}:00`);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString();
+        }
+      }
+    } catch (e) {
+      console.error("formatTimeForApi error", e);
+    }
     return timeVal;
   };
 

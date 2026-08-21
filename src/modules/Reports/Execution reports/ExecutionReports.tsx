@@ -44,7 +44,8 @@ import {
   getWorkMasterData,
   getAllTasks,
   getCachedScheduleEmpData,
-  getCachedWorkMasterData
+  getCachedWorkMasterData,
+  clearTaskUsersCache
 } from "./ExecutionReports.api";
 import type { projectData, TaskWithSchedule, TaskDropdown, UserDropdown, TaskTypeDropdown } from "./variables";
 
@@ -186,7 +187,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [hasSearched, setHasSearched] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
@@ -218,7 +219,18 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
       ]);
       setProjects(projData);
       setAllTasks(taskData);
-      setFilteredTasks([]); // Don't show data until search is clicked
+      
+      // Initially apply filters for admin users (non-admins are handled by buildUserProjectIds effect)
+      const canSeeAll = user?.UserTypeId === 1 || user?.UserTypeId === 0;
+      if (canSeeAll) {
+        let initialFiltered = [...taskData];
+        if (projectStatusFilter !== "") {
+          const validProjectIds = new Set(projData.filter(p => p.IsActive?.toString() === projectStatusFilter).map(p => Number(p.Project_Id)));
+          initialFiltered = initialFiltered.filter(task => validProjectIds.has(Number(task.Project_Id)));
+        }
+        setFilteredTasks(initialFiltered);
+      }
+      
       setProjectTaskTypes(ttData);
       setProjectTasks(pTaskData);
       setUserOptions(usersData);
@@ -388,12 +400,26 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     // loadProjectTaskTypes(null);
     // loadProjectTasks(null);
     // loadUsers(null, null);
-    setFilteredTasks([]); // Clear table data on reset
-    setHasSearched(false);
+    
+    // Reset to initial filtered state (active projects tasks)
+    let initialFiltered = [...allTasks];
+    const validProjectIds = new Set(projects.filter(p => p.IsActive?.toString() === "1").map(p => Number(p.Project_Id)));
+    initialFiltered = initialFiltered.filter(task => validProjectIds.has(Number(task.Project_Id)));
+    
+    if (!canSeeAllUsers) {
+      initialFiltered = initialFiltered.filter(task => {
+        const taskEmpId = (task as any).Emp_Id;
+        return taskEmpId != null && mappedEmpIds.has(String(taskEmpId));
+      });
+    }
+    
+    setFilteredTasks(initialFiltered);
+    setHasSearched(true);
     toast.info("All filters cleared");
   };
 
   const handleRefresh = () => {
+    clearTaskUsersCache();
     loadMasterData();
     setSelectedProjectId(null);
     setProjectStatusFilter("1");
@@ -486,6 +512,9 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   // ─── Initial data loading ───────────────────────────────────────────────────
   useEffect(() => {
     loadMasterData();
+    return () => {
+      clearTaskUsersCache();
+    };
   }, [loadMasterData]);
 
   // ─── Auto-select user on mount ──────────────────────────────────────────────
@@ -645,6 +674,18 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         setUserAssignedProjectIds(projectIds);
         setUserAssignedTaskTypeIds(taskTypeIds);
         setUserAssignedTaskIds(taskIds);
+
+        // Filter tasks initially for non-admin user
+        let initialFiltered = [...allTasks];
+        if (projectStatusFilter !== "") {
+          const validProjectIds = new Set(projects.filter(p => p.IsActive?.toString() === projectStatusFilter).map(p => Number(p.Project_Id)));
+          initialFiltered = initialFiltered.filter(task => validProjectIds.has(Number(task.Project_Id)));
+        }
+        initialFiltered = initialFiltered.filter(task => {
+          const taskEmpId = (task as any).Emp_Id;
+          return taskEmpId != null && possibleEmpIds.has(String(taskEmpId));
+        });
+        setFilteredTasks(initialFiltered);
       } catch (err) {
         console.error("Error building user project IDs:", err);
         setUserAssignedProjectIds(new Set());
@@ -656,6 +697,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     };
 
     buildUserProjectIds();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSeeAllUsers, user?.Local_User_ID, user?.Global_User_ID, user?.id, user?.Name, user?.UserName, allTasks]);
 
   // ─── Helper to get project name by ID ───────────────────────────────────────

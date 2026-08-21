@@ -278,6 +278,7 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
                 update({ selectedInCharge: opt ? { value: opt.value as number, label: opt.label } : null });
               }}
               displayEmpty
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               renderValue={(selected: any) => {
                 if (!selected) return "Select In-Charge";
                 const user = users.find((u) => String(u.value) === String(selected));

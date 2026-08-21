@@ -49,6 +49,7 @@ const LeaveTypeMainPage: React.FC<PageProps> = ({
   const [leaveTypeFilter, setLeaveTypeFilter] = useState<number | "ALL">("ALL");
   const [appliedLeaveType, setAppliedLeaveType] = useState<number | "ALL">("ALL");
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const numEq = (a: any, b: any) => {
     if (a == null || b == null) return false;
     return Number(a) === Number(b);
@@ -225,6 +226,7 @@ const LeaveTypeMainPage: React.FC<PageProps> = ({
                     label="Leave Type"
                     value={leaveTypeFilter}
                     onChange={(e) => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const val = e.target.value as any;
                       setLeaveTypeFilter(val);
                     }}

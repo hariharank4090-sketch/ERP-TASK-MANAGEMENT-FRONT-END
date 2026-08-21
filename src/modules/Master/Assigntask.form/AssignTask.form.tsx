@@ -637,7 +637,7 @@ const AssignTask: React.FC<PageProps> = ({
       onClose={onClose}
       fullWidth
       maxWidth="md"
-      PaperProps={{ sx: { minHeight: "60vh", maxHeight: "90vh" } }}
+      PaperProps={{ sx: { minHeight: "115vh", maxHeight: "135vh", zoom: 0.67 } }}
     >
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">

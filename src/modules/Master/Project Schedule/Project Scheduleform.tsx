@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -142,6 +143,24 @@ const weekdayNamesToMonthDayNumbers = (
   return Array.from(result).sort((a, b) => a - b);
 };
 
+const weekdayNamesToDateStrings = (
+  start: Dayjs | null,
+  end: Dayjs | null,
+  weekdayNames: string[]
+): string[] => {
+  if (!start || !end || weekdayNames.length === 0) return [];
+  const wantedNums = new Set(weekdayNames.map((n) => DAY_NAME_TO_NUM[n]).filter(Boolean));
+  const result: string[] = [];
+  let cur = start;
+  while (cur.isSameOrBefore(end, "day")) {
+    if (wantedNums.has(isoWeekday(cur))) {
+      result.push(cur.format("YYYY-MM-DD"));
+    }
+    cur = cur.add(1, "day");
+  }
+  return result.sort();
+};
+
 const calcDurationHours = (startTime: string, endTime: string): number => {
   if (!startTime || !endTime) return 0;
   const [sh, sm] = startTime.split(":").map(Number);
@@ -159,6 +178,20 @@ const formatDurationString = (hours: number): string => {
   const m = totalMins % 60;
   if (h > 0) return `${h} hr${h !== 1 ? "s" : ""} ${m > 0 ? `${m} min${m !== 1 ? "s" : ""}` : ""}`.trim();
   return `${m} min${m !== 1 ? "s" : ""}`;
+};
+
+const normalizeDateStr = (s: string): string => {
+  let str = String(s).trim();
+  if (str.includes('T')) str = str.split('T')[0];
+  if (str.includes(' ')) str = str.split(' ')[0];
+  // Convert from DD-MM-YYYY to YYYY-MM-DD if needed
+  if (str.includes('-') && str.split('-')[2]?.length === 4) {
+    const parts = str.split('-');
+    if (parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+  }
+  return str;
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -202,6 +235,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
   const [calendarKey, setCalendarKey]   = useState(0);
   const [, setLoadingCascade] = useState(false);
   const [dateError, setDateError]           = useState("");
+  const [initialSavedDates, setInitialSavedDates] = useState<string[]>([]);
 
   // ── Auto-sync timer duration ──────────────────────────────────────────────
   useEffect(() => {
@@ -212,6 +246,15 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localUI.startTime, localUI.endTime, localUI.isTimerBased]);
+
+  useEffect(() => {
+    if (open && (type === "edit" || type === "view") && scheduleObj) {
+      const dates = (scheduleObj.specificDates || [])
+        .map(s => normalizeDateStr(s))
+        .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s));
+      setInitialSavedDates(dates);
+    }
+  }, [open, type, scheduleObj]);
 
   // ── Time helpers ──────────────────────────────────────────────────────────
   const convertTo24H = (t: string): string => {
@@ -304,31 +347,76 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     let specificDates: string[]           = [];
 
     // Handle Days selection (Plan 2) and Time selection (Plan 1)
-    if ((sub === "days" || sub === "time") && scheduleObj.selectedDays && scheduleObj.selectedDays.length > 0) {
-      selectedDays = scheduleObj.selectedDays
-        .map((n) => DAY_NUM_TO_NAME[Number(n)])
-        .filter(Boolean);
+    if (sub === "days" || sub === "time") {
+      const specDates = scheduleObj.specificDates || [];
+      if (specDates.length > 0) {
+        selectedDays = ALL_WEEKDAY_NAMES.filter((name) => {
+          const wNum = DAY_NAME_TO_NUM[name];
+          return specDates.some((dStr) => {
+            const d = dayjs(normalizeDateStr(dStr));
+            return d.isValid() && isoWeekday(d) === wNum;
+          });
+        });
+      } else if (scheduleObj.selectedDays && scheduleObj.selectedDays.length > 0) {
+        selectedDays = scheduleObj.selectedDays
+          .map((n) => DAY_NUM_TO_NAME[Number(n)])
+          .filter(Boolean);
+      }
     }
 
     // Handle Weekly selection (Plan 3)
-    if (sub === "weekly" && scheduleObj.selectedDays && scheduleObj.selectedDays.length > 0) {
-      selectedWeekDays = scheduleObj.selectedDays
-        .map((n) => DAY_NUM_TO_NAME[Number(n)])
-        .filter(Boolean);
+    if (sub === "weekly") {
+      const specDates = scheduleObj.specificDates || [];
+      if (specDates.length > 0) {
+        selectedWeekDays = ALL_WEEKDAY_NAMES.filter((name) => {
+          const wNum = DAY_NAME_TO_NUM[name];
+          return specDates.some((dStr) => {
+            const d = dayjs(normalizeDateStr(dStr));
+            return d.isValid() && isoWeekday(d) === wNum;
+          });
+        });
+      } else if (scheduleObj.selectedDays && scheduleObj.selectedDays.length > 0) {
+        selectedWeekDays = scheduleObj.selectedDays
+          .map((n) => DAY_NUM_TO_NAME[Number(n)])
+          .filter(Boolean);
+      }
     }
 
     // Handle Monthly selection (Plan 4)
-    if (sub === "monthly" && start && end && scheduleObj.selectedDays && scheduleObj.selectedDays.length > 0) {
-      const stored = new Set(scheduleObj.selectedDays.map(Number));
-      selectedMonthlyWeekDays = ALL_WEEKDAY_NAMES.filter((name) => {
-        const wNum = DAY_NAME_TO_NUM[name];
-        let cur = start;
-        while (cur.isSameOrBefore(end, "day")) {
-          if (isoWeekday(cur) === wNum && stored.has(cur.date())) return true;
-          cur = cur.add(1, "day");
+    if (sub === "monthly") {
+      const specDates = scheduleObj.specificDates || [];
+      if (specDates.length > 0) {
+        selectedMonthlyWeekDays = ALL_WEEKDAY_NAMES.filter((name) => {
+          const wNum = DAY_NAME_TO_NUM[name];
+          return specDates.some((dStr) => {
+            const d = dayjs(normalizeDateStr(dStr));
+            return d.isValid() && isoWeekday(d) === wNum;
+          });
+        });
+      } else if (scheduleObj.selectedDays && scheduleObj.selectedDays.length > 0) {
+        const storedNums = scheduleObj.selectedDays.map(Number);
+        const isWeekdayNums = storedNums.every(n => n >= 1 && n <= 7);
+        if (isWeekdayNums) {
+          selectedMonthlyWeekDays = storedNums
+            .map((n) => DAY_NUM_TO_NAME[n])
+            .filter(Boolean);
+        } else if (start && end) {
+          const stored = new Set(storedNums);
+          selectedMonthlyWeekDays = ALL_WEEKDAY_NAMES.filter((name) => {
+            const wNum = DAY_NAME_TO_NUM[name];
+            const occurrences: number[] = [];
+            let cur = start;
+            while (cur.isSameOrBefore(end, "day")) {
+              if (isoWeekday(cur) === wNum) {
+                occurrences.push(cur.date());
+              }
+              cur = cur.add(1, "day");
+            }
+            if (occurrences.length === 0) return false;
+            return occurrences.every((dNum) => stored.has(dNum));
+          });
         }
-        return false;
-      });
+      }
     }
 
     // Handle Specific Dates selection (Plan 5)
@@ -401,6 +489,25 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       setScheduleObj((prev) => ({ ...prev, Task_Sch_Duaration: computed }));
     }
 
+    if (sub === "monthly" && sStart && sEnd && selectedMonthlyWeekDays.length > 0 && setScheduleObj) {
+      const cleanDayNums = weekdayNamesToMonthDayNumbers(sStart, sEnd, selectedMonthlyWeekDays);
+      const cleanSpecDates = weekdayNamesToDateStrings(sStart, sEnd, selectedMonthlyWeekDays);
+      
+      const currentDaysStr = (scheduleObj.selectedDays || []).map(Number).sort().join(",");
+      const cleanDaysStr = cleanDayNums.sort().join(",");
+      
+      const currentSpecStr = (scheduleObj.specificDates || []).map(s => String(s).trim()).sort().join(",");
+      const cleanSpecStr = cleanSpecDates.sort().join(",");
+
+      if (currentDaysStr !== cleanDaysStr || currentSpecStr !== cleanSpecStr) {
+        setScheduleObj((prev) => ({
+          ...prev,
+          selectedDays: cleanDayNums,
+          specificDates: cleanSpecDates,
+        }));
+      }
+    }
+
     if (start && end) validateDates(start, end);
 
     // Force calendar refresh for specific dates
@@ -409,7 +516,57 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, scheduleObj?.Sch_Plan_Id, scheduleObj?.Sch_Type, scheduleObj?.specificDates, scheduleObj?.selectedDays]);
+  }, [open, selectedId, type]);
+
+  // ── Auto-sync computed specificDates to scheduleObj ────────────────────────
+  useEffect(() => {
+    if (!setScheduleObj || !scheduleObj) return;
+
+    let computedSpecific: string[] = [];
+    const sub = localUI.scheduleSubType;
+    const start = localUI.sectionStartDate;
+    const end = localUI.sectionEndDate;
+
+    if (sub === "specific") {
+      computedSpecific = localUI.specificDates;
+    } else if (sub === "monthly" && start && end) {
+      computedSpecific = weekdayNamesToDateStrings(start, end, localUI.selectedMonthlyWeekDays);
+    } else if (sub === "weekly" && start && end) {
+      computedSpecific = weekdayNamesToDateStrings(start, end, localUI.selectedWeekDays);
+    } else if ((sub === "days" || sub === "time") && start && end) {
+      computedSpecific = weekdayNamesToDateStrings(start, end, localUI.selectedDays);
+    }
+
+    const currentSpecStr = (scheduleObj.specificDates || [])
+      .map(s => normalizeDateStr(s))
+      .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
+      .sort()
+      .join(",");
+
+    const computedSpecStr = computedSpecific
+      .map(s => normalizeDateStr(s))
+      .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
+      .sort()
+      .join(",");
+
+    if (currentSpecStr !== computedSpecStr) {
+      setScheduleObj((prev) => ({
+        ...prev,
+        specificDates: computedSpecific,
+      }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    localUI.scheduleSubType,
+    localUI.sectionStartDate,
+    localUI.sectionEndDate,
+    localUI.selectedDays,
+    localUI.selectedWeekDays,
+    localUI.selectedMonthlyWeekDays,
+    localUI.specificDates,
+    setScheduleObj,
+    scheduleObj?.specificDates
+  ]);
 
   // ── Reset/Clear dates when dialog opens in create mode ────────────────────
   useEffect(() => {
@@ -430,6 +587,8 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       setCalendarKey(prev => prev + 1);
     }
   }, [open, isCreateMode]);
+
+
 
   // ── Generic field select ──────────────────────────────────────────────────
   const handleSelectChange = async (e: SelectChangeEvent<number>) => {
@@ -479,7 +638,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     setScheduleObj({ ...scheduleObj, [fieldName]: Number(value) });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const handleUIChange = (field: keyof LocalUIState, value: any) => {
     if (isFormDisabled) return;
     setLocalUI((prev) => ({ ...prev, [field]: value }));
@@ -536,12 +695,32 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       newEndTime = "18:30";
     }
 
+    const currentWeekdays = 
+      localUI.selectedDays.length > 0 ? localUI.selectedDays :
+      localUI.selectedWeekDays.length > 0 ? localUI.selectedWeekDays :
+      localUI.selectedMonthlyWeekDays;
+
+    let computedDays: number[] = [];
+    let computedSpecific: string[] = [];
+
+    if (sub === "weekly" || sub === "days" || sub === "time") {
+      computedDays = currentWeekdays.map((d) => DAY_NAME_TO_NUM[d]).filter(Boolean);
+      if ((sub === "days" || sub === "time") && newStartDate && newEndDate && currentWeekdays.length > 0) {
+        computedSpecific = weekdayNamesToDateStrings(newStartDate, newEndDate, currentWeekdays);
+      }
+    } else if (sub === "monthly") {
+      if (newStartDate && newEndDate && currentWeekdays.length > 0) {
+        computedDays = weekdayNamesToMonthDayNumbers(newStartDate, newEndDate, currentWeekdays);
+        computedSpecific = weekdayNamesToDateStrings(newStartDate, newEndDate, currentWeekdays);
+      }
+    }
+
     setLocalUI((prev) => ({
       ...prev,
       scheduleSubType:         sub,
-      selectedDays:            [],
-      selectedWeekDays:        [],
-      selectedMonthlyWeekDays: [],
+      selectedDays:            currentWeekdays,
+      selectedWeekDays:        currentWeekdays,
+      selectedMonthlyWeekDays: currentWeekdays,
       specificDates:           [],
       sectionStartDate:        newStartDate,
       sectionEndDate:          newEndDate,
@@ -554,8 +733,8 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     setScheduleObj((prev) => ({
       ...prev,
       Sch_Plan_Id:   planMap[sub as string] ?? 1,
-      selectedDays:  [],
-      specificDates: [],
+      selectedDays:  computedDays,
+      specificDates: computedSpecific,
       planDetails:   { Plan_Month: null, Plan_Day: null },
       Sch_Start_Date: newStartDate ? newStartDate.toDate() : null,
       Sch_End_Date:   newEndDate ? newEndDate.toDate() : null,
@@ -579,39 +758,73 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
 
   const handleStartDateChange = (value: unknown) => {
     const date = toDayjsValue(value);
-    if (date && localUI.sectionEndDate) validateDates(date, localUI.sectionEndDate);
+    const end = localUI.sectionEndDate;
+    if (date && end) validateDates(date, end);
+
+    const nextMonthlyWeekDays = localUI.scheduleSubType === "monthly" ? localUI.selectedMonthlyWeekDays : [];
+    const nextDays = (localUI.scheduleSubType === "days" || localUI.scheduleSubType === "time") ? localUI.selectedDays : [];
+    
+    let computedDays = (localUI.scheduleSubType === "weekly" || localUI.scheduleSubType === "days" || localUI.scheduleSubType === "time")
+      ? (scheduleObj?.selectedDays || [])
+      : [];
+    let nextSpecificDates = scheduleObj?.specificDates || [];
+
+    if (localUI.scheduleSubType === "monthly" && date && end && nextMonthlyWeekDays.length > 0) {
+      computedDays = weekdayNamesToMonthDayNumbers(date, end, nextMonthlyWeekDays);
+      nextSpecificDates = weekdayNamesToDateStrings(date, end, nextMonthlyWeekDays);
+    } else if ((localUI.scheduleSubType === "days" || localUI.scheduleSubType === "time") && date && end && nextDays.length > 0) {
+      nextSpecificDates = weekdayNamesToDateStrings(date, end, nextDays);
+    }
+
     setLocalUI((prev) => ({
       ...prev,
       sectionStartDate:        date,
-      selectedDays:            [],
-      selectedWeekDays:        [],
-      selectedMonthlyWeekDays: [],
+      selectedDays:            nextDays,
+      selectedWeekDays:        localUI.scheduleSubType === "weekly" ? prev.selectedWeekDays : [],
+      selectedMonthlyWeekDays: nextMonthlyWeekDays,
       specificDates:           [],
     }));
     setScheduleObj?.({
       ...scheduleObj!,
       Sch_Start_Date: date ? date.toDate() : null,
-      selectedDays:   [],
-      specificDates:  [],
+      selectedDays:   computedDays,
+      specificDates:  nextSpecificDates,
     });
   };
 
   const handleEndDateChange = (value: unknown) => {
     const date = toDayjsValue(value);
-    if (date && localUI.sectionStartDate) validateDates(localUI.sectionStartDate, date);
+    const start = localUI.sectionStartDate;
+    if (date && start) validateDates(start, date);
+
+    const nextMonthlyWeekDays = localUI.scheduleSubType === "monthly" ? localUI.selectedMonthlyWeekDays : [];
+    const nextDays = (localUI.scheduleSubType === "days" || localUI.scheduleSubType === "time") ? localUI.selectedDays : [];
+
+    let computedDays = (localUI.scheduleSubType === "weekly" || localUI.scheduleSubType === "days" || localUI.scheduleSubType === "time")
+      ? (scheduleObj?.selectedDays || [])
+      : [];
+    let nextSpecificDates = scheduleObj?.specificDates || [];
+
+    if (localUI.scheduleSubType === "monthly" && start && date && nextMonthlyWeekDays.length > 0) {
+      computedDays = weekdayNamesToMonthDayNumbers(start, date, nextMonthlyWeekDays);
+      nextSpecificDates = weekdayNamesToDateStrings(start, date, nextMonthlyWeekDays);
+    } else if ((localUI.scheduleSubType === "days" || localUI.scheduleSubType === "time") && start && date && nextDays.length > 0) {
+      nextSpecificDates = weekdayNamesToDateStrings(start, date, nextDays);
+    }
+
     setLocalUI((prev) => ({
       ...prev,
       sectionEndDate:          date,
-      selectedDays:            [],
-      selectedWeekDays:        [],
-      selectedMonthlyWeekDays: [],
+      selectedDays:            nextDays,
+      selectedWeekDays:        localUI.scheduleSubType === "weekly" ? prev.selectedWeekDays : [],
+      selectedMonthlyWeekDays: nextMonthlyWeekDays,
       specificDates:           [],
     }));
     setScheduleObj?.({
       ...scheduleObj!,
       Sch_End_Date:  date ? date.toDate() : null,
-      selectedDays:  [],
-      specificDates: [],
+      selectedDays:  computedDays,
+      specificDates: nextSpecificDates,
     });
   };
 
@@ -655,11 +868,14 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     const next = localUI.selectedDays.includes(day)
       ? localUI.selectedDays.filter((d) => d !== day)
       : [...localUI.selectedDays, day];
+    
     setLocalUI((prev) => ({ ...prev, selectedDays: next }));
+
     setScheduleObj?.({
       ...scheduleObj!,
-      selectedDays: next.map((d) => DAY_NAME_TO_NUM[d]).filter(Boolean),
-      Sch_Plan_Id: localUI.scheduleSubType === "time" ? 1 : 2,
+      selectedDays:  next.map((d) => DAY_NAME_TO_NUM[d]).filter(Boolean),
+      specificDates: [],
+      Sch_Plan_Id:   localUI.scheduleSubType === "time" ? 1 : 2,
     });
   };
 
@@ -667,11 +883,14 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     if (isFormDisabled) return;
     const all  = avail.every((d) => localUI.selectedDays.includes(d));
     const next = all ? [] : avail;
+    
     setLocalUI((prev) => ({ ...prev, selectedDays: next }));
+
     setScheduleObj?.({
       ...scheduleObj!,
-      selectedDays: next.map((d) => DAY_NAME_TO_NUM[d]).filter(Boolean),
-      Sch_Plan_Id: localUI.scheduleSubType === "time" ? 1 : 2,
+      selectedDays:  next.map((d) => DAY_NAME_TO_NUM[d]).filter(Boolean),
+      specificDates: [],
+      Sch_Plan_Id:   localUI.scheduleSubType === "time" ? 1 : 2,
     });
   };
 
@@ -704,19 +923,28 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
   // ── Plan 4 · Monthly ─────────────────────────────────────────────────────
   const handleMonthlyWeekDayToggle = (day: string) => {
     if (isFormDisabled || !localUI.sectionStartDate || !localUI.sectionEndDate) return;
-    const nextNames = localUI.selectedMonthlyWeekDays.includes(day)
+    const next = localUI.selectedMonthlyWeekDays.includes(day)
       ? localUI.selectedMonthlyWeekDays.filter((d) => d !== day)
       : [...localUI.selectedMonthlyWeekDays, day];
+    
+    setLocalUI((prev) => ({ ...prev, selectedMonthlyWeekDays: next }));
+
     const dayNums = weekdayNamesToMonthDayNumbers(
       localUI.sectionStartDate,
       localUI.sectionEndDate,
-      nextNames
+      next
     );
-    setLocalUI((prev) => ({ ...prev, selectedMonthlyWeekDays: nextNames }));
+
+    const specDates = weekdayNamesToDateStrings(
+      localUI.sectionStartDate,
+      localUI.sectionEndDate,
+      next
+    );
+
     setScheduleObj?.({
       ...scheduleObj!,
       selectedDays:  dayNums,
-      specificDates: [],
+      specificDates: specDates,
       Sch_Plan_Id:   4,
       planDetails:   { Plan_Month: null, Plan_Day: null },
     });
@@ -724,18 +952,27 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
 
   const handleToggleAllMonthlyWeekDays = (avail: string[]) => {
     if (isFormDisabled || !localUI.sectionStartDate || !localUI.sectionEndDate) return;
-    const all       = avail.every((d) => localUI.selectedMonthlyWeekDays.includes(d));
-    const nextNames = all ? [] : avail;
-    const dayNums   = weekdayNamesToMonthDayNumbers(
+    const all  = avail.every((d) => localUI.selectedMonthlyWeekDays.includes(d));
+    const next = all ? [] : avail;
+    
+    setLocalUI((prev) => ({ ...prev, selectedMonthlyWeekDays: next }));
+
+    const dayNums = weekdayNamesToMonthDayNumbers(
       localUI.sectionStartDate,
       localUI.sectionEndDate,
-      nextNames
+      next
     );
-    setLocalUI((prev) => ({ ...prev, selectedMonthlyWeekDays: nextNames }));
+
+    const specDates = weekdayNamesToDateStrings(
+      localUI.sectionStartDate,
+      localUI.sectionEndDate,
+      next
+    );
+
     setScheduleObj?.({
       ...scheduleObj!,
       selectedDays:  dayNums,
-      specificDates: [],
+      specificDates: specDates,
       Sch_Plan_Id:   4,
       planDetails:   { Plan_Month: null, Plan_Day: null },
     });
@@ -850,11 +1087,11 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     localUI.sectionStartDate &&
     localUI.sectionEndDate &&
     localUI.selectedMonthlyWeekDays.length > 0
-      ? weekdayNamesToMonthDayNumbers(
+      ? weekdayNamesToDateStrings(
           localUI.sectionStartDate,
           localUI.sectionEndDate,
           localUI.selectedMonthlyWeekDays
-        )
+        ).map((d) => dayjs(d).format("DD-MM-YYYY"))
       : [];
 
   const hasDateRange = !!(localUI.sectionStartDate && localUI.sectionEndDate);
@@ -923,7 +1160,10 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
         }}
       >
         {items.map((item) => (
-          <Box key={item} onClick={() => onItemClick(item)} sx={itemBoxSx(isItemSelected(item))}>
+          <Box key={item} onClick={() => {
+            if (isFormDisabled) return;
+            onItemClick(item);
+          }} sx={itemBoxSx(isItemSelected(item))}>
             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13 }}>
               {item.slice(0, 3)}
             </Typography>
@@ -965,12 +1205,14 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
           value={localUI.startTime} onChange={handleStartTimeChange}
           InputLabelProps={{ shrink: true }} disabled={isFormDisabled}
           inputProps={{ step: 300 }}
+          sx={{ flex: 1 }}
         />
         <TextField
           type="time" label="End Time" size="small" fullWidth
           value={localUI.endTime} onChange={handleEndTimeChange}
           InputLabelProps={{ shrink: true }} disabled={isFormDisabled}
           inputProps={{ step: 300 }}
+          sx={{ flex: 1 }}
         />
         <Box
           sx={{
@@ -1327,10 +1569,17 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                       slotProps={{
                         day: {
                           selectedDates: localUI.specificDates.map((d) => dayjs(d)),
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                         
                         } as any,
                       }}
                       disabled={isFormDisabled}
+                      shouldDisableDate={(date) => {
+                        if (type === "edit" || type === "view") {
+                          const formatted = date.format("YYYY-MM-DD");
+                          return !initialSavedDates.includes(formatted);
+                        }
+                        return false;
+                      }}
                       sx={{ width: "100%", bgcolor: "white", borderRadius: 2 }}
                     />
                   </LocalizationProvider>
@@ -1397,6 +1646,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                         onItemClick={handleDayToggle}
                         emptyMsg={hasDateRange ? "No days in the selected range" : noRangeMsg}
                       />
+
                     </Box>
                   )}
 
@@ -1464,7 +1714,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                             {monthlyPreviewNums.length !== 1 ? "s" : ""} will be created
                           </Typography>
                           <Typography variant="caption" sx={{ color: "#7a5c1e", display: "block", mt: 0.5 }}>
-                            Date numbers in range: {monthlyPreviewNums.join(", ")}
+                            Dates in range: {monthlyPreviewNums.join(", ")}
                           </Typography>
                         </Box>
                       )}
