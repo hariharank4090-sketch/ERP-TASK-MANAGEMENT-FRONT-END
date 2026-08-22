@@ -5,6 +5,7 @@ import {
   InputLabel,
   IconButton,
   Tooltip,
+  TextField,
 } from '@mui/material';
 import { FilterList, RotateLeft } from '@mui/icons-material';
 import SearchableSelect from './SearchableSelect';
@@ -24,6 +25,11 @@ export interface DashboardTopFilterBarProps {
   setTaskIdFilter?: (val: number | "ALL") => void;
   employeeIdFilter?: number | "ALL";
   setEmployeeIdFilter?: (val: number | "ALL") => void;
+  fromDateFilter?: string | null;
+  setFromDateFilter?: (val: string | null) => void;
+  toDateFilter?: string | null;
+  setToDateFilter?: (val: string | null) => void;
+  showDateFilters?: boolean;
 
   // Options
   projectsFilteredByIsActive?: any[];
@@ -50,6 +56,65 @@ export interface DashboardTopFilterBarProps {
   children?: React.ReactNode;
 }
 
+const toYMD = (val: unknown): string => {
+  const str = String(val || "").trim();
+  if (!str) return "";
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]), month = Number(dmy[2]), year = Number(dmy[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  // YYYY-MM-DD (with optional time suffix)
+  const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) {
+    const month = Number(ymd[2]), day = Number(ymd[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+      return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+  }
+
+  // ISO with T/Z
+  if (str.includes("T") || str.includes("Z")) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const y  = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        return `${y}-${mo}-${da}`;
+      }
+    } catch { /* ignore */ }
+  }
+
+  return "";
+};
+
+const isScheduleInDateRange = (s: any, fromDate: string | null | undefined, toDate: string | null | undefined): boolean => {
+  if (!fromDate && !toDate) return true;
+  const sDate = toYMD(s.schDate || s.Sch_Date || s.sch_Date);
+  const startDate = toYMD(s.schStartDate || s.Sch_Start_Date || s.sch_Start_Date);
+  const endDate = toYMD(s.schEndDate || s.Sch_End_Date || s.sch_End_Date);
+
+  const dateIn = (!fromDate || (sDate && sDate >= fromDate)) && (!toDate || (sDate && sDate <= toDate));
+  const periodOverlap = (!fromDate || (endDate && endDate >= fromDate)) && (!toDate || (startDate && startDate <= toDate));
+
+  if (dateIn || periodOverlap) return true;
+
+  const taskDates = s.taskDates || [];
+  if (taskDates.length > 0) {
+    const hasMatchingTaskDate = taskDates.some((td: any) => {
+      const tdDate = toYMD(td.taskWorkDate || td.Task_Work_Date || td.task_work_date);
+      return (!fromDate || (tdDate && tdDate >= fromDate)) && (!toDate || (tdDate && tdDate <= toDate));
+    });
+    if (hasMatchingTaskDate) return true;
+  }
+
+  return false;
+};
+
 const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
   projectIsActiveFilter,
   setProjectIsActiveFilter,
@@ -61,6 +126,11 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
   setTaskIdFilter,
   employeeIdFilter,
   setEmployeeIdFilter,
+  fromDateFilter,
+  setFromDateFilter,
+  toDateFilter,
+  setToDateFilter,
+  showDateFilters = false,
   projectsFilteredByIsActive,
   taskTypes,
   tasks,
@@ -149,6 +219,99 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
     return tIds;
   }, [employeeIdFilter, projectEmpSchedules, projectSchedules, workData, numEq]);
 
+  const dateActiveProjectIds = React.useMemo(() => {
+    if (!fromDateFilter && !toDateFilter) return null;
+    const pIds = new Set<number>();
+    
+    (projectSchedules || []).forEach((sch: any) => {
+      if (isScheduleInDateRange(sch, fromDateFilter, toDateFilter)) {
+        const pId = sch.Project_Id || sch.project_id || sch.projectId;
+        if (pId != null) pIds.add(Number(pId));
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      const wDate = toYMD(w.Work_Dt);
+      if ((!fromDateFilter || (wDate && wDate >= fromDateFilter)) && 
+          (!toDateFilter || (wDate && wDate <= toDateFilter))) {
+        if (w.Project_Id != null) pIds.add(Number(w.Project_Id));
+      }
+    });
+
+    return pIds;
+  }, [fromDateFilter, toDateFilter, projectSchedules, workData]);
+
+  const dateActiveTaskTypeIds = React.useMemo(() => {
+    if (!fromDateFilter && !toDateFilter) return null;
+    const ttIds = new Set<number>();
+
+    (projectSchedules || []).forEach((sch: any) => {
+      if (isScheduleInDateRange(sch, fromDateFilter, toDateFilter)) {
+        const schTaskId = sch.Task_Id || sch.taskId;
+        const task = (tasks || []).find((t: any) => numEq && numEq(t.Task_Id ?? t.value, schTaskId));
+        const ttId = sch.Task_Type_Id || sch.taskTypeId || task?.Task_Type_Id || task?.TaskTypeId || task?.taskTypeId;
+        if (ttId != null) ttIds.add(Number(ttId));
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      const wDate = toYMD(w.Work_Dt);
+      if ((!fromDateFilter || (wDate && wDate >= fromDateFilter)) && 
+          (!toDateFilter || (wDate && wDate <= toDateFilter))) {
+        const task = (tasks || []).find((t: any) => numEq && numEq(t.Task_Id ?? t.value, w.Task_Id));
+        const ttId = w.Task_Type_Id || task?.Task_Type_Id || task?.TaskTypeId || task?.taskTypeId;
+        if (ttId != null) ttIds.add(Number(ttId));
+      }
+    });
+
+    return ttIds;
+  }, [fromDateFilter, toDateFilter, projectSchedules, tasks, workData, numEq]);
+
+  const dateActiveTaskIds = React.useMemo(() => {
+    if (!fromDateFilter && !toDateFilter) return null;
+    const tIds = new Set<number>();
+
+    (projectSchedules || []).forEach((sch: any) => {
+      if (isScheduleInDateRange(sch, fromDateFilter, toDateFilter)) {
+        const tId = sch.Task_Id || sch.taskId;
+        if (tId != null) tIds.add(Number(tId));
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      const wDate = toYMD(w.Work_Dt);
+      if ((!fromDateFilter || (wDate && wDate >= fromDateFilter)) && 
+          (!toDateFilter || (wDate && wDate <= toDateFilter))) {
+        if (w.Task_Id != null) tIds.add(Number(w.Task_Id));
+      }
+    });
+
+    return tIds;
+  }, [fromDateFilter, toDateFilter, projectSchedules, workData]);
+
+  const dateActiveEmployeeIds = React.useMemo(() => {
+    if (!fromDateFilter && !toDateFilter) return null;
+    const empIds = new Set<number>();
+
+    (projectEmpSchedules || []).forEach((empSch: any) => {
+      const sch = (projectSchedules || []).find((s: any) => numEq && numEq(s.Sch_Id || s.schId, empSch.Sch_Id || empSch.schId));
+      if (sch && isScheduleInDateRange(sch, fromDateFilter, toDateFilter)) {
+        const empId = empSch.Emp_Id || empSch.empId;
+        if (empId != null) empIds.add(Number(empId));
+      }
+    });
+
+    (workData || []).forEach((w: any) => {
+      const wDate = toYMD(w.Work_Dt);
+      if ((!fromDateFilter || (wDate && wDate >= fromDateFilter)) && 
+          (!toDateFilter || (wDate && wDate <= toDateFilter))) {
+        if (w.Emp_Id != null) empIds.add(Number(w.Emp_Id));
+      }
+    });
+
+    return empIds;
+  }, [fromDateFilter, toDateFilter, projectEmpSchedules, projectSchedules, workData, numEq]);
+
   const handleApplyFilter = () => {
     onSearch();
     onCloseDialog();
@@ -214,6 +377,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
             .filter((p: any) => {
               const pId = p.Project_Id ?? p.value;
               if (employeeActiveProjectIds && !employeeActiveProjectIds.has(Number(pId))) return false;
+              if (dateActiveProjectIds && !dateActiveProjectIds.has(Number(pId))) return false;
               if (taskIdFilter !== "ALL") {
                 const task = (tasks || []).find((t: any) => (numEq && numEq(t.Task_Id ?? t.value, taskIdFilter)));
                 if (task && !(numEq && numEq(task.Project_Id || task.project_id, pId))) return false;
@@ -262,6 +426,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
               const tId = t.Task_Type_Id ?? t.value;
               const pId = t.Project_Id;
               if (employeeActiveTaskTypeIds && !employeeActiveTaskTypeIds.has(Number(tId))) return false;
+              if (dateActiveTaskTypeIds && !dateActiveTaskTypeIds.has(Number(tId))) return false;
               if (projectIdFilter !== "ALL" && !(numEq && numEq(pId, projectIdFilter))) return false;
               if (taskIdFilter !== "ALL") {
                 const task = (tasks || []).find((tk: any) => (numEq && numEq(tk.Task_Id ?? tk.value, taskIdFilter)));
@@ -303,6 +468,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
             .filter((t: any) => {
               const tId = t.Task_Id ?? t.value;
               if (employeeActiveTaskIds && !employeeActiveTaskIds.has(Number(tId))) return false;
+              if (dateActiveTaskIds && !dateActiveTaskIds.has(Number(tId))) return false;
               return true;
             })
             .filter((t: any) => projectIdFilter === "ALL" || (numEq && numEq(t.Project_Id || t.project_id, projectIdFilter)))
@@ -337,6 +503,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
           options={(employees || [])
             .filter((e: any) => {
               const empId = e.Emp_Id ?? e.value;
+              if (dateActiveEmployeeIds && !dateActiveEmployeeIds.has(Number(empId))) return false;
               if (projectIdFilter === "ALL" && taskTypeIdFilter === "ALL" && taskIdFilter === "ALL") return true;
 
               if ((!projectEmpSchedules || projectEmpSchedules.length === 0) && (!workData || workData.length === 0)) {
@@ -378,6 +545,46 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
           searchPlaceholder="Search employees..."
         />
       </FormControl>
+
+      {/* From Date filter */}
+      {showDateFilters && (
+        <FormControl size="small" sx={{ minWidth: isInDialog ? "100%" : 140 }}>
+          <TextField
+            label="From Date"
+            type="date"
+            value={fromDateFilter || ''}
+            onChange={(e) => setFromDateFilter && setFromDateFilter(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            size="small"
+            sx={{
+              backgroundColor: "#fff",
+              "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
+              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
+            }}
+          />
+        </FormControl>
+      )}
+
+      {/* To Date filter */}
+      {showDateFilters && (
+        <FormControl size="small" sx={{ minWidth: isInDialog ? "100%" : 140 }}>
+          <TextField
+            label="To Date"
+            type="date"
+            value={toDateFilter || ''}
+            onChange={(e) => setToDateFilter && setToDateFilter(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            size="small"
+            sx={{
+              backgroundColor: "#fff",
+              "& .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#b88a4f" },
+              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#c99f65" },
+            }}
+          />
+        </FormControl>
+      )}
     </>
   );
 

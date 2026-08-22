@@ -236,6 +236,37 @@ const toYMD = (val: unknown): string => {
   return "";
 };
 
+const isScheduleInDateRange = (s: any, fromDate: string | null | undefined, toDate: string | null | undefined): boolean => {
+  if (!fromDate && !toDate) return true;
+  const sDate = toYMD(s.schDate || s.Sch_Date || s.sch_Date);
+  const startDate = toYMD(s.schStartDate || s.Sch_Start_Date || s.sch_Start_Date);
+  const endDate = toYMD(s.schEndDate || s.Sch_End_Date || s.sch_End_Date);
+
+  const dateIn = (!fromDate || (sDate && sDate >= fromDate)) && (!toDate || (sDate && sDate <= toDate));
+  const periodOverlap = (!fromDate || (endDate && endDate >= fromDate)) && (!toDate || (startDate && startDate <= toDate));
+
+  if (dateIn || periodOverlap) return true;
+
+  const taskDates = s.taskDates || [];
+  if (taskDates.length > 0) {
+    const hasMatchingTaskDate = taskDates.some((td: any) => {
+      const tdDate = toYMD(td.taskWorkDate || td.Task_Work_Date || td.task_work_date);
+      return (!fromDate || (tdDate && tdDate >= fromDate)) && (!toDate || (tdDate && tdDate <= toDate));
+    });
+    if (hasMatchingTaskDate) return true;
+  }
+
+  return false;
+};
+
+const getTodayString = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const formatDateToDDMMYYYY = (val: unknown): string => {
   const ymd = toYMD(val);
   if (!ymd) return "-";
@@ -522,12 +553,16 @@ const ExpandedSchedulesComponent: React.FC<{
   getStatusChip: (s: number) => React.ReactNode;
   appliedEmployeeId?: number | "ALL";
   projectEmpSchedules?: any[];
+  appliedFromDate?: string | null;
+  appliedToDate?: string | null;
 }> = ({
   taskId, taskName, taskTypeName, taskProjectId,
   schedulePlans, allProjects,
   onCreateSchedule, onEditSchedule, onViewCorrections, onDeleteSchedule,
   formatDate, formatTimeTo12Hour, getPlanTypeChip, getStatusChip,
   appliedEmployeeId, projectEmpSchedules,
+  appliedFromDate,
+  appliedToDate,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -775,8 +810,11 @@ const ExpandedSchedulesComponent: React.FC<{
         )
       );
     }
+    if (appliedFromDate || appliedToDate) {
+      result = result.filter(s => isScheduleInDateRange(s, appliedFromDate, appliedToDate));
+    }
     return result;
-  }, [schedules, activeTab, appliedEmployeeId, projectEmpSchedules]);
+  }, [schedules, activeTab, appliedEmployeeId, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
   const tabCounts = useMemo(() => {
     const filterSchedulesList = (tab: ScheduleFilterTab) => {
@@ -787,6 +825,9 @@ const ExpandedSchedulesComponent: React.FC<{
             numEq(emp.Sch_Id || emp.schId, s.schId) && numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)
           )
         );
+      }
+      if (appliedFromDate || appliedToDate) {
+        result = result.filter(s => isScheduleInDateRange(s, appliedFromDate, appliedToDate));
       }
       return result.length;
     };
@@ -799,7 +840,7 @@ const ExpandedSchedulesComponent: React.FC<{
       TIME_BASED: filterSchedulesList("TIME_BASED"),
       ALL: filterSchedulesList("ALL"),
     };
-  }, [schedules, appliedEmployeeId, projectEmpSchedules]);
+  }, [schedules, appliedEmployeeId, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
   if (loading) {
     return (
@@ -1224,7 +1265,9 @@ const TaskExpandedComponent: React.FC<{
   appliedEmployeeId?: number | "ALL";
   projectEmpSchedules?: any[];
   projectSchedules?: any[];
-}> = ({ taskTypeId, projectId, projectName, appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules }) => {
+  appliedFromDate?: string | null;
+  appliedToDate?: string | null;
+}> = ({ taskTypeId, projectId, projectName, appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate }) => {
   const [tasks, setTasks] = useState<TaskDisplay[]>([]);
   const [taskGroups, setTaskGroups] = useState<taskgroupDropdown[]>([]);
   const [taskProjects, setTaskProjects] = useState<TaskProjectDropdown[]>([]);
@@ -1326,6 +1369,9 @@ const TaskExpandedComponent: React.FC<{
           );
           if (!isAssigned) return;
         }
+        if (appliedFromDate || appliedToDate) {
+          if (!isScheduleInDateRange(s, appliedFromDate, appliedToDate)) return;
+        }
         if (tid) schedCountMap.set(Number(tid), (schedCountMap.get(Number(tid)) || 0) + 1);
       });
 
@@ -1375,7 +1421,7 @@ const TaskExpandedComponent: React.FC<{
       if (isMounted.current) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskTypeId, appliedEmployeeId, projectEmpSchedules]);
+  }, [taskTypeId, appliedEmployeeId, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
   // ── Fetch dropdowns ───────────────────────────────────────────────────────
   const fetchDropdownData = useCallback(async () => {
@@ -1406,25 +1452,34 @@ const TaskExpandedComponent: React.FC<{
 
   const filteredTasksList = useMemo(() => {
     let result = tasks;
-    if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+    if ((appliedEmployeeId && appliedEmployeeId !== "ALL") || appliedFromDate || appliedToDate) {
       result = result.filter(task => {
         const hasSch = (projectSchedules || []).some((sch: any) => {
           const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
           const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
           if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
           
-          const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-          return (projectEmpSchedules || []).some((emp: any) => {
-            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-          });
+          if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+            const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+            const matchesEmp = (projectEmpSchedules || []).some((emp: any) => {
+              const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+              const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+              return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+            });
+            if (!matchesEmp) return false;
+          }
+
+          if (appliedFromDate || appliedToDate) {
+            if (!isScheduleInDateRange(sch, appliedFromDate, appliedToDate)) return false;
+          }
+
+          return true;
         });
         return hasSch;
       });
     }
     return result;
-  }, [tasks, appliedEmployeeId, projectId, projectSchedules, projectEmpSchedules]);
+  }, [tasks, appliedEmployeeId, projectId, projectSchedules, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
   // ── Close all dialogs ─────────────────────────────────────────────────────
   const closeAllDialogs = useCallback(() => {
@@ -1993,6 +2048,8 @@ const TaskExpandedComponent: React.FC<{
                             getStatusChip={getStatusChip}
                             appliedEmployeeId={appliedEmployeeId}
                             projectEmpSchedules={projectEmpSchedules}
+                            appliedFromDate={appliedFromDate}
+                            appliedToDate={appliedToDate}
                           />
                         </Box>
                       </Collapse>
@@ -2072,7 +2129,9 @@ const TaskTypeExpandedComponent: React.FC<{
   appliedEmployeeId?: number | "ALL";
   projectEmpSchedules?: any[];
   projectSchedules?: any[];
-}> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules }) => {
+  appliedFromDate?: string | null;
+  appliedToDate?: string | null;
+}> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate }) => {
   const [taskTypes, setTaskTypes] = useState<TaskTypeDisplay[]>([]);
   const [projectOptions, setProjectOptions] = useState<TaskTypeProjectDropdown[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -2126,12 +2185,38 @@ const TaskTypeExpandedComponent: React.FC<{
         ])
       );
 
-      // Count tasks per task type
+      // Count tasks per task type (respecting active filters)
       const taskCountMap = new Map<number, number>();
       (tasksData || []).forEach((task: any) => {
         const typeId = task?.Task_Type_Id;
         if (typeId != null) {
           const key = Number(typeId);
+
+          if ((appliedEmployeeId && appliedEmployeeId !== "ALL") || appliedFromDate || appliedToDate) {
+            const hasSch = (projectSchedules || []).some((sch: any) => {
+              const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+              const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
+              if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
+
+              if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+                const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+                const matchesEmp = (projectEmpSchedules || []).some((emp: any) => {
+                  const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+                  const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+                  return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+                });
+                if (!matchesEmp) return false;
+              }
+
+              if (appliedFromDate || appliedToDate) {
+                if (!isScheduleInDateRange(sch, appliedFromDate, appliedToDate)) return false;
+              }
+
+              return true;
+            });
+            if (!hasSch) return;
+          }
+
           taskCountMap.set(key, (taskCountMap.get(key) || 0) + 1);
         }
       });
@@ -2188,38 +2273,47 @@ const TaskTypeExpandedComponent: React.FC<{
       if (isMounted.current) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, projectName]);
+  }, [projectId, projectName, projectSchedules, projectEmpSchedules, appliedEmployeeId, appliedFromDate, appliedToDate]);
 
   useEffect(() => {
     fetchTaskTypes();
   }, [fetchTaskTypes]);
 
-  // Apply status filter and employee filter
+  // Apply status filter, employee filter, and date filter
   const filteredTaskTypesList = useMemo(() => {
     let result = taskTypes;
     if (taskTypeStatusFilter !== "ALL") {
       result = result.filter(tt => tt.status === taskTypeStatusFilter);
     }
-    if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+    if ((appliedEmployeeId && appliedEmployeeId !== "ALL") || appliedFromDate || appliedToDate) {
       result = result.filter(tt => {
-        // Check if there is any schedule for this task type and project assigned to the employee
+        // Check if there is any schedule for this task type and project assigned to the employee/date range
         const hasSch = (projectSchedules || []).some((sch: any) => {
           const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
           const schTaskTypeId = sch.Task_Type_Id ?? sch.taskTypeId;
           if (!numEq(schProjId, projectId) || !numEq(schTaskTypeId, tt.Task_Type_Id)) return false;
           
-          const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-          return (projectEmpSchedules || []).some((emp: any) => {
-            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-          });
+          if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+            const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
+            const matchesEmp = (projectEmpSchedules || []).some((emp: any) => {
+              const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
+              const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
+              return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
+            });
+            if (!matchesEmp) return false;
+          }
+
+          if (appliedFromDate || appliedToDate) {
+            if (!isScheduleInDateRange(sch, appliedFromDate, appliedToDate)) return false;
+          }
+
+          return true;
         });
         return hasSch;
       });
     }
     return result;
-  }, [taskTypes, taskTypeStatusFilter, appliedEmployeeId, projectId, projectSchedules, projectEmpSchedules]);
+  }, [taskTypes, taskTypeStatusFilter, appliedEmployeeId, projectId, projectSchedules, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
   // Close all dialogs
   const closeAllDialogs = useCallback(() => {
@@ -2494,6 +2588,8 @@ const TaskTypeExpandedComponent: React.FC<{
                             appliedEmployeeId={appliedEmployeeId}
                             projectEmpSchedules={projectEmpSchedules}
                             projectSchedules={projectSchedules}
+                            appliedFromDate={appliedFromDate}
+                            appliedToDate={appliedToDate}
                           />
                         </Box>
                       </Collapse>
@@ -2541,12 +2637,18 @@ const All = () => {
   const [projectIdFilter, setProjectIdFilter] = useState<number | "ALL">("ALL");
   const [taskTypeIdFilter, setTaskTypeIdFilter] = useState<number | "ALL">("ALL");
   const [taskIdFilter, setTaskIdFilter] = useState<number | "ALL">("ALL");
+  const [employeeIdFilter, setEmployeeIdFilter] = useState<number | "ALL">("ALL");
+
+  const [fromDateFilter, setFromDateFilter] = useState<string | null>(getTodayString());
+  const [toDateFilter, setToDateFilter] = useState<string | null>(getTodayString());
 
   const [appliedProjectId, setAppliedProjectId] = useState<number | "ALL">("ALL");
   const [appliedTaskTypeId, setAppliedTaskTypeId] = useState<number | "ALL">("ALL");
   const [appliedTaskId, setAppliedTaskId] = useState<number | "ALL">("ALL");
-  const [employeeIdFilter, setEmployeeIdFilter] = useState<number | "ALL">("ALL");
   const [appliedEmployeeId, setAppliedEmployeeId] = useState<number | "ALL">("ALL");
+
+  const [appliedFromDate, setAppliedFromDate] = useState<string | null>(null);
+  const [appliedToDate, setAppliedToDate] = useState<string | null>(null);
 
   // ── IsActive filter for the project dropdown list itself AND data filtering ──
   const [projectIsActiveFilter, setProjectIsActiveFilter] = useState<StatusFilter>("ACTIVE");
@@ -3012,8 +3114,31 @@ const All = () => {
         return hasSch;
       });
     }
+    if (appliedFromDate || appliedToDate) {
+      data = data.filter((row) => {
+        const hasSch = projectSchedules.some((sch: any) => {
+          const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+          if (!numEq(schProjId, row.Project_Id)) return false;
+          return isScheduleInDateRange(sch, appliedFromDate, appliedToDate);
+        });
+        if (hasSch) return true;
+
+        const hasWork = row.workEntries?.some((w: any) => {
+          const wDate = toYMD(w.Work_Dt);
+          return (!appliedFromDate || (wDate && wDate >= appliedFromDate)) && 
+                 (!appliedToDate || (wDate && wDate <= appliedToDate));
+        });
+        if (hasWork) return true;
+
+        const rowStart = toYMD(row.Work_Dt);
+        const rowEnd = toYMD(row.Est_End_Dt);
+        const overlaps = (!appliedFromDate || (rowEnd && rowEnd >= appliedFromDate)) &&
+                         (!appliedToDate || (rowStart && rowStart <= appliedToDate));
+        return !!overlaps;
+      });
+    }
     return data;
-  }, [groupedData, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, taskTypes, tasks, projectSchedules, projectEmpSchedules]);
+  }, [groupedData, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate, taskTypes, tasks, projectSchedules, projectEmpSchedules]);
 
   // ── Outer table columns ────────────────────────────────────────────────────
   const tableColumns: Column[] = [
@@ -3173,8 +3298,10 @@ const All = () => {
     setTaskTypeIdFilter(appliedTaskTypeId);
     setTaskIdFilter(appliedTaskId);
     setEmployeeIdFilter(appliedEmployeeId);
+    setFromDateFilter(appliedFromDate || getTodayString());
+    setToDateFilter(appliedToDate || getTodayString());
     setFilterDialogOpen(true);
-  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId]);
+  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate]);
 
   // ── Close dialog: revert pending values to applied values ─────────────────
   const handleCloseFilterDialog = useCallback(() => {
@@ -3184,7 +3311,9 @@ const All = () => {
     setTaskTypeIdFilter(appliedTaskTypeId);
     setTaskIdFilter(appliedTaskId);
     setEmployeeIdFilter(appliedEmployeeId);
-  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId]);
+    setFromDateFilter(appliedFromDate || getTodayString());
+    setToDateFilter(appliedToDate || getTodayString());
+  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate]);
 
   // ── Reset all filters to defaults ─────────────────────────────────────────
   const handleResetFilters = useCallback(() => {
@@ -3193,10 +3322,14 @@ const All = () => {
     setTaskTypeIdFilter("ALL");
     setTaskIdFilter("ALL");
     setEmployeeIdFilter("ALL");
+    setFromDateFilter(getTodayString());
+    setToDateFilter(getTodayString());
     setAppliedProjectId("ALL");
     setAppliedTaskTypeId("ALL");
     setAppliedTaskId("ALL");
     setAppliedEmployeeId("ALL");
+    setAppliedFromDate(null);
+    setAppliedToDate(null);
     setFilterDialogOpen(false);
     setTableResetKey(prev => prev + 1);
   }, []);
@@ -3234,6 +3367,11 @@ const All = () => {
                 setTaskIdFilter={setTaskIdFilter}
                 employeeIdFilter={employeeIdFilter}
                 setEmployeeIdFilter={setEmployeeIdFilter}
+                fromDateFilter={fromDateFilter}
+                setFromDateFilter={setFromDateFilter}
+                toDateFilter={toDateFilter}
+                setToDateFilter={setToDateFilter}
+                showDateFilters={true}
                 projectsFilteredByIsActive={projectsFilteredByIsActive}
                 taskTypes={taskTypes}
                 tasks={tasks}
@@ -3246,6 +3384,8 @@ const All = () => {
                   setAppliedTaskTypeId(taskTypeIdFilter);
                   setAppliedTaskId(taskIdFilter);
                   setAppliedEmployeeId(employeeIdFilter);
+                  setAppliedFromDate(fromDateFilter);
+                  setAppliedToDate(toDateFilter);
                 }}
                 dialogOpen={filterDialogOpen}
                 onOpenDialog={handleOpenFilterDialog}
@@ -3269,6 +3409,8 @@ const All = () => {
                     appliedEmployeeId={appliedEmployeeId}
                     projectEmpSchedules={projectEmpSchedules}
                     projectSchedules={projectSchedules}
+                    appliedFromDate={appliedFromDate}
+                    appliedToDate={appliedToDate}
                   />
                 </Box>
               );

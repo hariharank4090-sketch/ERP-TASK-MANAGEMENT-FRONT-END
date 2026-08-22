@@ -577,7 +577,13 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
     window.dispatchEvent(new CustomEvent("timer-stop", { detail: { rowKey: selectedRowKey } }));
   };
 
-  const todayDateForDisplay = useMemo(() => getCurrentDateFormatted(), []);
+  const todayDateForDisplay = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${day}-${month}-${year}`;
+  }, []);
 
   // The LoadingScreen now handles its own 3-spin minimum display natively!
 
