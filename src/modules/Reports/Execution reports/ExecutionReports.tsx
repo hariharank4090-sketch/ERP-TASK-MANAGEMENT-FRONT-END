@@ -119,6 +119,105 @@ const calculateDuration = (startString: string | null | undefined, endString: st
   }
 };
 
+// Convert time string to minutes from midnight for sorting
+const timeToMinutes = (timeStr: string | null | undefined): number => {
+  if (!timeStr) return Infinity; // Null or empty times go to the end
+  
+  // 1. Try HH:MM:SS or HH:MM format
+  const plainMatch = timeStr.match(/^(\d{1,2}):(\d{2})/);
+  if (plainMatch) {
+    return parseInt(plainMatch[1], 10) * 60 + parseInt(plainMatch[2], 10);
+  }
+  
+  // 2. Try ISO format (T followed by HH:MM)
+  const isoMatch = timeStr.match(/T(\d{2}):(\d{2})/);
+  if (isoMatch) {
+    return parseInt(isoMatch[1], 10) * 60 + parseInt(isoMatch[2], 10);
+  }
+
+  // 3. Try to parse as Date and get UTC hours/minutes (since formatTimeToHHMM uses timeZone: 'UTC')
+  try {
+    const date = new Date(timeStr);
+    if (!isNaN(date.getTime())) {
+      return date.getUTCHours() * 60 + date.getUTCMinutes();
+    }
+  } catch {
+    // fallback
+  }
+
+  return Infinity;
+};
+
+// Helper to check if a date is in the current calendar month
+const isCurrentMonth = (dateString: string | null | undefined): boolean => {
+  if (!dateString) return false;
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return false;
+    const now = new Date();
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  } catch {
+    return false;
+  }
+};
+
+// Helper to check if a task schedule starts or ends in the current month
+const isTaskInCurrentMonth = (task: TaskWithSchedule): boolean => {
+  return isCurrentMonth(task.Schedule_Start_Date) || isCurrentMonth(task.Schedule_End_Date);
+};
+
+// Convert date string to timestamp at midnight for sorting
+const dateToTimestamp = (dateStr: string | null | undefined): number => {
+  if (!dateStr) return Infinity; // Null dates go to the end
+  try {
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      date.setHours(0, 0, 0, 0);
+      return date.getTime();
+    }
+  } catch {
+    // fallback
+  }
+  return Infinity;
+};
+
+// Helper to sort tasks with current month first, then date ascending, then time ascending
+const sortTasksByTime = (tasks: TaskWithSchedule[]): TaskWithSchedule[] => {
+  return [...tasks].sort((a, b) => {
+    // 1. Current month priority (current month tasks show first)
+    const aCurrent = isTaskInCurrentMonth(a);
+    const bCurrent = isTaskInCurrentMonth(b);
+    if (aCurrent && !bCurrent) return -1;
+    if (!aCurrent && bCurrent) return 1;
+
+    // 2. Sort by Schedule Start Date ascending
+    const aDate = dateToTimestamp(a.Schedule_Start_Date);
+    const bDate = dateToTimestamp(b.Schedule_Start_Date);
+    if (aDate !== bDate) {
+      return aDate - bDate;
+    }
+
+    // 3. Sort by Schedule End Date ascending
+    const aEndDate = dateToTimestamp(a.Schedule_End_Date);
+    const bEndDate = dateToTimestamp(b.Schedule_End_Date);
+    if (aEndDate !== bEndDate) {
+      return aEndDate - bEndDate;
+    }
+
+    // 4. Sort by Start_Time ascending
+    const aStart = timeToMinutes(a.Start_Time);
+    const bStart = timeToMinutes(b.Start_Time);
+    if (aStart !== bStart) {
+      return aStart - bStart;
+    }
+
+    // 5. Sort by End_Time ascending
+    const aEnd = timeToMinutes(a.End_Time);
+    const bEnd = timeToMinutes(b.End_Time);
+    return aEnd - bEnd;
+  });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Work-status badge (Completed / In Progress / Pending)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -443,13 +542,14 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     try {
       setIsExporting(true);
       
-      if (filteredTasks.length === 0) {
+      const tasksToExport = sortTasksByTime(filteredTasks);
+      if (tasksToExport.length === 0) {
         toast.warning("No data to export");
         return;
       }
 
       // Prepare data for Excel
-      const exportData = filteredTasks.map((task, index) => ({
+      const exportData = tasksToExport.map((task, index) => ({
         "S.No": index + 1,
         "Project Name": getProjectName(task.Project_Id),
         "Task Type": getTaskTypeNameById(task.Task_Type_Id),
@@ -500,7 +600,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
       // Export file
       XLSX.writeFile(workbook, filename);
       
-      toast.success(`Exported ${filteredTasks.length} records to Excel`);
+      toast.success(`Exported ${tasksToExport.length} records to Excel`);
     } catch (error) {
       console.error("Export error:", error);
       toast.error("Failed to export data");
@@ -708,7 +808,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
 
   // ─── Filter tasks for table display ─────────────────────────────────────────
   const getDisplayedTasks = useCallback((): TaskWithSchedule[] => {
-    return filteredTasks;
+    return sortTasksByTime(filteredTasks);
   }, [filteredTasks]);
 
   const displayedTasks = getDisplayedTasks();

@@ -5,6 +5,9 @@ import { useAuth, type User } from "./authContext";
 import { useNavigate } from "react-router-dom";
 import baseURL from "../config/baseURL";
 import { toast } from "react-toastify";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
+
 
 // ─────────────────────────────────────────────
 // Validation schema
@@ -289,6 +292,7 @@ const Login: React.FC<LoginProps> = ({
     }, []);
 
     const [form, setForm] = useState({ username: "", password: "" });
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showCompanySelect, setShowCompanySelect] = useState(false);
 
@@ -548,15 +552,41 @@ const Login: React.FC<LoginProps> = ({
                         >
                             Password
                         </span>
-                        <input
-                            style={inputStyle}
-                            type="password"
-                            value={form.password}
-                            onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                            placeholder="Enter your password"
-                            autoComplete="current-password"
-                            disabled={loading}
-                        />
+                        <div style={{ position: "relative", marginBottom: 12 }}>
+                            <input
+                                style={{ ...inputStyle, paddingRight: "2.5rem", marginBottom: 0 }}
+                                type={showPassword ? "text" : "password"}
+                                value={form.password}
+                                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                                placeholder="Enter your password"
+                                autoComplete="current-password"
+                                disabled={loading}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(prev => !prev)}
+                                style={{
+                                    position: "absolute",
+                                    right: "10px",
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    padding: 0,
+                                    color: "#666",
+                                }}
+                                disabled={loading}
+                            >
+                                {showPassword ? (
+                                    <VisibilityOff style={{ fontSize: "20px" }} />
+                                ) : (
+                                    <Visibility style={{ fontSize: "20px" }} />
+                                )}
+                            </button>
+                        </div>
                     </label>
 
                     {error && (

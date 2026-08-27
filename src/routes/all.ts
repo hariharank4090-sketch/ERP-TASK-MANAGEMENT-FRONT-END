@@ -5,9 +5,9 @@ import NotificationScreen from "../modules/notifications/NotificationScreen";
 import type { componentRoute } from "./indexRouter";
 
 export const allRoutePath: componentRoute[] = [
-    {  
+    {
         path: '/all',  // Use full path starting with /all
-        component: ProjectsOverview  
+        component: ProjectsOverview
     },
     {
         path: '/notifications',

@@ -27,6 +27,7 @@ import { parseJSON } from "../utils/helper";
 import MainMenuList from "./mainMenu";
 import { useNavigate } from "react-router-dom";
 import { fetchLink } from "../Components/customFetch";
+import SettingsModal from "./SettingsModal";
 
 interface LayoutHeaderProps {
   onToggleTodayPlan?: () => void;
@@ -173,6 +174,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
 
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
+  const [settingsOpen, setSettingsOpen] = React.useState<boolean>(false);
 
   const handleAvatarClick = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
   const handleClose = () => setAnchorEl(null);
@@ -185,7 +187,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
 
   const handleSettings = () => {
     handleClose();
-    navigate("/settings");
+    setSettingsOpen(true);
   };
 
   return (
@@ -267,13 +269,13 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
         {/* RIGHT – User Info + Actions */}
         <RightSection>
           {/* Settings icon */}
-          <IconButton
+          {/* <IconButton
             size="small"
             sx={{ color: "#000", backgroundColor: "#fff", "&:hover": { backgroundColor: "#e0e0e0" }, width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: "50%" }}
             onClick={handleSettings}
           >
             <Settings fontSize="medium" />
-          </IconButton>
+          </IconButton> */}
 
           {/* Notifications icon */}
           <IconButton
@@ -378,6 +380,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
           </Menu>
         </RightSection>
       </Toolbar>
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </AppBar>
   );
 };
