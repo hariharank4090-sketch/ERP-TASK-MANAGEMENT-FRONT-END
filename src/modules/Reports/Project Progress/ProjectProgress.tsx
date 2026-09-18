@@ -643,7 +643,7 @@ export default function Projectprogress() {
         cachedEmployeePromise = getEmployeeDropdown(currentCompany.companyId);
       }
       if (!cachedProjectPromise) {
-        cachedProjectPromise = getProjectDropdown(currentCompany.companyId);
+        cachedProjectPromise = getProjectDropdown(currentCompany.companyId, undefined, undefined, true);
       }
 
       const [todayRes, workRes, scheduleRes, taskTypeRes, empRes, projRes] = await Promise.all([
@@ -768,23 +768,100 @@ export default function Projectprogress() {
       }
     });
 
+    const getProjectObj = (task: any) => {
+      const projId = task.Project_Id 
+        || task.project_id 
+        || task.Project_ID 
+        || task.Sch_Project_Id 
+        || task.sch_project_id 
+        || task.taskDetails?.Project_Id 
+        || task.projectDetails?.Project_Id;
+      if (projId) {
+        const found = projects.find(p => String(p.Project_Id ?? p.project_id ?? p.Project_ID ?? p.Id ?? "") === String(projId));
+        if (found) return found;
+      }
+      const pName = task.Project_Name 
+        || task.project_name 
+        || task.Project_NAME 
+        || task.Sch_Project_Name 
+        || task.sch_project_name 
+        || task.taskDetails?.Project_Name 
+        || task.projectDetails?.Project_Name;
+      if (pName) {
+        const cleanName = String(pName).trim().toLowerCase();
+        const found = projects.find(p => 
+          String(p.Project_Name ?? p.project_name ?? p.Project_NAME ?? p.Name ?? "").trim().toLowerCase() === cleanName
+        );
+        if (found) return found;
+      }
+      return null;
+    };
+
+    const isProjectActive = (task: any) => {
+      const pObj = getProjectObj(task);
+      if (pObj) {
+        if (pObj.Del_Flag === true || String(pObj.Del_Flag).toLowerCase() === "true") return false;
+
+        const statusNum = Number(pObj.Project_Status);
+        if (pObj.Project_Status !== undefined && pObj.Project_Status !== null && !isNaN(statusNum)) {
+          if (statusNum === 0) return false;
+        }
+        if (pObj.IsActive !== undefined && pObj.IsActive !== null) {
+          if (Number(pObj.IsActive) === 0) return false;
+        }
+        if (pObj.statusText && String(pObj.statusText).trim().toLowerCase() === "inactive") {
+          return false;
+        }
+      }
+
+      // Direct fallback checks on task / taskDetails / projectDetails
+      const rawStatus = task.Project_Status 
+        ?? task.project_status 
+        ?? task.Project_ID_Status 
+        ?? task.taskDetails?.Project_Status 
+        ?? task.projectDetails?.Project_Status;
+      if (rawStatus !== undefined && rawStatus !== null && !isNaN(Number(rawStatus))) {
+        if (Number(rawStatus) === 0) return false;
+      }
+
+      const rawIsActive = task.IsActive 
+        ?? task.is_active 
+        ?? task.taskDetails?.IsActive 
+        ?? task.projectDetails?.IsActive;
+      if (rawIsActive !== undefined && rawIsActive !== null && !isNaN(Number(rawIsActive))) {
+        if (Number(rawIsActive) === 0) return false;
+      }
+
+      const rawDel = task.Del_Flag 
+        ?? task.del_flag 
+        ?? task.taskDetails?.Del_Flag 
+        ?? task.projectDetails?.Del_Flag;
+      if (rawDel === true || String(rawDel).toLowerCase() === "true") return false;
+
+      const rawStatusText = task.statusText 
+        ?? task.taskDetails?.statusText 
+        ?? task.projectDetails?.statusText;
+      if (rawStatusText && String(rawStatusText).trim().toLowerCase() === "inactive") return false;
+
+      return true;
+    };
+
     const getProjectName = (task: any) => {
+      const pObj = getProjectObj(task);
+      if (pObj) {
+        const name = pObj.Project_Name || pObj.project_name || pObj.Name;
+        if (name) return String(name).trim();
+      }
       const pName = task.Project_Name || task.project_name || task.taskDetails?.Project_Name;
       if (pName && String(pName).trim() !== "" && !String(pName).startsWith("Project ")) {
         return String(pName).trim();
       }
       const projId = task.Project_Id || task.project_id || task.taskDetails?.Project_Id;
-      if (projId) {
-        const found = projects.find(p => String(p.Project_Id ?? p.project_id ?? p.Id ?? "") === String(projId));
-        if (found) {
-          const name = found.Project_Name || found.project_name || found.Name;
-          if (name) return name;
-        }
-      }
       return pName || (projId ? `Project ${projId}` : "Unassigned Project");
     };
 
     assignedTasks.forEach(task => {
+      if (!isProjectActive(task)) return;
       const date = getDateOnly(task.Task_Assign_dt);
       if(!date) return;
       const key = `${date}_${task.Task_Id}_${task.Emp_Id}`;
@@ -829,6 +906,7 @@ export default function Projectprogress() {
     });
 
     executedTasks.forEach(task => {
+      if (!isProjectActive(task)) return;
       const date = getDateOnly(task.Work_Dt);
       if(!date) return;
       const key = `${date}_${task.Task_Id}_${task.Emp_Id}`;
