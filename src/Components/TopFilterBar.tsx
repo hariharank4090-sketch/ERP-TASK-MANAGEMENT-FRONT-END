@@ -54,6 +54,7 @@ export interface DashboardTopFilterBarProps {
 
   // Custom filter inputs slot for page-specific inputs
   children?: React.ReactNode;
+  filterButtonSx?: any;
 }
 
 const toYMD = (val: unknown): string => {
@@ -145,6 +146,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
   onCloseDialog,
   numEq,
   children,
+  filterButtonSx,
 }) => {
   const employeeActiveProjectIds = React.useMemo(() => {
     if (employeeIdFilter === "ALL") return null;
@@ -605,9 +607,10 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
               border: "1.5px solid #000000",
             },
             boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+            ...filterButtonSx
           }}
         >
-          <FilterList sx={{ fontSize: 20, color: "#000000" }} />
+          <FilterList sx={{ fontSize: (filterButtonSx?.iconFontSize ?? 20), color: (filterButtonSx?.iconColor ?? "#000000") }} />
         </IconButton>
       </Tooltip>
 

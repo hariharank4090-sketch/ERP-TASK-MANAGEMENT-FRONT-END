@@ -61,6 +61,7 @@ interface CompanyWithToken {
     token: string;
     UserTypeId: number;
     Local_User_ID?: number | null;
+    Global_User_ID?: number | null;
 }
 
 interface LoginResponseData {
@@ -79,6 +80,7 @@ interface LoginResponseData {
         token: string;
         UserTypeId: number;
         Local_User_ID?: number | null;
+        Global_User_ID?: number | null;
     }>;
     serverTime: string;
 }
@@ -328,7 +330,7 @@ const Login: React.FC<LoginProps> = ({
                 const finalToken = selectedCompanyData.token;
 
                 const userWithCompany: User = {
-                    Global_User_ID: responseData.user.Global_User_ID,
+                    Global_User_ID: selectedCompanyData.Global_User_ID ?? responseData.user.Global_User_ID,
                     Local_User_ID: selectedCompanyData.Local_User_ID ?? responseData.user.Local_User_ID ?? null,
                     UserTypeId: selectedCompanyData.UserTypeId,
                     Name: responseData.user.Name,
@@ -336,7 +338,7 @@ const Login: React.FC<LoginProps> = ({
                     Company_Id: companyId,
                     Company_Name: selectedCompanyData.companyName,
                     DB_Name: selectedCompanyData.dbName,
-                    id: responseData.user.Global_User_ID,
+                    id: selectedCompanyData.Global_User_ID ?? responseData.user.Global_User_ID,
                     name: responseData.user.Name,
                     uniqueName: responseData.user.UserName,
                     userType: selectedCompanyData.UserTypeId,
@@ -349,6 +351,7 @@ const Login: React.FC<LoginProps> = ({
                     dbName: c.dbName,
                     UserTypeId: c.UserTypeId,
                     Local_User_ID: c.Local_User_ID ?? null,
+                    Global_User_ID: c.Global_User_ID ?? null,
                 }));
 
                 localStorage.setItem("companyId", String(companyId));
@@ -427,6 +430,7 @@ const Login: React.FC<LoginProps> = ({
                         token: comp.token,
                         UserTypeId: comp.UserTypeId,
                         Local_User_ID: comp.Local_User_ID ?? null,
+                        Global_User_ID: comp.Global_User_ID ?? null,
                     }));
 
                     pendingLoginRef.current = {

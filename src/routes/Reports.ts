@@ -8,6 +8,8 @@ import CostBasedReports from "../modules/Reports/costReports/CostReports";
 
 import type { componentRoute } from "./indexRouter";
 import StaffBasedReports from "../modules/Reports/staff based reports/staffbaseReports";
+import Projectprogress from "../modules/Reports/Project Progress/ProjectProgress";
+
 
 export const reportsRoutePath: componentRoute[] = [
     { path: '', component: MenuGroupPage },
@@ -15,6 +17,7 @@ export const reportsRoutePath: componentRoute[] = [
     { path: 'Comparison Reports', component: ProjectTaskComparison },
     { path: 'cost category report', component: CostBasedReports },
     { path: 'Staff based reports', component: StaffBasedReports },
+     {path: 'Project Progress', component: Projectprogress},
 
 
 ];

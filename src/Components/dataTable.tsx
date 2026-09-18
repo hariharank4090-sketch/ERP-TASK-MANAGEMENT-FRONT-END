@@ -99,7 +99,7 @@ export interface FilterableTableProps {
   onCreateClick?: () => void;
   createButtonColor?: string;
 
-  headerTitle?: string;
+  headerTitle?: React.ReactNode;
   headerActions?: React.ReactNode;
   emptyMessage?: React.ReactNode | string;
 
@@ -379,6 +379,12 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
     setOpenRows({});
   }, [searchValue, resetKey]);
 
+  React.useEffect(() => {
+    if (page > 0 && page * rowsPerPage >= dataArray.length) {
+      setPage(0);
+    }
+  }, [dataArray.length, page, rowsPerPage]);
+
   const toggleRow = (index: number) => {
     setOpenRows((prev) => ({ ...prev, [index]: !prev[index] }));
   };
@@ -512,13 +518,17 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
           {/* LEFT – Title */}
           <Box flex={1} minWidth={0}>
             {headerTitle && (
-              <Typography
-                variant={isMobile ? "h6" : "h5"}
-                component="h1"
-                sx={{ fontWeight: 600, color: "#333", fontSize: { xs: "1rem", sm: "1.25rem", md: "1.5rem" } }}
-              >
-                {headerTitle}
-              </Typography>
+              typeof headerTitle === "string" ? (
+                <Typography
+                  variant={isMobile ? "h6" : "h5"}
+                  component="h1"
+                  sx={{ fontWeight: 600, color: "#333", fontSize: { xs: "1rem", sm: "1.25rem", md: "1.5rem" } }}
+                >
+                  {headerTitle}
+                </Typography>
+              ) : (
+                headerTitle
+              )
             )}
             {title && !headerTitle && (
               <Typography

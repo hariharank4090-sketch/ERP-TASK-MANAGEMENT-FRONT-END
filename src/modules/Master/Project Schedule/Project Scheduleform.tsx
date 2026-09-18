@@ -22,7 +22,7 @@ import {
   type SelectChangeEvent,
 } from "@mui/material";
 
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { MobileDatePicker } from "@mui/x-date-pickers/MobileDatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { StaticDatePicker } from "@mui/x-date-pickers/StaticDatePicker";
@@ -1283,7 +1283,11 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
       closeText="Cancel"
       maxWidth="md"
       fullWidth
-      PaperPropsSx={{ maxHeight: "96vh", minHeight: "750px" }}
+      disableEnforceFocus={true}
+      PaperPropsSx={{ 
+        maxHeight: "90vh",
+        minHeight: "780px"
+      }}
       extraActions={
         isEditMode ? (
           <Button
@@ -1412,7 +1416,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
               </Typography>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <Box sx={{ display: "flex", gap: 2 }}>
-                  <DatePicker
+                  <MobileDatePicker
                     label="Sch First Start Date"
                     value={scheduleObj?.Sch_First_Start_Date ? dayjs(scheduleObj.Sch_First_Start_Date) : null}
                     onChange={(date) => {
@@ -1426,7 +1430,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                       textField: { size: "small", fullWidth: true },
                     }}
                   />
-                  <DatePicker
+                  <MobileDatePicker
                     label="Sch First End Date"
                     value={scheduleObj?.Sch_First_End_Date ? dayjs(scheduleObj.Sch_First_End_Date) : null}
                     onChange={(date) => {
@@ -1497,7 +1501,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
               {/* ═══ DATE RANGE & TIME PICKERS (Always Visible) ═══ */}
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-                  <DatePicker
+                  <MobileDatePicker
                     label="Start Date"
                     value={localUI.sectionStartDate}
                     onChange={handleStartDateChange}
@@ -1507,7 +1511,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
                       textField: { size: "small", fullWidth: true, error: !!dateError },
                     }}
                   />
-                  <DatePicker
+                  <MobileDatePicker
                     label="End Date"
                     value={localUI.sectionEndDate}
                     onChange={handleEndDateChange}

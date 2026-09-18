@@ -64,6 +64,7 @@ export interface CompanyInfo {
     dbName: string | null;
     UserTypeId?: number;
     Local_User_ID?: number | null;
+    Global_User_ID?: number | null;
 }
 
 export type AuthContextType = {
@@ -206,9 +207,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 }
 
-                // ✅ IMPORTANT: Use the TARGET company's UserTypeId and Local_User_ID
+                // ✅ IMPORTANT: Use the TARGET company's UserTypeId, Local_User_ID and Global_User_ID
                 const companyUserTypeId = targetCompany.UserTypeId ?? user?.UserTypeId ?? 0;
                 const companyLocalUserId = targetCompany.Local_User_ID ?? user?.Local_User_ID ?? null;
+                const companyGlobalUserId = targetCompany.Global_User_ID ?? user?.Global_User_ID ?? 0;
 
                 const updatedUser: User = user
                     ? {
@@ -218,26 +220,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         DB_Name: targetCompany.dbName,
                         UserTypeId: companyUserTypeId,
                         Local_User_ID: companyLocalUserId,
-                        id: user.Global_User_ID,
+                        Global_User_ID: companyGlobalUserId,
+                        id: companyGlobalUserId,
                         name: user.Name,
                         uniqueName: user.UserName,
                         userType: companyUserTypeId,
                     }
                     : {
-                        Global_User_ID: 0,
-                        Local_User_ID: null,
+                        Global_User_ID: companyGlobalUserId,
+                        Local_User_ID: companyLocalUserId,
                         UserTypeId: companyUserTypeId,
                         Name: "",
                         UserName: "",
                         Company_Id: companyId,
                         Company_Name: targetCompany.companyName,
                         DB_Name: targetCompany.dbName,
+                        id: companyGlobalUserId,
                     };
 
                 const updatedCompany: CompanyInfo = { ...targetCompany, token: finalToken };
 
                 const updatedCompanies = availableCompanies.map(c =>
-                    c.companyId === companyId ? { ...c, token: finalToken, UserTypeId: companyUserTypeId, Local_User_ID: companyLocalUserId } : c
+                    c.companyId === companyId ? { ...c, token: finalToken, UserTypeId: companyUserTypeId, Local_User_ID: companyLocalUserId, Global_User_ID: companyGlobalUserId } : c
                 );
 
                 // Persist first, then update state

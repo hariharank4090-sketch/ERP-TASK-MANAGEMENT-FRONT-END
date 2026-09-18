@@ -13,7 +13,9 @@ import {
   Paper,
   IconButton,
   MenuItem,
-  CircularProgress
+  CircularProgress,
+  Checkbox,
+  FormControlLabel
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import CloseIcon from "@mui/icons-material/Close";
@@ -195,7 +197,7 @@ const TodayTaskDialog: React.FC<Props> = ({
     End_Time: "",
     Work_Status: "Pending",
     Work_Done: "",
-    Process_Id: ""
+    Process_Id: 0
   });
 
   const isOpen = open ?? true;
@@ -350,7 +352,7 @@ const TodayTaskDialog: React.FC<Props> = ({
         End_Time: isEditMode ? (sourceData.End_Time || sourceData.endTime || "") : "",
         Work_Status: statusDisplay,
         Work_Done: sourceData.Work_Done || "",
-        Process_Id: sourceData.Process_Id || ""
+        Process_Id: Number(sourceData.Process_Id ?? sourceData.Task_Process ?? sourceData.process_id) === 1 ? 1 : 0
       });
     }
   }, [sourceData, loggedEmpId, todayDate, open, isEditMode]);
@@ -405,7 +407,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               End_Time: match.End_Time || prev.End_Time,
               Work_Status: getDisplayStatus(match.Work_Status || prev.Work_Status),
               Work_Done: match.Work_Done === "In Progress" ? "" : (match.Work_Done || prev.Work_Done),
-              Process_Id: match.Process_Id || prev.Process_Id
+              Process_Id: Number(match.Process_Id ?? match.Task_Process ?? match.process_id) === 1 ? 1 : Number(prev.Process_Id) === 1 ? 1 : 0
             }));
 
             // Check if timer is running (Start_Time is set but End_Time is empty, status is In Progress)
@@ -576,7 +578,7 @@ const TodayTaskDialog: React.FC<Props> = ({
       End_Time: null,
       Tot_Minutes: 0,
       Work_Status: apiStatusValue,
-      Process_Id: formData.Process_Id && !isNaN(Number(formData.Process_Id)) ? Number(formData.Process_Id) : null,
+      Process_Id: Number(formData.Process_Id) === 1 ? 1 : 0,
       Parameters: parameters,
       Entry_By: parseInt(loggedEmpId || "1")
     };
@@ -819,7 +821,7 @@ const TodayTaskDialog: React.FC<Props> = ({
           : null,
         Tot_Minutes: Math.max(0, Math.round(calculateMinutes())),
         Work_Status: apiStatusValue,
-        Process_Id: formData.Process_Id && !isNaN(Number(formData.Process_Id)) ? Number(formData.Process_Id) : null,
+        Process_Id: Number(formData.Process_Id) === 1 ? 1 : 0,
         Parameters: parameters
       };
 
@@ -980,20 +982,36 @@ const TodayTaskDialog: React.FC<Props> = ({
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 12 }}>
-            <Typography
-              fontWeight={600}
-              gutterBottom
-            >
-              Task Name
-            </Typography>
-
-            <TextField
-              fullWidth
-              value={formData.Task_Name}
-              disabled
-              size="small"
-              variant="outlined"
-            />
+            <Box display="flex" alignItems="center" gap={2}>
+              <Box sx={{ flexGrow: 1 }}>
+                <Typography
+                  fontWeight={600}
+                  gutterBottom
+                >
+                  Task Name
+                </Typography>
+                <TextField
+                  fullWidth
+                  value={formData.Task_Name}
+                  disabled
+                  size="small"
+                  variant="outlined"
+                />
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", mt: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={Number(formData.Process_Id) === 1}
+                      onChange={(e) =>
+                        handleInputChange("Process_Id", e.target.checked ? 1 : 0)
+                      }
+                    />
+                  }
+                  label="Task Process"
+                />
+              </Box>
+            </Box>
           </Grid>
 
           <Grid size={{ xs: 12 }}>

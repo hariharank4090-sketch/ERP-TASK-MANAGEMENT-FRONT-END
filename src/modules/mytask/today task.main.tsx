@@ -873,6 +873,7 @@ const CreditListPage = () => {
       Sch_Est_End_Time: task.Sch_Est_End_Time,
       parameters: task.parameters,
       Parameters: (task as any).Parameters,
+      Process_Id: task.Process_Id ?? task.Task_Process ?? task.process_id ?? 0,
       type: task.type
     };
 

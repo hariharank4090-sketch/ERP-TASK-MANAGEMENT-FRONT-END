@@ -23,6 +23,7 @@ interface AppDialogProps {
   isSubmit?: boolean;
   extraActions?: React.ReactNode;
   disableBackdropClick?: boolean;
+  disableEnforceFocus?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   PaperPropsSx?: any;
 }
@@ -40,6 +41,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
   isSubmit = false,
   extraActions,
   disableBackdropClick = false,
+  disableEnforceFocus = false,
   PaperPropsSx,
 }) => {
   const handleDialogClose = (_event: object, reason: string) => {
@@ -54,6 +56,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
       onClose={handleDialogClose}
       fullWidth={fullWidth}
       maxWidth={maxWidth}
+      disableEnforceFocus={disableEnforceFocus}
       PaperProps={{
         sx: {
           borderRadius: "10px",
