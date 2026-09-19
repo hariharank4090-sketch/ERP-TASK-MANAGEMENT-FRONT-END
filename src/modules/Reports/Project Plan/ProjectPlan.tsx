@@ -383,6 +383,12 @@ function removeDuplicates(data: any[]): any[] {
   });
 }
 
+function isValidEmployee(emp: any): boolean {
+  if (!emp || typeof emp !== 'string') return false;
+  const trimmed = emp.trim();
+  return trimmed !== '' && trimmed !== '-' && trimmed.toLowerCase() !== 'unassigned' && trimmed.toLowerCase() !== 'employee';
+}
+
 function getRowStats(items: any[]) {
   let assignMin = 0;
   let completedMin = 0;
@@ -1012,7 +1018,7 @@ const ProjectPlan: React.FC = () => {
       show: true,
       x: e.clientX + 12,
       y: e.clientY + 12,
-      text: list
+      text: list || 'No resources assigned'
     });
   };
 
@@ -1237,8 +1243,8 @@ const ProjectPlan: React.FC = () => {
                           </tr>
                         ) : (
                           sortedProjects.map(([project, items]) => {
-                            const taskCount = new Set(items.map(it => it.taskName)).size;
-                            const empSet = new Set(items.map(it => it.employee));
+                            const taskCount = new Set(items.map(it => it.taskName).filter(t => t && t !== '-')).size;
+                            const empSet = new Set(items.map(it => it.employee).filter(isValidEmployee));
                             const empCount = empSet.size;
                             const empNames = Array.from(empSet).join('||');
                             const stats = getRowStats(items);
@@ -1365,7 +1371,7 @@ const ProjectPlan: React.FC = () => {
                           </tr>
                         ) : (
                             taskEntries.map(([taskName, items]) => {
-                            const empSet = new Set(items.map(it => it.employee).filter(e => e && e !== 'Unassigned' && e !== '-'));
+                            const empSet = new Set(items.map(it => it.employee).filter(isValidEmployee));
                             const empCount = empSet.size;
                             const empNames = Array.from(empSet).join('||');
 
@@ -1375,7 +1381,7 @@ const ProjectPlan: React.FC = () => {
 
                             const empGroups: Record<string, any[]> = {};
                             items.forEach(it => {
-                              const empLabel = (it.employee && it.employee !== 'Unassigned' && it.employee !== '-') ? it.employee : '-';
+                              const empLabel = isValidEmployee(it.employee) ? it.employee : 'Not Assigned';
                               if (!empGroups[empLabel]) empGroups[empLabel] = [];
                               empGroups[empLabel].push(it);
                             });
@@ -1423,7 +1429,6 @@ const ProjectPlan: React.FC = () => {
                                               const empStats = getRowStats(empItems);
                                               const empKey = taskName + '_' + employee;
                                               const isEmpExpanded = !!expandedEmployees[empKey];
-                                              const displayEmpName = (employee && employee !== '-' && employee !== 'Unassigned') ? employee : '';
 
                                               return (
                                                 <React.Fragment key={empKey}>
@@ -1435,8 +1440,10 @@ const ProjectPlan: React.FC = () => {
                                                       <button className={`expand-row-indicator ${isEmpExpanded ? 'rotated' : ''}`} style={{ marginRight: '8px' }}>
                                                         <i className="fa-solid fa-chevron-right"></i>
                                                       </button>
-                                                      <strong>{displayEmpName}</strong>
-                                                      <span className="indicator-badge" style={{ marginLeft: '6px' }} title="Total Schedules">{empItems.length}</span>
+                                                      <strong>{isValidEmployee(employee) ? employee : 'Not Assigned'}</strong>
+                                                      {isValidEmployee(employee) && (
+                                                        <span className="indicator-badge" style={{ marginLeft: '6px' }} title="Total Schedules">{empItems.length}</span>
+                                                      )}
                                                     </td>
                                                     <td style={{ padding: '12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9' }}>{empStats.startDate}</td>
                                                     <td style={{ padding: '12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9' }}>{empStats.assignHrs}</td>
