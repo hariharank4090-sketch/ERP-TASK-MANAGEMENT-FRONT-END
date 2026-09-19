@@ -421,7 +421,8 @@ export const getEnrichedTodayPlan = async (
                 Schedule_Sch_Status: item.Schedule_Sch_Status || 0,
                 Task_Name: item.Task_Name || null,
                 Task_Desc: item.Task_Desc || null,
-                Task_Type_Id: item.Task_Type_Id ?? null
+                Task_Type_Id: item.Task_Type_Id ?? null,
+                Task_Type: item.Task_Type || null
             }));
 
             // ✅ FIX: pass companyId so the correct company's cached data is used
