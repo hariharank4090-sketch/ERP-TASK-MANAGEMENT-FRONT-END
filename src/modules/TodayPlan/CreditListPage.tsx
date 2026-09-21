@@ -638,7 +638,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
                 disabled={refreshing}
                 sx={{ backgroundColor: "#fff", borderRadius: 1, fontSize: "0.85rem", height: 40 }}
                 renderValue={(selected: any) => {
-                  if (!selected) return "All Employees";
+                  if (!selected || selected === "___empty___") return "All Employees";
                   const emp = employees.find((e) => String(e.Emp_Id) === selected);
                   return emp?.Emp_Name || selected;
                 }}

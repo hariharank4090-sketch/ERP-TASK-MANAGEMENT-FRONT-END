@@ -422,7 +422,10 @@ export const getEnrichedTodayPlan = async (
                 Task_Name: item.Task_Name || null,
                 Task_Desc: item.Task_Desc || null,
                 Task_Type_Id: item.Task_Type_Id ?? null,
-                Task_Type: item.Task_Type || null
+                Task_Type: item.Task_Type || null,
+                Sch_Type: item.Sch_Type ?? item.schType ?? item.Sch_Type_Id ?? item.schTypeId ?? item.Schedule_Sch_Type ?? null,
+                Sch_Type_Id: item.Sch_Type_Id ?? item.schTypeId ?? item.Sch_Type ?? item.schType ?? null,
+                Sch_Plan_Id: item.Sch_Plan_Id ?? item.schPlanId ?? item.Schedule_Sch_Plan_Id ?? null
             }));
 
             // ✅ FIX: pass companyId so the correct company's cached data is used

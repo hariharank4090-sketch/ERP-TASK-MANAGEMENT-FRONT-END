@@ -494,24 +494,38 @@ const ProjectPlan: React.FC = () => {
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({});
 
-  const [appliedFilters, setAppliedFilters] = useState({
+  const [appliedFilters, setAppliedFilters] = useState<{
+    from: string;
+    to: string;
+    project: string[];
+    employee: string[];
+    task: string[];
+    status: string[];
+  }>({
     from: defaultStartDate,
     to: defaultEndDate,
-    project: '',
-    employee: '',
-    task: '',
-    status: ''
+    project: [],
+    employee: [],
+    task: [],
+    status: []
   });
 
   // Dialog state for TopFilterBar
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState({
+  const [draftFilters, setDraftFilters] = useState<{
+    from: string;
+    to: string;
+    project: string[];
+    employee: string[];
+    task: string[];
+    status: string[];
+  }>({
     from: defaultStartDate,
     to: defaultEndDate,
-    project: '',
-    employee: '',
-    task: '',
-    status: ''
+    project: [],
+    employee: [],
+    task: [],
+    status: []
   });
 
   // Tooltip state
@@ -529,13 +543,14 @@ const ProjectPlan: React.FC = () => {
   const loadApiData = useCallback(async () => {
     const companyId = currentCompany?.companyId || undefined;
     try {
-      const [todayRes, workRes, empRes, projRes, taskTypeRes, scheduleRes, masterTasksRes] = await Promise.all([
+      const [todayRes, workRes, empRes, projRes, taskTypeRes, scheduleEmpRes, scheduleMasterRes, masterTasksRes] = await Promise.all([
         getEnrichedTodayPlan({}, companyId),
         getEnrichedWorkMaster({}),
         getEmployeeDropdown(companyId),
         getProjectDropdown(companyId, undefined, undefined, true),
         fetchLink<any>({ address: "masters/taskType/", method: "GET" }).catch(() => null),
-        fetchLink<any>({ address: "masters/projectScheduleEmp/list", method: "GET" })
+        fetchLink<any>({ address: "masters/projectScheduleEmp/list", method: "GET" }).catch(() => null),
+        fetchLink<any>({ address: "masters/projectSchedule/?page=1&limit=100000&sortBy=Sch_Id&sortOrder=DESC", method: "GET" })
           .catch(() => fetchLink<any>({ address: "masters/projectSchedule/", method: "GET" }))
           .catch(() => null),
         getTaskDropdown(companyId, undefined, undefined, true).catch(() => []),
@@ -680,13 +695,116 @@ const ProjectPlan: React.FC = () => {
       else if ((workRes as any)?.items && Array.isArray((workRes as any).items)) workItems = (workRes as any).items;
       else if (Array.isArray(workRes)) workItems = workRes;
 
+      const schTypeMap = new Map<string, any>();
+
+      let masterSchedules: any[] = [];
+      if ((scheduleMasterRes as any)?.data && Array.isArray((scheduleMasterRes as any).data)) {
+        masterSchedules = (scheduleMasterRes as any).data;
+      } else if ((scheduleMasterRes as any)?.data?.data && Array.isArray((scheduleMasterRes as any).data.data)) {
+        masterSchedules = (scheduleMasterRes as any).data.data;
+      } else if (Array.isArray(scheduleMasterRes)) {
+        masterSchedules = scheduleMasterRes;
+      }
+
+      masterSchedules.forEach((sch: any) => {
+        const sId = sch.schId ?? sch.Sch_Id ?? sch.Id ?? sch.id ?? sch.Schedule_Sch_Id;
+        if (sId !== undefined && sId !== null && String(sId).trim() !== "") {
+          const key = String(sId).trim();
+          const st = sch.schType ?? sch.Sch_Type ?? sch.Sch_Type_Id ?? sch.schTypeId ?? sch.Schedule_Sch_Type ?? sch.SCH_TYPE ?? sch.sch_type;
+          if (st !== undefined && st !== null && st !== "") {
+            schTypeMap.set(key, st);
+          }
+        }
+      });
+
+      let scheduleEmpItemsForMap: any[] = [];
+      if ((scheduleEmpRes as any)?.data && Array.isArray((scheduleEmpRes as any).data)) {
+        scheduleEmpItemsForMap = (scheduleEmpRes as any).data;
+      } else if ((scheduleEmpRes as any)?.data?.data && Array.isArray((scheduleEmpRes as any).data.data)) {
+        scheduleEmpItemsForMap = (scheduleEmpRes as any).data.data;
+      } else if (Array.isArray(scheduleEmpRes)) {
+        scheduleEmpItemsForMap = scheduleEmpRes;
+      }
+
+      scheduleEmpItemsForMap.forEach((sch: any) => {
+        const sId = sch.schId ?? sch.Sch_Id ?? sch.Id ?? sch.id ?? sch.Schedule_Sch_Id;
+        if (sId !== undefined && sId !== null && String(sId).trim() !== "") {
+          const key = String(sId).trim();
+          const st = sch.schType ?? sch.Sch_Type ?? sch.Sch_Type_Id ?? sch.schTypeId ?? sch.Schedule_Sch_Type ?? sch.SCH_TYPE ?? sch.sch_type;
+          if (st !== undefined && st !== null && st !== "") {
+            if (!schTypeMap.has(key)) {
+              schTypeMap.set(key, st);
+            }
+          }
+        }
+      });
+
+      const getScheduleTypeLabel = (item: any): string => {
+        if (!item) return "-";
+
+        const parseVal = (val: any): string | null => {
+          if (val === undefined || val === null || val === "" || val === "-") return null;
+          const str = String(val).trim().toLowerCase();
+          if (str === "2" || str === "repetitive" || str === "repetative") return "Repetitive";
+          if (str === "1" || str === "onetime" || str === "one-time" || str === "one time") return "One Time";
+          const num = Number(str);
+          if (num === 2) return "Repetitive";
+          if (num === 1) return "One Time";
+          return null;
+        };
+
+        const directProp =
+          item.Sch_Type ??
+          item.schType ??
+          item.Sch_Type_Id ??
+          item.schTypeId ??
+          item.Schedule_Sch_Type ??
+          item.Schedule_Sch_Type_Id ??
+          item.sch_type ??
+          item.sch_type_id ??
+          item.Sch_Type_Name ??
+          item.SCH_TYPE;
+        const directLabel = parseVal(directProp);
+        if (directLabel) return directLabel;
+
+        const schId = item.Sch_Id ?? item.sch_id ?? item.schId ?? item.Id ?? item.id ?? item.Schedule_Sch_Id;
+        if (schId !== undefined && schId !== null && String(schId).trim() !== "" && String(schId).trim() !== "-") {
+          const key = String(schId).trim();
+          if (schTypeMap.has(key)) {
+            const mapLabel = parseVal(schTypeMap.get(key));
+            if (mapLabel) return mapLabel;
+          }
+        }
+
+        const planId = item.schPlanId ?? item.Schedule_Sch_Plan_Id ?? item.Sch_Plan_Id ?? item.sch_plan_id;
+        if (planId !== undefined && planId !== null && planId !== "" && !isNaN(Number(planId))) {
+          const pNum = Number(planId);
+          if (pNum === 5) return "One Time";
+          if (pNum > 0 && pNum !== 5) return "Repetitive";
+        }
+
+        if (item.planType && typeof item.planType === "string") {
+          const pt = item.planType.toLowerCase();
+          if (pt.includes("day") || pt.includes("week") || pt.includes("month") || pt.includes("repetitive") || pt.includes("repetative")) {
+            return "Repetitive";
+          }
+          if (pt.includes("one")) return "One Time";
+        }
+
+        return "-";
+      };
+
       let scheduleMasterItems: any[] = [];
-      if ((scheduleRes as any)?.data && Array.isArray((scheduleRes as any).data)) {
-        scheduleMasterItems = (scheduleRes as any).data;
-      } else if ((scheduleRes as any)?.data?.data && Array.isArray((scheduleRes as any).data.data)) {
-        scheduleMasterItems = (scheduleRes as any).data.data;
-      } else if (Array.isArray(scheduleRes)) {
-        scheduleMasterItems = scheduleRes;
+      if ((scheduleEmpRes as any)?.data && Array.isArray((scheduleEmpRes as any).data)) {
+        scheduleMasterItems = (scheduleEmpRes as any).data;
+      } else if ((scheduleEmpRes as any)?.data?.data && Array.isArray((scheduleEmpRes as any).data.data)) {
+        scheduleMasterItems = (scheduleEmpRes as any).data.data;
+      } else if (Array.isArray(scheduleEmpRes)) {
+        scheduleMasterItems = scheduleEmpRes;
+      }
+
+      if (scheduleMasterItems.length === 0 && masterSchedules.length > 0) {
+        scheduleMasterItems = masterSchedules;
       }
 
       let masterTaskList: any[] = [];
@@ -725,13 +843,14 @@ const ProjectPlan: React.FC = () => {
         const dateStr = rawDate ? String(rawDate).split('T')[0] : '';
 
         mappedData.push({
+          schId: item.Sch_Id ?? item.sch_id ?? item.schId,
           date: dateStr || '-',
           startDate: dateStr || '-',
           endDate: dateStr || '-',
           project: item.Project_Name || 'General',
           taskName: item.Task_Name || `Task ${item.Task_Id}`,
           taskType: getTaskTypeName(item),
-          scheduleType: 'One Time',
+          scheduleType: getScheduleTypeLabel(item),
           employee: getEmpName(item),
           assignedStart: formatTime12(schStart),
           assignedEnd: formatTime12(schEnd),
@@ -754,13 +873,14 @@ const ProjectPlan: React.FC = () => {
         const dateStr = rawDate ? String(rawDate).split('T')[0] : '';
 
         mappedData.push({
+          schId: item.Sch_Id ?? item.sch_id ?? item.schId,
           date: dateStr || '-',
           startDate: dateStr || '-',
           endDate: dateStr || '-',
           project: item.Project_Name || item.taskDetails?.Project_Name || 'General',
           taskName: item.Task_Name || item.taskDetails?.Task_Name || `Task ${item.Task_Id}`,
           taskType: getTaskTypeName(item),
-          scheduleType: 'One Time',
+          scheduleType: getScheduleTypeLabel(item),
           employee: getEmpName(item),
           assignedStart: formatTime12(schStart),
           assignedEnd: formatTime12(schEnd),
@@ -805,18 +925,18 @@ const ProjectPlan: React.FC = () => {
 
         if (!projName || !taskName) return;
 
-        const schId = sch.Sch_Id ?? sch.sch_id ?? sch.Id ?? sch.id;
-        const schKey = schId ? String(schId) : `${String(projName).trim()}|${String(taskName).trim()}|${getEmpName(sch)}|${sch.Sch_Start_Date || sch.Sch_Date || sch.Schedule_Sch_Start_Date || ''}`;
+        const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId ?? sch.Id ?? sch.id;
+        const schKey = sch.Id ? `emp_sch_${sch.Id}` : (schId ? String(schId) : `${String(projName).trim()}|${String(taskName).trim()}|${getEmpName(sch)}|${sch.Sch_Start_Date || sch.Sch_Date || sch.Schedule_Sch_Start_Date || ''}`);
 
         if (existingScheduleKeys.has(schKey)) return;
 
-        const rawStartDate = sch.Schedule_Sch_Start_Date || sch.Sch_Start_Date || sch.schStartDate || sch.Sch_Date || sch.schDate || sch.Task_Assign_dt || sch.Work_Dt || '';
-        const rawEndDate = sch.Schedule_Sch_End_Date || sch.Sch_End_Date || sch.schEndDate || sch.Sch_Date || sch.schDate || sch.Task_Assign_dt || sch.Work_Dt || '';
+        const rawStartDate = sch.Schedule_Sch_Start_Date || sch.Sch_Start_Date || sch.schStartDate || sch.Task_Assign_dt || sch.Sch_Date || sch.schDate || sch.Work_Dt || '';
+        const rawEndDate = sch.Schedule_Sch_End_Date || sch.Sch_End_Date || sch.schEndDate || sch.Task_Assign_dt || sch.Sch_Date || sch.schDate || sch.Work_Dt || '';
         const startDateStr = rawStartDate ? String(rawStartDate).split('T')[0] : '';
         const endDateStr = rawEndDate ? String(rawEndDate).split('T')[0] : startDateStr;
         const schStart = sch.Sch_Time || sch.Sch_Est_Start_Time || sch.Start_Time || '09:30:00';
         const schEnd = sch.EN_Time || sch.Sch_Est_End_Time || sch.End_Time || '18:30:00';
-        const dur = sch.Task_Sch_Duaration || sch.Schedule_Task_Sch_Duaration || sch.schDuaration || sch.Sch_Duration || sch.Tot_Minutes || '8h 00m';
+        const dur = sch.Schedule_Task_Sch_Duaration || sch.Task_Sch_Duaration || sch.schDuaration || sch.Sch_Duration || sch.Tot_Minutes || '8h 00m';
 
         mappedData.push({
           schId: schId ? String(schId) : undefined,
@@ -826,7 +946,7 @@ const ProjectPlan: React.FC = () => {
           project: String(projName).trim(),
           taskName: String(taskName).trim(),
           taskType: getTaskTypeName(sch),
-          scheduleType: 'One Time',
+          scheduleType: getScheduleTypeLabel(sch),
           employee: getEmpName(sch),
           assignedStart: formatTime12(schStart),
           assignedEnd: formatTime12(schEnd),
@@ -868,7 +988,7 @@ const ProjectPlan: React.FC = () => {
           project: String(projName).trim(),
           taskName: String(taskName).trim(),
           taskType: getTaskTypeName(t),
-          scheduleType: 'One Time',
+          scheduleType: getScheduleTypeLabel(t),
           employee: 'Unassigned',
           assignedStart: '-',
           assignedEnd: '-',
@@ -920,10 +1040,10 @@ const ProjectPlan: React.FC = () => {
     const initial = {
       from: defaultStartDate,
       to: defaultEndDate,
-      project: '',
-      employee: '',
-      task: '',
-      status: ''
+      project: [],
+      employee: [],
+      task: [],
+      status: []
     };
     setDraftFilters({ ...initial });
     setAppliedFilters({ ...initial });
@@ -938,47 +1058,93 @@ const ProjectPlan: React.FC = () => {
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
-    if (project) data = data.filter(d => d.project === project);
-    if (employee) data = data.filter(d => d.employee === employee);
-    if (task) data = data.filter(d => d.taskName === task);
-    if (status) data = data.filter(d => d.assignedStatus === status);
+    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
+    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
 
     return data;
   }, [workData, appliedFilters]);
 
   // Dropdown lists
+  // Dropdown lists - dynamically cascading based on draftFilters selections
   const projectList = useMemo(() => {
-    if (backendProjects.length > 0) {
-      const set = new Set<string>();
+    let data = [...workData];
+    const { from, to, employee, task, status } = draftFilters;
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
+    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
+
+    const set = new Set<string>();
+    data.forEach(d => { if (d.project) set.add(d.project); });
+    if (backendProjects.length > 0 && employee.length === 0 && task.length === 0 && status.length === 0) {
       backendProjects.forEach(p => {
         const pName = p.Project_Name || p.project_name;
         if (pName) set.add(pName);
       });
-      return Array.from(set).sort();
     }
-    const set = new Set<string>();
-    workData.forEach(d => { if (d.project) set.add(d.project); });
+    draftFilters.project.forEach(p => set.add(p));
     return Array.from(set).sort();
-  }, [backendProjects, workData]);
+  }, [backendProjects, workData, draftFilters]);
 
   const employeeList = useMemo(() => {
-    if (backendEmployees.length > 0) {
-      const set = new Set<string>();
+    let data = [...workData];
+    const { from, to, project, task, status } = draftFilters;
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
+    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
+
+    const set = new Set<string>();
+    data.forEach(d => { if (d.employee && isValidEmployee(d.employee)) set.add(d.employee); });
+    if (backendEmployees.length > 0 && project.length === 0 && task.length === 0 && status.length === 0) {
       backendEmployees.forEach(emp => {
         if (emp.Emp_Name) set.add(emp.Emp_Name);
       });
-      return Array.from(set).sort();
     }
-    const set = new Set<string>();
-    workData.forEach(d => { if (d.employee) set.add(d.employee); });
+    draftFilters.employee.forEach(emp => set.add(emp));
     return Array.from(set).sort();
-  }, [backendEmployees, workData]);
+  }, [backendEmployees, workData, draftFilters]);
 
   const taskList = useMemo(() => {
+    let data = [...workData];
+    const { from, to, project, employee, status } = draftFilters;
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
+
     const set = new Set<string>();
-    workData.forEach(d => { if (d.taskName) set.add(d.taskName); });
+    data.forEach(d => { if (d.taskName) set.add(d.taskName); });
+    draftFilters.task.forEach(t => set.add(t));
     return Array.from(set).sort();
-  }, [workData]);
+  }, [workData, draftFilters]);
+
+  const statusList = useMemo(() => {
+    let data = [...workData];
+    const { from, to, project, employee, task } = draftFilters;
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
+
+    const allStatuses = ["New", "In Progress", "Completed"];
+    const set = new Set<string>();
+    data.forEach(d => { if (d.assignedStatus && allStatuses.includes(d.assignedStatus)) set.add(d.assignedStatus); });
+    draftFilters.status.forEach(s => set.add(s));
+
+    const list = Array.from(set);
+    return list.length > 0 ? allStatuses.filter(s => list.includes(s)) : allStatuses;
+  }, [workData, draftFilters]);
 
   // Navigation handlers
   const drillback = () => {
@@ -1064,8 +1230,13 @@ const ProjectPlan: React.FC = () => {
           Project
         </Typography>
         <SearchableSelect
+          multiple
           value={draftFilters.project}
-          onChange={(e) => setDraftFilters(p => ({ ...p, project: e.target.value as string }))}
+          onChange={(e) => {
+            const val = e.target.value;
+            const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
+            setDraftFilters(p => ({ ...p, project: arr }));
+          }}
           allOptionLabel="All Projects"
           allOptionValue=""
           searchPlaceholder="Search project..."
@@ -1082,8 +1253,13 @@ const ProjectPlan: React.FC = () => {
           Resource / Employee
         </Typography>
         <SearchableSelect
+          multiple
           value={draftFilters.employee}
-          onChange={(e) => setDraftFilters(p => ({ ...p, employee: e.target.value as string }))}
+          onChange={(e) => {
+            const val = e.target.value;
+            const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
+            setDraftFilters(p => ({ ...p, employee: arr }));
+          }}
           allOptionLabel="All Employees"
           allOptionValue=""
           searchPlaceholder="Search employee..."
@@ -1100,8 +1276,13 @@ const ProjectPlan: React.FC = () => {
           Task Category
         </Typography>
         <SearchableSelect
+          multiple
           value={draftFilters.task}
-          onChange={(e) => setDraftFilters(p => ({ ...p, task: e.target.value as string }))}
+          onChange={(e) => {
+            const val = e.target.value;
+            const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
+            setDraftFilters(p => ({ ...p, task: arr }));
+          }}
           allOptionLabel="All Tasks"
           allOptionValue=""
           searchPlaceholder="Search task..."
@@ -1118,16 +1299,20 @@ const ProjectPlan: React.FC = () => {
           Task Status
         </Typography>
         <SearchableSelect
+          multiple
           value={draftFilters.status}
-          onChange={(e) => setDraftFilters(p => ({ ...p, status: e.target.value as string }))}
+          onChange={(e) => {
+            const val = e.target.value;
+            const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
+            setDraftFilters(p => ({ ...p, status: arr }));
+          }}
           allOptionLabel="All Statuses"
           allOptionValue=""
           searchPlaceholder="Search status..."
-          options={[
-            { value: "New", label: "New" },
-            { value: "In Progress", label: "In Progress" },
-            { value: "Completed", label: "Completed" },
-          ]}
+          options={statusList.map((st) => ({
+            value: st,
+            label: st,
+          }))}
         />
       </FormControl>
     </Box>
@@ -1144,14 +1329,16 @@ const ProjectPlan: React.FC = () => {
               const uniqueEntries = removeDuplicates(filteredData);
               const groups: Record<string, any[]> = {};
 
-              const hasTaskSpecificFilter = !!(appliedFilters.employee || appliedFilters.task || appliedFilters.status);
+              const hasTaskSpecificFilter = (appliedFilters.employee && appliedFilters.employee.length > 0) ||
+                                            (appliedFilters.task && appliedFilters.task.length > 0) ||
+                                            (appliedFilters.status && appliedFilters.status.length > 0);
 
               if (!hasTaskSpecificFilter) {
                 backendProjects.forEach((p: any) => {
                   const pName = p.Project_Name || p.project_name || p.Name;
                   if (pName) {
                     const trimmedName = String(pName).trim();
-                    if (!appliedFilters.project || appliedFilters.project === trimmedName) {
+                    if (!appliedFilters.project || appliedFilters.project.length === 0 || appliedFilters.project.includes(trimmedName)) {
                       groups[trimmedName] = [];
                     }
                   }
@@ -1161,7 +1348,7 @@ const ProjectPlan: React.FC = () => {
               uniqueEntries.forEach(item => {
                 if (item.project) {
                   if (!groups[item.project]) {
-                    if (!appliedFilters.project || appliedFilters.project === item.project) {
+                    if (!appliedFilters.project || appliedFilters.project.length === 0 || appliedFilters.project.includes(item.project)) {
                       groups[item.project] = [];
                     }
                   }
@@ -1187,28 +1374,28 @@ const ProjectPlan: React.FC = () => {
                             <span>{appliedFilters.from ? formatDateDisplay(appliedFilters.from) : 'Start'} - {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : 'End'}</span>
                           </div>
                         )}
-                        {appliedFilters.project && (
+                        {appliedFilters.project && appliedFilters.project.length > 0 && (
                           <div className="filter-badge project-badge">
                             <span className="badge-lbl">Proj:</span>
-                            <span>{appliedFilters.project}</span>
+                            <span>{appliedFilters.project.join(', ')}</span>
                           </div>
                         )}
-                        {appliedFilters.employee && (
+                        {appliedFilters.employee && appliedFilters.employee.length > 0 && (
                           <div className="filter-badge resource-badge">
                             <span className="badge-lbl">Resource:</span>
-                            <span>{appliedFilters.employee}</span>
+                            <span>{appliedFilters.employee.join(', ')}</span>
                           </div>
                         )}
-                        {appliedFilters.task && (
+                        {appliedFilters.task && appliedFilters.task.length > 0 && (
                           <div className="filter-badge task-badge">
                             <span className="badge-lbl">Task:</span>
-                            <span>{appliedFilters.task}</span>
+                            <span>{appliedFilters.task.join(', ')}</span>
                           </div>
                         )}
-                        {appliedFilters.status && (
+                        {appliedFilters.status && appliedFilters.status.length > 0 && (
                           <div className="filter-badge status-badge">
                             <span className="badge-lbl">Status:</span>
-                            <span>{appliedFilters.status}</span>
+                            <span>{appliedFilters.status.join(', ')}</span>
                           </div>
                         )}
                       </div>
@@ -1306,28 +1493,28 @@ const ProjectPlan: React.FC = () => {
                             <span>{appliedFilters.from ? formatDateDisplay(appliedFilters.from) : 'Start'} - {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : 'End'}</span>
                           </div>
                         )}
-                        {appliedFilters.project && (
+                        {appliedFilters.project && appliedFilters.project.length > 0 && (
                           <div className="filter-badge project-badge">
                             <span className="badge-lbl">Proj:</span>
-                            <span>{appliedFilters.project}</span>
+                            <span>{appliedFilters.project.join(', ')}</span>
                           </div>
                         )}
-                        {appliedFilters.employee && (
+                        {appliedFilters.employee && appliedFilters.employee.length > 0 && (
                           <div className="filter-badge resource-badge">
                             <span className="badge-lbl">Resource:</span>
-                            <span>{appliedFilters.employee}</span>
+                            <span>{appliedFilters.employee.join(', ')}</span>
                           </div>
                         )}
-                        {appliedFilters.task && (
+                        {appliedFilters.task && appliedFilters.task.length > 0 && (
                           <div className="filter-badge task-badge">
                             <span className="badge-lbl">Task:</span>
-                            <span>{appliedFilters.task}</span>
+                            <span>{appliedFilters.task.join(', ')}</span>
                           </div>
                         )}
-                        {appliedFilters.status && (
+                        {appliedFilters.status && appliedFilters.status.length > 0 && (
                           <div className="filter-badge status-badge">
                             <span className="badge-lbl">Status:</span>
-                            <span>{appliedFilters.status}</span>
+                            <span>{appliedFilters.status.join(', ')}</span>
                           </div>
                         )}
                       </div>
