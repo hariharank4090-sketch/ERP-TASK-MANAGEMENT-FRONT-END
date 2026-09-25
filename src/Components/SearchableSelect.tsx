@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import React, { useState } from 'react';
 import {
   Select,
@@ -139,11 +139,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           if (arr.length === 0) {
             return <span style={{ color: '#9ca3af' }}>{allOptionLabel || 'All'}</span>;
           }
-          if (arr.length === options.length && options.length > 0) {
-            return <span>{allOptionLabel || 'All Selected'}</span>;
-          }
           const labels = arr.map(val => {
-            const opt = options.find(o => String(o.value) === String(val));
+            const opt = options.find(o => String(o.value).trim() === String(val).trim());
             return opt ? (typeof opt.label === 'string' ? opt.label : String(val)) : String(val);
           });
           return <span>{labels.join(', ')}</span>;
@@ -152,7 +149,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         if (actualSelected === allOptionValue || actualSelected === "" || actualSelected == null) {
           return <span style={{ color: '#9ca3af' }}>{allOptionLabel}</span>;
         }
-        const selectedOpt = options.find(opt => String(opt.value) === String(actualSelected));
+        const selectedOpt = options.find(opt => String(opt.value).trim() === String(actualSelected).trim());
         return selectedOpt ? selectedOpt.label : actualSelected;
       }}
       MenuProps={{
@@ -219,8 +216,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       )}
       {filteredOptions.map((opt) => {
         const isSelected = isMultiple
-          ? (Array.isArray(value) && value.includes(opt.value))
-          : String(value) === String(opt.value);
+          ? (Array.isArray(value) && value.some((v: any) => String(v).trim() === String(opt.value).trim()))
+          : String(value).trim() === String(opt.value).trim();
         return (
           <MenuItem key={opt.value} value={opt.value} disabled={opt.disabled}>
             {isMultiple && (

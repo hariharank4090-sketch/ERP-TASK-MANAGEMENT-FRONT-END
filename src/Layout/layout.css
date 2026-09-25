@@ -6,7 +6,9 @@
 }
 
 /* Full height for layout */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -22,7 +24,7 @@ html, body, #root {
   padding: 8px 12px;
   background-color: #e6d8c3;
   border-radius: 25px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -45,7 +47,7 @@ html, body, #root {
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -79,7 +81,7 @@ html, body, #root {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .app-logo {
@@ -123,14 +125,14 @@ html, body, #root {
   background: white;
   border-radius: 8px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: transform 0.3s ease;
   cursor: pointer;
 }
 
 .menu-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .menu-card:active {
@@ -243,6 +245,7 @@ html, body, #root {
 
 /* ==================== MOBILE OPTIMIZATIONS ==================== */
 @media (max-width: 599px) {
+
   /* Ensure touch targets are at least 44px */
   .topmenu-btn {
     min-height: 36px;
@@ -283,6 +286,7 @@ html, body, #root {
 
 /* ==================== PRINT STYLES ==================== */
 @media print {
+
   .app-header,
   .app-footer,
   .layout-topmenu,
@@ -316,5 +320,17 @@ html, body, #root {
 
   .menu-card {
     border: 2px solid #000;
+  }
+}
+
+/* ==================== FILTER SLIDER LAYOUT GAP ==================== */
+body.filter-slider-open #main-content-box {
+  margin-right: 370px !important;
+  transition: margin-right 0.3s ease !important;
+}
+
+@media (max-width: 599px) {
+  body.filter-slider-open #main-content-box {
+    margin-right: 0 !important;
   }
 }

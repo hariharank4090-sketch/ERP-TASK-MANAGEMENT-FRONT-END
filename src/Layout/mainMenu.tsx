@@ -1,5 +1,5 @@
 // src/Layout/mainMenu.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     Box,
     Button,
@@ -248,6 +248,13 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
 
     const currentPath = normalizePath(location.pathname);
     const MAX_TABLET_ITEMS = 4;
+
+    // Automatically navigate to the first menu button page when on root path "/"
+    useEffect(() => {
+        if (currentPath === "/" && menus.length > 0 && menus[0]?.path) {
+            navigate(menus[0].path, { replace: true });
+        }
+    }, [currentPath, menus, navigate]);
 
 
     // ── Mobile ────────────────────────────────────────────────────────────────

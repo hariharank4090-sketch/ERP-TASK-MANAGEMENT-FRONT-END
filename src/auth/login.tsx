@@ -355,20 +355,18 @@ const Login: React.FC<LoginProps> = ({
                 }));
 
                 localStorage.setItem("companyId", String(companyId));
+                navigate("/", { replace: true });
                 login(finalToken, userWithCompany, companiesData);
 
                 toast.success(
                     `Welcome ${responseData.user.Name}! Logged in to ${selectedCompanyData.companyName}`
                 );
 
-                if (mountedRef.current) {
-                    setShowCompanySelect(false);
-                    setSelectedCompany(null);
-                    setCompaniesForModal([]); // Reset companies array
-                    setUserNameForModal("");
-                    pendingLoginRef.current = null;
-                    navigate("/", { replace: true });
-                }
+                setShowCompanySelect(false);
+                setSelectedCompany(null);
+                setCompaniesForModal([]); // Reset companies array
+                setUserNameForModal("");
+                pendingLoginRef.current = null;
             } catch (err: any) {
                 const msg = err.message || "Failed to select company";
                 toast.error(msg);

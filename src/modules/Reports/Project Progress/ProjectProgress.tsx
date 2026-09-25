@@ -131,13 +131,13 @@ const STYLES = `
       background: transparent;
       box-shadow: none;
       border: none;
-      padding: 24px;
+      padding: 0;
     }
     .panel-title { display: flex; flex-direction: column; gap: 4px; }
     .panel-title h2 { font-size: 20px; font-weight: 800; color: var(--text-dark); }
     .panel-title p, .panel-title .helper-txt { font-size: 15px; color: var(--text-light); }
     
-    .table-wrapper { overflow-x: auto; background: var(--light); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); border: 1px solid rgba(255, 255, 255, 0.8); }
+    .table-wrapper { overflow-x: auto; }
     .custom-dashboard-table { width: 100%; border-collapse: collapse; text-align: center; }
     .custom-dashboard-table th {
       background: var(--primary);
@@ -330,6 +330,23 @@ const STYLES = `
     }
 `;
 
+const isProjectActiveObj = (p: any): boolean => {
+  if (!p) return true;
+  if (p.Del_Flag === true || String(p.Del_Flag).toLowerCase() === "true") return false;
+
+  const statusNum = Number(p.Project_Status);
+  if (p.Project_Status !== undefined && p.Project_Status !== null && !isNaN(statusNum)) {
+    if (statusNum === 0) return false;
+  }
+  if (p.IsActive !== undefined && p.IsActive !== null) {
+    if (Number(p.IsActive) === 0) return false;
+  }
+  if (p.statusText && String(p.statusText).trim().toLowerCase() === "inactive") {
+    return false;
+  }
+  return true;
+};
+
 const isValidEmployee = (emp: any): boolean => {
   if (!emp || typeof emp !== 'string') return false;
   const trimmed = emp.trim();
@@ -344,6 +361,10 @@ const isValidEmployee = (emp: any): boolean => {
 
 const getDateOnly = (dateInput: string | Date): string => {
   if (!dateInput) return "";
+  if (typeof dateInput === "string") {
+    if (dateInput.includes("T")) return dateInput.split("T")[0];
+    if (dateInput.length === 10 && dateInput.includes("-")) return dateInput;
+  }
   try {
     const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
     if (isNaN(date.getTime())) return "";
@@ -357,6 +378,7 @@ const getDateOnly = (dateInput: string | Date): string => {
 };
 
 const formatDateDisplay = (dateStr: string) => {
+  if (!dateStr) return "-";
   const parts = dateStr.split('-');
   if (parts.length !== 3) return dateStr;
   const [y, m, d] = parts;
@@ -366,36 +388,28 @@ const formatDateDisplay = (dateStr: string) => {
 };
 
 const formatTime = (timeStr: any): string => {
-    if (!timeStr) return "--:--";
-    try {
-      if (typeof timeStr === "string" && timeStr.includes(":")) {
-          // Check if it already has AM/PM
-          if (timeStr.toLowerCase().includes("am") || timeStr.toLowerCase().includes("pm")) return timeStr;
-          
-          // Handle '1900-01-01T15:30:00' format
-          if (timeStr.includes("T")) {
-              const t = new Date(timeStr);
-              if (!isNaN(t.getTime())) {
-                  return t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-              }
-          }
-          
-          const parts = timeStr.split(":");
-          const [h, m] = parts;
-          const hours = parseInt(h, 10);
-          const ampm = hours >= 12 ? "PM" : "AM";
-          return `${hours % 12 || 12}:${(m ?? "00").padStart(2, "0")} ${ampm}`;
+  if (!timeStr) return "--:--";
+  if (typeof timeStr === "string") {
+    const str = timeStr.trim();
+    if (!str || str === "-") return "--:--";
+    if (str.toLowerCase().includes("am") || str.toLowerCase().includes("pm")) return str;
+    
+    let tStr = str;
+    if (str.includes("T")) {
+      tStr = str.split("T")[1];
+    }
+    const parts = tStr.split(":");
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!isNaN(h) && !isNaN(m)) {
+        const ampm = h >= 12 ? "PM" : "AM";
+        h = h % 12 || 12;
+        return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
       }
-      const d = new Date(timeStr);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        });
-      }
-    } catch { /* ignore error */ }
-    return "--:--";
+    }
+  }
+  return String(timeStr);
 };
   
 const calcAssignedDuration = (start: string, end: string) => {
@@ -574,6 +588,8 @@ const renderWorkingDelta = (workingDelta: string) => {
     return <span>{workingDelta}</span>;
 };
 
+let cachedTodayPlanPromise: Promise<any> | null = null;
+let cachedWorkMasterPromise: Promise<any> | null = null;
 let cachedProjectSchedulePromise: Promise<any> | null = null;
 let cachedTaskTypePromise: Promise<any> | null = null;
 let cachedEmployeePromise: Promise<any> | null = null;
@@ -609,21 +625,27 @@ export default function Projectprogress() {
 
   // Filters State
   const [appliedFilters, setAppliedFilters] = useState({
+      projectStatus: "ACTIVE",
+      from: "",
+      to: "",
       project: [] as string[],
-      employee: [] as string[],
+      taskType: [] as string[],
       task: [] as string[],
-      status: [] as string[]
+      employee: [] as string[]
   });
   
   const [draftFilters, setDraftFilters] = useState({
+      projectStatus: "ACTIVE",
+      from: "",
+      to: "",
       project: [] as string[],
-      employee: [] as string[],
+      taskType: [] as string[],
       task: [] as string[],
-      status: [] as string[]
+      employee: [] as string[]
   });
 
   const [currentProject, setCurrentProject] = useState<string | null>(null);
-  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(true);
 
   const [tooltipState, setTooltipState] = useState({ visible: false, text: '', x: 0, y: 0 });
 
@@ -637,6 +659,8 @@ export default function Projectprogress() {
     try {
       if (isRefresh) {
         setRefreshing(true);
+        cachedTodayPlanPromise = null;
+        cachedWorkMasterPromise = null;
         cachedProjectSchedulePromise = null;
         cachedTaskTypePromise = null;
         cachedEmployeePromise = null;
@@ -645,6 +669,12 @@ export default function Projectprogress() {
         setLoading(true);
       }
 
+      if (!cachedTodayPlanPromise) {
+        cachedTodayPlanPromise = getEnrichedTodayPlan({}, currentCompany.companyId);
+      }
+      if (!cachedWorkMasterPromise) {
+        cachedWorkMasterPromise = getEnrichedWorkMaster({});
+      }
       if (!cachedProjectSchedulePromise) {
         cachedProjectSchedulePromise = fetchLink({ address: "masters/projectSchedule/", method: "GET" });
       }
@@ -659,8 +689,8 @@ export default function Projectprogress() {
       }
 
       const [todayRes, workRes, scheduleRes, taskTypeRes, empRes, projRes] = await Promise.all([
-        getEnrichedTodayPlan({}, currentCompany.companyId),
-        getEnrichedWorkMaster({}),
+        cachedTodayPlanPromise,
+        cachedWorkMasterPromise,
         cachedProjectSchedulePromise,
         cachedTaskTypePromise,
         cachedEmployeePromise,
@@ -727,16 +757,38 @@ export default function Projectprogress() {
   const workData = useMemo(() => {
     const map = new Map<string, any>();
 
+    const empMap = new Map<string, string>();
+    employees.forEach(x => {
+      const id = x.Emp_Id ?? x.emp_id ?? x.Emp_ID ?? x.Id;
+      const name = x.Emp_Name || x.emp_name || x.Emp_Name_Full || x.Name;
+      if (id !== undefined && id !== null && name) {
+        empMap.set(String(id), name);
+      }
+    });
+
+    const taskTypeMap = new Map<string, string>();
+    taskTypes.forEach(x => {
+      if (x.Task_Type_Id !== undefined && x.Task_Type) {
+        taskTypeMap.set(String(x.Task_Type_Id), x.Task_Type);
+      }
+    });
+
+    const projIdMap = new Map<string, any>();
+    const projNameMap = new Map<string, any>();
+    projects.forEach(p => {
+      const id = p.Project_Id ?? p.project_id ?? p.Project_ID ?? p.Id;
+      const name = p.Project_Name ?? p.project_name ?? p.Project_NAME ?? p.Name;
+      if (id !== undefined && id !== null) projIdMap.set(String(id), p);
+      if (name) projNameMap.set(String(name).trim().toLowerCase(), p);
+    });
+
     const getEmpName = (empId: any, fallbackName?: any) => {
       const cleanFallback = fallbackName && String(fallbackName).trim();
       const isFallbackNumeric = cleanFallback && !isNaN(Number(cleanFallback));
 
       if (empId) {
-        const found = employees.find(x => String(x.Emp_Id ?? x.emp_id ?? x.Emp_ID ?? x.Id ?? "") === String(empId));
-        if (found) {
-          const name = found.Emp_Name || found.emp_name || found.Emp_Name_Full || found.Name;
-          if (name) return name;
-        }
+        const foundName = empMap.get(String(empId));
+        if (foundName) return foundName;
       }
 
       if (cleanFallback && !isFallbackNumeric) {
@@ -748,8 +800,7 @@ export default function Projectprogress() {
 
     const getTypeName = (id: any) => {
       if (!id) return null;
-      const t = taskTypes.find(x => String(x.Task_Type_Id) === String(id));
-      return t ? t.Task_Type : null;
+      return taskTypeMap.get(String(id)) || null;
     };
 
     // Map Work_Dt and Process_Id === 1 from workMaster for matching Sch_Id, Task_Id, Emp_Id
@@ -789,7 +840,7 @@ export default function Projectprogress() {
         || task.taskDetails?.Project_Id 
         || task.projectDetails?.Project_Id;
       if (projId) {
-        const found = projects.find(p => String(p.Project_Id ?? p.project_id ?? p.Project_ID ?? p.Id ?? "") === String(projId));
+        const found = projIdMap.get(String(projId));
         if (found) return found;
       }
       const pName = task.Project_Name 
@@ -801,29 +852,16 @@ export default function Projectprogress() {
         || task.projectDetails?.Project_Name;
       if (pName) {
         const cleanName = String(pName).trim().toLowerCase();
-        const found = projects.find(p => 
-          String(p.Project_Name ?? p.project_name ?? p.Project_NAME ?? p.Name ?? "").trim().toLowerCase() === cleanName
-        );
+        const found = projNameMap.get(cleanName);
         if (found) return found;
       }
       return null;
     };
 
-    const isProjectActive = (task: any) => {
+    const checkIsProjectActive = (task: any): boolean => {
       const pObj = getProjectObj(task);
       if (pObj) {
-        if (pObj.Del_Flag === true || String(pObj.Del_Flag).toLowerCase() === "true") return false;
-
-        const statusNum = Number(pObj.Project_Status);
-        if (pObj.Project_Status !== undefined && pObj.Project_Status !== null && !isNaN(statusNum)) {
-          if (statusNum === 0) return false;
-        }
-        if (pObj.IsActive !== undefined && pObj.IsActive !== null) {
-          if (Number(pObj.IsActive) === 0) return false;
-        }
-        if (pObj.statusText && String(pObj.statusText).trim().toLowerCase() === "inactive") {
-          return false;
-        }
+        return isProjectActiveObj(pObj);
       }
 
       // Direct fallback checks on task / taskDetails / projectDetails
@@ -873,7 +911,6 @@ export default function Projectprogress() {
     };
 
     assignedTasks.forEach(task => {
-      if (!isProjectActive(task)) return;
       const date = getDateOnly(task.Task_Assign_dt);
       if(!date) return;
       const key = `${date}_${task.Task_Id}_${task.Emp_Id}`;
@@ -896,6 +933,8 @@ export default function Projectprogress() {
         || process1Set.has(`task_${taskIdStr}`)
         || Boolean(actualCompDt);
 
+      const activeProj = checkIsProjectActive(task);
+
       map.set(key, {
         date: date,
         schId: schIdStr,
@@ -913,12 +952,12 @@ export default function Projectprogress() {
         executedDuration: "-",
         executedStatus: "-",
         rawActualCompletedDate: actualCompDt,
-        hasProcess1: hasProc1
+        hasProcess1: hasProc1,
+        isProjectActive: activeProj
       });
     });
 
     executedTasks.forEach(task => {
-      if (!isProjectActive(task)) return;
       const date = getDateOnly(task.Work_Dt);
       if(!date) return;
       const key = `${date}_${task.Task_Id}_${task.Emp_Id}`;
@@ -946,6 +985,8 @@ export default function Projectprogress() {
         || process1Set.has(`task_${taskIdStr}`)
         || Boolean(actualCompDt);
 
+      const activeProj = checkIsProjectActive(task);
+
       if(map.has(key)) {
         const existing = map.get(key)!;
         existing.executedStart = start;
@@ -955,6 +996,7 @@ export default function Projectprogress() {
         if(mappedType) existing.taskType = mappedType;
         if(actualCompDt) existing.rawActualCompletedDate = actualCompDt;
         existing.hasProcess1 = existing.hasProcess1 || hasProc1;
+        if (existing.isProjectActive === undefined) existing.isProjectActive = activeProj;
       } else {
         map.set(key, {
           date: date,
@@ -973,7 +1015,8 @@ export default function Projectprogress() {
           executedDuration: calculateDuration(start, end),
           executedStatus: stat.label,
           rawActualCompletedDate: actualCompDt,
-          hasProcess1: hasProc1
+          hasProcess1: hasProc1,
+          isProjectActive: activeProj
         });
       }
     });
@@ -981,46 +1024,172 @@ export default function Projectprogress() {
     return Array.from(map.values());
   }, [assignedTasks, executedTasks, taskTypes, employees, projects]);
 
+  const projStatusMap = useMemo(() => {
+    const map = new Map<string, number>();
+    projects.forEach(p => {
+      const pName = p.Project_Name || p.project_name;
+      const active = isProjectActiveObj(p) ? 1 : 0;
+      if (pName) {
+        map.set(String(pName).trim(), active);
+        map.set(String(pName).trim().toLowerCase(), active);
+      }
+      const pId = p.Project_Id ?? p.project_id ?? p.Id;
+      if (pId !== undefined && pId !== null) {
+        map.set(String(pId), active);
+      }
+    });
+    return map;
+  }, [projects]);
+
   // Filters logic
   const getFilteredData = useCallback(() => {
     let data = [...workData];
-    const { project, employee, task, status } = appliedFilters;
+    const { projectStatus, from, to, project, taskType, task, employee } = appliedFilters;
 
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (status && status.length > 0) data = data.filter(d => (d.assignedStatus && status.includes(d.assignedStatus)) || (d.executedStatus && status.includes(d.executedStatus)));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
 
     return data;
-  }, [workData, appliedFilters]);
+  }, [workData, appliedFilters, projStatusMap]);
 
   // Dropdown lists - dynamically cascading based on draftFilters selections
   const projectList = useMemo(() => {
     let data = [...workData];
-    const { employee, task, status } = draftFilters;
+    const { from, to, employee, taskType, task, projectStatus } = draftFilters;
 
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (status && status.length > 0) data = data.filter(d => (d.assignedStatus && status.includes(d.assignedStatus)) || (d.executedStatus && status.includes(d.executedStatus)));
 
     const set = new Set<string>();
     data.forEach(d => { if (d.project) set.add(d.project); });
-    if (projects.length > 0 && employee.length === 0 && task.length === 0 && status.length === 0) {
+    if (projects.length > 0 && employee.length === 0 && task.length === 0 && taskType.length === 0) {
       projects.forEach(p => {
+        const pActive = isProjectActiveObj(p);
+        if (projectStatus === "ACTIVE" && !pActive) return;
+        if (projectStatus === "INACTIVE" && pActive) return;
         const pName = p.Project_Name || p.project_name;
         if (pName) set.add(pName);
       });
     }
     return Array.from(set).sort();
-  }, [projects, workData, draftFilters]);
+  }, [projects, workData, draftFilters, projStatusMap]);
+
+  const taskTypeList = useMemo(() => {
+    let data = [...workData];
+    const { from, to, project, employee, task, projectStatus } = draftFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
+
+    const set = new Set<string>();
+    data.forEach(d => { if (d.taskType && d.taskType !== '-') set.add(d.taskType); });
+    return Array.from(set).sort();
+  }, [workData, draftFilters, projStatusMap]);
+
+  const taskList = useMemo(() => {
+    let data = [...workData];
+    const { from, to, project, employee, taskType, projectStatus } = draftFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
+
+    const set = new Set<string>();
+    data.forEach(d => { if (d.taskName) set.add(d.taskName); });
+    return Array.from(set).sort();
+  }, [workData, draftFilters, projStatusMap]);
 
   const employeeList = useMemo(() => {
     let data = [...workData];
-    const { project, task, status } = draftFilters;
+    const { from, to, project, taskType, task, projectStatus } = draftFilters;
 
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
+
+    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
+    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (status && status.length > 0) data = data.filter(d => (d.assignedStatus && status.includes(d.assignedStatus)) || (d.executedStatus && status.includes(d.executedStatus)));
 
     const backendEmpNames = new Set<string>();
     if (employees && employees.length > 0) {
@@ -1042,73 +1211,12 @@ export default function Projectprogress() {
       }
     });
 
-    if (backendEmpNames.size > 0 && project.length === 0 && task.length === 0 && status.length === 0) {
+    if (backendEmpNames.size > 0 && project.length === 0 && task.length === 0 && taskType.length === 0 && (projectStatus === "ALL" || !projectStatus)) {
       backendEmpNames.forEach(name => set.add(name));
     }
 
     return Array.from(set).sort();
-  }, [employees, workData, draftFilters]);
-
-  const taskList = useMemo(() => {
-    let data = [...workData];
-    const { project, employee, status } = draftFilters;
-
-    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
-    if (status && status.length > 0) data = data.filter(d => (d.assignedStatus && status.includes(d.assignedStatus)) || (d.executedStatus && status.includes(d.executedStatus)));
-
-    const set = new Set<string>();
-    data.forEach(d => { if (d.taskName) set.add(d.taskName); });
-    return Array.from(set).sort();
-  }, [workData, draftFilters]);
-
-  const statusList = useMemo(() => {
-    let data = [...workData];
-    const { project, employee, task } = draftFilters;
-
-    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
-    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-
-    const allStatuses = ["New", "In Progress", "Completed"];
-    const set = new Set<string>();
-    data.forEach(d => {
-      if (d.assignedStatus && allStatuses.includes(d.assignedStatus)) set.add(d.assignedStatus);
-      if (d.executedStatus && allStatuses.includes(d.executedStatus)) set.add(d.executedStatus);
-    });
-
-    const list = Array.from(set);
-    return list.length > 0 ? allStatuses.filter(s => list.includes(s)) : allStatuses;
-  }, [workData, draftFilters]);
-
-  useEffect(() => {
-    setDraftFilters(prev => {
-      const validProjects = new Set(projectList);
-      const validEmployees = new Set(employeeList);
-      const validTasks = new Set(taskList);
-      const validStatuses = new Set(statusList);
-
-      const newProject = prev.project.filter(p => validProjects.has(p));
-      const newEmployee = prev.employee.filter(e => validEmployees.has(e));
-      const newTask = prev.task.filter(t => validTasks.has(t));
-      const newStatus = prev.status.filter(s => validStatuses.has(s));
-
-      if (
-        newProject.length !== prev.project.length ||
-        newEmployee.length !== prev.employee.length ||
-        newTask.length !== prev.task.length ||
-        newStatus.length !== prev.status.length
-      ) {
-        return {
-          project: newProject,
-          employee: newEmployee,
-          task: newTask,
-          status: newStatus,
-        };
-      }
-      return prev;
-    });
-  }, [projectList, employeeList, taskList, statusList]);
+  }, [employees, workData, draftFilters, projStatusMap]);
 
   const openFilterDialog = () => {
     setDraftFilters({ ...appliedFilters });
@@ -1122,35 +1230,50 @@ export default function Projectprogress() {
   const applyFilters = () => {
     setAppliedFilters({ ...draftFilters });
     setCurrentProject(null);
-    closeFilterDialog();
   };
 
   const resetFilters = () => {
-    const emptyFilters = { project: [] as string[], employee: [] as string[], task: [] as string[], status: [] as string[] };
+    const emptyFilters = { projectStatus: "ACTIVE", from: "", to: "", project: [] as string[], taskType: [] as string[], task: [] as string[], employee: [] as string[] };
     setDraftFilters(emptyFilters);
     setAppliedFilters(emptyFilters);
     setCurrentProject(null);
-    closeFilterDialog();
   };
 
+  const updateFilterField = (field: string, val: any) => {
+    setDraftFilters((prev) => {
+      const updated = { ...prev, [field]: val };
+      if (field === "projectStatus" && prev.projectStatus !== val) {
+        updated.project = [];
+        updated.taskType = [];
+        updated.task = [];
+        updated.employee = [];
+      }
+      return updated;
+    });
+  };
+
+  const validDraftProjects = useMemo(() => {
+    return draftFilters.project.filter(p => projectList.includes(p));
+  }, [draftFilters.project, projectList]);
+
   const renderFilterDialogContent = () => (
-    <Box display="flex" flexDirection="column" gap={2} sx={{ pt: 1 }}>
-      {/* Project filter */}
+    <Box display="flex" flexDirection="column" gap={2} sx={{ pt: 0.5 }}>
+      {/* 1. Project */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
           Project
         </Typography>
         <SearchableSelect
           multiple
-          value={draftFilters.project}
+          value={validDraftProjects}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, project: arr }));
+            updateFilterField("project", arr);
           }}
           allOptionLabel="All Projects"
           allOptionValue=""
-          searchPlaceholder="Search project..."
+          searchPlaceholder="Search projects..."
           options={projectList.map((p) => ({
             value: p as string,
             label: p as string,
@@ -1158,33 +1281,33 @@ export default function Projectprogress() {
         />
       </FormControl>
 
-      {/* Resource / Employee filter */}
+      {/* 2. Task Type */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          Resource / Employee
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Task Type
         </Typography>
         <SearchableSelect
           multiple
-          value={draftFilters.employee}
+          value={draftFilters.taskType}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, employee: arr }));
+            updateFilterField("taskType", arr);
           }}
-          allOptionLabel="All Employees"
+          allOptionLabel="All Task Types"
           allOptionValue=""
-          searchPlaceholder="Search employee..."
-          options={employeeList.map((empName) => ({
-            value: empName,
-            label: empName,
+          searchPlaceholder="Search task types..."
+          options={taskTypeList.map((tt) => ({
+            value: tt as string,
+            label: tt as string,
           }))}
         />
       </FormControl>
 
-      {/* Task Category filter */}
+      {/* 3. Task */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          Task Category
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Task
         </Typography>
         <SearchableSelect
           multiple
@@ -1192,11 +1315,11 @@ export default function Projectprogress() {
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, task: arr }));
+            updateFilterField("task", arr);
           }}
           allOptionLabel="All Tasks"
           allOptionValue=""
-          searchPlaceholder="Search task..."
+          searchPlaceholder="Search tasks..."
           options={taskList.map((t) => ({
             value: t as string,
             label: t as string,
@@ -1204,26 +1327,46 @@ export default function Projectprogress() {
         />
       </FormControl>
 
-      {/* Task Status filter */}
+      {/* 4. Employee */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          Task Status
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Employee
         </Typography>
         <SearchableSelect
           multiple
-          value={draftFilters.status}
+          value={draftFilters.employee}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, status: arr }));
+            updateFilterField("employee", arr);
           }}
-          allOptionLabel="All Statuses"
+          allOptionLabel="All Employees"
           allOptionValue=""
-          searchPlaceholder="Search status..."
-          options={statusList.map((s) => ({
-            value: s,
-            label: s,
+          searchPlaceholder="Search employees..."
+          options={employeeList.map((empName) => ({
+            value: empName,
+            label: empName,
           }))}
+        />
+      </FormControl>
+
+      {/* 5. Project Status */}
+      <FormControl size="small" fullWidth>
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Project Status
+        </Typography>
+        <SearchableSelect
+          value={draftFilters.projectStatus}
+          onChange={(e) => updateFilterField("projectStatus", e.target.value)}
+          allOptionLabel="All Status"
+          allOptionValue="ALL"
+          searchPlaceholder="Search status..."
+          options={[
+           
+            
+            { value: "ACTIVE", label: "Active Only" },
+            { value: "INACTIVE", label: "Inactive Only" },
+          ]}
         />
       </FormControl>
     </Box>
@@ -1245,12 +1388,71 @@ export default function Projectprogress() {
   const renderDashboard = () => {
     const data = getFilteredData();
 
+    const schByTaskIdMap = new Map<string, string>();
+    const schByIdMap = new Map<string, string>();
+    const schByTaskNameMap = new Map<string, string>();
+
+    scheduleData.forEach((sch: any) => {
+      const endDateRaw = sch.schEndDate || sch.Sch_End_Date || sch.sch_End_Date || sch.Est_Sch_End_Date;
+      if (!endDateRaw) return;
+      const dateOnly = getDateOnly(endDateRaw);
+      if (!dateOnly) return;
+
+      const schTaskId = String(sch.Task_Id || sch.taskDetails?.Task_Id || sch.Task_Levl_Id || "");
+      const schId = String(sch.Sch_Id || sch.Id || "");
+      const schTaskName = String(sch.Task_Name || sch.taskDetails?.Task_Name || "").toLowerCase();
+
+      if (schTaskId) {
+        const cur = schByTaskIdMap.get(schTaskId);
+        if (!cur || dateOnly > cur) schByTaskIdMap.set(schTaskId, dateOnly);
+      }
+      if (schId) {
+        const cur = schByIdMap.get(schId);
+        if (!cur || dateOnly > cur) schByIdMap.set(schId, dateOnly);
+      }
+      if (schTaskName) {
+        const cur = schByTaskNameMap.get(schTaskName);
+        if (!cur || dateOnly > cur) schByTaskNameMap.set(schTaskName, dateOnly);
+      }
+    });
+
     if (!currentProject) {
       const uniqueEntries = removeDuplicates(data);
       const groups: Record<string, any[]> = {};
+
+      const projectMap = new Map<string, string>();
+      projects.forEach((p: any) => {
+        const rawName = p.Project_Name || p.project_name || p.Name;
+        if (rawName) {
+          const cleanName = String(rawName).trim();
+          projectMap.set(cleanName.toLowerCase(), cleanName);
+        }
+      });
+
+      const { projectStatus, project, taskType, task, employee, from, to } = appliedFilters;
+      const isTaskOrEmpFilterActive = (taskType && taskType.length > 0) || (task && task.length > 0) || (employee && employee.length > 0) || Boolean(from) || Boolean(to);
+
+      projects.forEach((p: any) => {
+        const rawName = p.Project_Name || p.project_name || p.Name;
+        if (!rawName) return;
+        const pName = String(rawName).trim();
+        if (!pName) return;
+
+        const pActive = isProjectActiveObj(p);
+        if (projectStatus === "ACTIVE" && !pActive) return;
+        if (projectStatus === "INACTIVE" && pActive) return;
+        if (project && project.length > 0 && !project.includes(pName)) return;
+
+        if (!isTaskOrEmpFilterActive) {
+          if (!groups[pName]) groups[pName] = [];
+        }
+      });
+
       uniqueEntries.forEach((item: any) => {
-        if (!groups[item.project]) groups[item.project] = [];
-        groups[item.project].push(item);
+        if (!item.project) return;
+        const matchedName = projectMap.get(String(item.project).trim().toLowerCase()) || item.project;
+        if (!groups[matchedName]) groups[matchedName] = [];
+        groups[matchedName].push(item);
       });
 
       const sortedProjects = Object.entries(groups).sort((a,b) => a[0].localeCompare(b[0]));
@@ -1311,25 +1513,16 @@ export default function Projectprogress() {
           const schIds = new Set(tItems.map(it => String(it.schId)).filter(Boolean));
           
           let latestSchEndDate = "";
-          scheduleData.forEach((sch: any) => {
-            const schTaskId = String(sch.Task_Id || sch.taskDetails?.Task_Id || sch.Task_Levl_Id || "");
-            const schId = String(sch.Sch_Id || sch.Id || "");
-            const schTaskName = String(sch.Task_Name || sch.taskDetails?.Task_Name || "").toLowerCase();
-
-            const isMatch = (schTaskId && taskIds.has(schTaskId))
-              || (schId && schIds.has(schId))
-              || (schTaskName && schTaskName === tName.toLowerCase());
-
-            if (isMatch) {
-              const endDateRaw = sch.schEndDate || sch.Sch_End_Date || sch.sch_End_Date || sch.Est_Sch_End_Date;
-              if (endDateRaw) {
-                const dateOnly = getDateOnly(endDateRaw);
-                if (dateOnly && (!latestSchEndDate || dateOnly > latestSchEndDate)) {
-                  latestSchEndDate = dateOnly;
-                }
-              }
-            }
+          taskIds.forEach(tId => {
+            const d = schByTaskIdMap.get(tId);
+            if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
           });
+          schIds.forEach(sId => {
+            const d = schByIdMap.get(sId);
+            if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
+          });
+          const nameD = schByTaskNameMap.get(tName.toLowerCase());
+          if (nameD && (!latestSchEndDate || nameD > latestSchEndDate)) latestSchEndDate = nameD;
 
           const latestActualDate = tItems.reduce((latest, item) => {
             const actualDate = item.rawActualCompletedDate || '';
@@ -1475,32 +1668,49 @@ export default function Projectprogress() {
               headerActions={
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <div className="filter-date-badge-wrapper" id="innerPillsBar">
+                    {(appliedFilters.from || appliedFilters.to) && (
+                      <div className="filter-badge date-badge">
+                        <i className="fa-regular fa-calendar"></i>
+                        <span>
+                          {appliedFilters.from ? formatDateDisplay(appliedFilters.from) : "Start"} -{" "}
+                          {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : "End"}
+                        </span>
+                      </div>
+                    )}
+                    {appliedFilters.projectStatus && appliedFilters.projectStatus !== "ALL" && (
+                      <div className="filter-badge status-badge">
+                        <span className="badge-lbl">Status:</span>
+                        <span>{appliedFilters.projectStatus === "ACTIVE" ? "Active Only" : "Inactive Only"}</span>
+                      </div>
+                    )}
                     {appliedFilters.project && appliedFilters.project.length > 0 && (
                       <div className="filter-badge project-badge">
                         <span className="badge-lbl">Proj:</span>
-                        <span>{appliedFilters.project.join(', ')}</span>
+                        <span>{appliedFilters.project.join(", ")}</span>
                       </div>
                     )}
-                    {appliedFilters.employee && appliedFilters.employee.length > 0 && (
-                      <div className="filter-badge resource-badge">
-                        <span className="badge-lbl">Resource:</span>
-                        <span>{appliedFilters.employee.join(', ')}</span>
+                    {appliedFilters.taskType && appliedFilters.taskType.length > 0 && (
+                      <div className="filter-badge task-badge">
+                        <span className="badge-lbl">Type:</span>
+                        <span>{appliedFilters.taskType.join(", ")}</span>
                       </div>
                     )}
                     {appliedFilters.task && appliedFilters.task.length > 0 && (
                       <div className="filter-badge task-badge">
                         <span className="badge-lbl">Task:</span>
-                        <span>{appliedFilters.task.join(', ')}</span>
+                        <span>{appliedFilters.task.join(", ")}</span>
                       </div>
                     )}
-                    {appliedFilters.status && appliedFilters.status.length > 0 && (
-                      <div className="filter-badge status-badge">
-                        <span className="badge-lbl">Status:</span>
-                        <span>{appliedFilters.status.join(', ')}</span>
+                    {appliedFilters.employee && appliedFilters.employee.length > 0 && (
+                      <div className="filter-badge resource-badge">
+                        <span className="badge-lbl">Resource:</span>
+                        <span>{appliedFilters.employee.join(", ")}</span>
                       </div>
                     )}
                   </div>
                   <TopFilterBar
+                    showTopButton={false}
+                    useSlider={true}
                     dialogOpen={filterDialogOpen}
                     onOpenDialog={openFilterDialog}
                     onCloseDialog={closeFilterDialog}
@@ -1584,25 +1794,16 @@ export default function Projectprogress() {
         const schIds = new Set(items.map(it => String(it.schId)).filter(Boolean));
         
         let latestSchEndDate = "";
-        scheduleData.forEach((sch: any) => {
-          const schTaskId = String(sch.Task_Id || sch.taskDetails?.Task_Id || sch.Task_Levl_Id || "");
-          const schId = String(sch.Sch_Id || sch.Id || "");
-          const schTaskName = String(sch.Task_Name || sch.taskDetails?.Task_Name || "").toLowerCase();
-
-          const isMatch = (schTaskId && taskIds.has(schTaskId))
-            || (schId && schIds.has(schId))
-            || (schTaskName && schTaskName === taskName.toLowerCase());
-
-          if (isMatch) {
-            const endDateRaw = sch.schEndDate || sch.Sch_End_Date || sch.sch_End_Date || sch.Est_Sch_End_Date;
-            if (endDateRaw) {
-              const dateOnly = getDateOnly(endDateRaw);
-              if (dateOnly && (!latestSchEndDate || dateOnly > latestSchEndDate)) {
-                latestSchEndDate = dateOnly;
-              }
-            }
-          }
+        taskIds.forEach(tId => {
+          const d = schByTaskIdMap.get(tId);
+          if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
         });
+        schIds.forEach(sId => {
+          const d = schByIdMap.get(sId);
+          if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
+        });
+        const nameD = schByTaskNameMap.get(taskName.toLowerCase());
+        if (nameD && (!latestSchEndDate || nameD > latestSchEndDate)) latestSchEndDate = nameD;
 
         const latestActualDate = items.reduce((latest, item) => {
           const actualDate = item.rawActualCompletedDate || '';
@@ -1772,32 +1973,49 @@ export default function Projectprogress() {
               headerActions={
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <div className="filter-date-badge-wrapper" id="innerPillsBar">
+                    {(appliedFilters.from || appliedFilters.to) && (
+                      <div className="filter-badge date-badge">
+                        <i className="fa-regular fa-calendar"></i>
+                        <span>
+                          {appliedFilters.from ? formatDateDisplay(appliedFilters.from) : "Start"} -{" "}
+                          {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : "End"}
+                        </span>
+                      </div>
+                    )}
+                    {appliedFilters.projectStatus && appliedFilters.projectStatus !== "ALL" && (
+                      <div className="filter-badge status-badge">
+                        <span className="badge-lbl">Status:</span>
+                        <span>{appliedFilters.projectStatus === "ACTIVE" ? "Active Only" : "Inactive Only"}</span>
+                      </div>
+                    )}
                     {appliedFilters.project && appliedFilters.project.length > 0 && (
                       <div className="filter-badge project-badge">
                         <span className="badge-lbl">Proj:</span>
-                        <span>{appliedFilters.project.join(', ')}</span>
+                        <span>{appliedFilters.project.join(", ")}</span>
                       </div>
                     )}
-                    {appliedFilters.employee && appliedFilters.employee.length > 0 && (
-                      <div className="filter-badge resource-badge">
-                        <span className="badge-lbl">Resource:</span>
-                        <span>{appliedFilters.employee.join(', ')}</span>
+                    {appliedFilters.taskType && appliedFilters.taskType.length > 0 && (
+                      <div className="filter-badge task-badge">
+                        <span className="badge-lbl">Type:</span>
+                        <span>{appliedFilters.taskType.join(", ")}</span>
                       </div>
                     )}
                     {appliedFilters.task && appliedFilters.task.length > 0 && (
                       <div className="filter-badge task-badge">
                         <span className="badge-lbl">Task:</span>
-                        <span>{appliedFilters.task.join(', ')}</span>
+                        <span>{appliedFilters.task.join(", ")}</span>
                       </div>
                     )}
-                    {appliedFilters.status && appliedFilters.status.length > 0 && (
-                      <div className="filter-badge status-badge">
-                        <span className="badge-lbl">Status:</span>
-                        <span>{appliedFilters.status.join(', ')}</span>
+                    {appliedFilters.employee && appliedFilters.employee.length > 0 && (
+                      <div className="filter-badge resource-badge">
+                        <span className="badge-lbl">Resource:</span>
+                        <span>{appliedFilters.employee.join(", ")}</span>
                       </div>
                     )}
                   </div>
                   <TopFilterBar
+                    showTopButton={false}
+                    useSlider={true}
                     dialogOpen={filterDialogOpen}
                     onOpenDialog={openFilterDialog}
                     onCloseDialog={closeFilterDialog}

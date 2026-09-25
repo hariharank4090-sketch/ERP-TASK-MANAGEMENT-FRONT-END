@@ -1,6 +1,6 @@
 import "./App.css";
 import "./css/input.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./auth/authContext";
 import { RequireAuth } from "./auth/requireAuth";
 import Login from "./auth/login";
@@ -8,13 +8,58 @@ import AppLayout from "./Layout/layout";
 import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { CircularProgress } from "@mui/material";
 import { appRoutes } from "./routes/indexRouter";
-import MainMenuList from "./Layout/mainMenu";
 import type { MenuRow } from "./modules/configuration/types";
 import { getAppMenuData } from "./modules/configuration/api";
 import PageNotFound from "./Components/404page";
 import { buildMenuTree } from "./utils/menuManagement";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
+import { useNavigate } from "react-router-dom";
+import { flattenTree, type MenuTreeNode } from "./utils/menuManagement";
+
+function getFirstMenuPath(navDetails: MenuTreeNode[]): string {
+    const menus = flattenTree(navDetails ?? [])
+        .filter((m) => m.menuType === 2)
+        .sort((a, b) => {
+            const as_ = a.sortOrder ?? 1000;
+            const bs_ = b.sortOrder ?? 1000;
+            return as_ !== bs_ ? as_ - bs_ : a.title.localeCompare(b.title);
+        });
+
+    if (menus.length > 0) {
+        const menu = menus[0];
+        const tUrl = menu.tUrl;
+        if (tUrl && tUrl.trim() !== "") {
+            const t = tUrl.trim();
+            const path = t.startsWith("/") ? t : "/" + t;
+            return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+        }
+        const path = menu.fullPath && menu.fullPath !== "/"
+            ? menu.fullPath
+            : "/" + (menu.slug || "");
+        return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+    }
+    return "";
+}
+
+const RootRedirect: React.FC = () => {
+    const { navDetails } = useAuth();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const targetPath = getFirstMenuPath(navDetails as MenuTreeNode[]);
+        if (targetPath && targetPath !== "/") {
+            navigate(targetPath, { replace: true });
+        }
+    }, [navDetails, navigate]);
+
+    return (
+        <div className="overlay">
+            <CircularProgress className="spinner" />
+        </div>
+    );
+};
 
 function App() {
     const { isAuthenticated, setNavDetails, currentCompany, isSwitchingCompany } = useAuth();
@@ -112,16 +157,8 @@ function App() {
                                 }
                             >
                                 <Routes>
-                                    <Route
-                                        path="/"
-                                        element={
-                                            <MainMenuList
-                                                loading={loading}
-                                                loadingOn={loadingOn}
-                                                loadingOff={loadingOff}
-                                            />
-                                        }
-                                    />
+                                    <Route path="/" element={<RootRedirect />} />
+                                    <Route path="/login" element={<Navigate to="/" replace />} />
                                     {appRoutes.map(({ path, component: Component }) => (
                                         <Route
                                             key={path}

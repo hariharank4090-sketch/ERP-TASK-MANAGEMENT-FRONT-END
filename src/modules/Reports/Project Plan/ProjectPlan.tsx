@@ -12,6 +12,7 @@ import {
 import DashboardTopFilterBar from "../../../Components/TopFilterBar";
 import SearchableSelect from "../../../Components/SearchableSelect";
 import { fetchLink } from "../../../Components/customFetch";
+import FilterableTable, { type Column } from "../../../Components/dataTable";
 
 // --- STYLES MATCHING THE HTML TEMPLATE ---
 const STYLES = `
@@ -111,35 +112,39 @@ const STYLES = `
     align-items: center;
   }
   .filter-badge {
-    background: rgba(255, 255, 255, 0.6);
-    border: 1px solid var(--border);
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.12);
     padding: 6px 14px;
     border-radius: 20px;
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-dark);
     display: flex;
     align-items: center;
     gap: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
   .badge-lbl { color: var(--text-light); font-weight: 600; }
   .date-badge {
-    background: rgba(205, 163, 99, 0.08);
-    border-color: rgba(205, 163, 99, 0.25);
-    color: #8a6730;
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #1c2d45;
     font-weight: 600;
+  }
+  .date-badge i {
+    color: #8a6730;
   }
 
   /* Card Panels & Tables */
   .card-panel {
-    background: var(--light);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    box-shadow: var(--shadow-md);
-    border: 1px solid rgba(255, 255, 255, 0.8);
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    border: none;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 0;
   }
   .panel-title { display: flex; flex-direction: column; gap: 4px; }
   .panel-title h2 { font-size: 16px; font-weight: 800; color: var(--text-dark); margin: 0; }
@@ -256,6 +261,19 @@ const STYLES = `
   .tooltip-title { font-size: 10px; font-weight: 700; color: var(--secondary); text-transform: uppercase; margin-bottom: 2px; }
   .hover-tooltip-card p { font-size: 11px; line-height: 1.4; margin: 0; }
   .no-data { text-align: center; padding: 40px; color: var(--text-light); }
+
+  /* CSS hack to flatten nested tables in expandableComp to align columns with parent */
+  tr:has(> td > .my-expand-wrapper),
+  td:has(> .my-expand-wrapper),
+  .my-expand-wrapper,
+  .my-expand-wrapper > table,
+  .my-expand-wrapper > table > tbody {
+    display: contents !important;
+  }
+  .detail-row td {
+    background-color: #fbfbfe !important;
+    border-bottom: 1px solid #e0e0e0 !important;
+  }
 `;
 
 // --- CORE UTILITIES ---
@@ -389,6 +407,60 @@ function isValidEmployee(emp: any): boolean {
   return trimmed !== '' && trimmed !== '-' && trimmed.toLowerCase() !== 'unassigned' && trimmed.toLowerCase() !== 'employee';
 }
 
+function isProjectActiveObj(p: any): boolean {
+  if (!p) return true;
+  if (p.Del_Flag === true || String(p.Del_Flag).toLowerCase() === "true" || String(p.del_flag).toLowerCase() === "true") {
+    return false;
+  }
+
+  const statusStr = String(
+    p.Project_Status ??
+    p.project_status ??
+    p.Project_Status_Name ??
+    p.Project_Status_Id ??
+    p.project_status_id ??
+    p.Project_ID_Status ??
+    p.Project_Stat ??
+    p.statusText ??
+    p.status ??
+    p.Status ??
+    ""
+  ).trim().toLowerCase();
+
+  if (statusStr === "inactive" || statusStr === "disabled" || statusStr === "completed" || statusStr === "closed" || statusStr === "0" || statusStr === "false") {
+    return false;
+  }
+
+  const rawStatus =
+    p.Project_Status ??
+    p.project_status ??
+    p.Project_ID_Status ??
+    p.Project_Status_Id ??
+    p.project_status_id ??
+    p.Project_Status_ID ??
+    p.Project_Stat ??
+    p.project_stat ??
+    p.Status ??
+    p.status;
+
+  if (rawStatus !== undefined && rawStatus !== null && rawStatus !== "") {
+    const statusNum = Number(rawStatus);
+    if (!isNaN(statusNum)) {
+      if (statusNum === 0 || statusNum === 2) return false;
+      if (statusNum === 1) return true;
+    }
+  }
+
+  const rawActive = p.IsActive ?? p.is_active ?? p.Is_Active ?? p.Active ?? p.active;
+  if (rawActive !== undefined && rawActive !== null && rawActive !== "") {
+    const activeNum = Number(rawActive);
+    if (!isNaN(activeNum) && activeNum === 0) return false;
+    if (rawActive === false || String(rawActive).toLowerCase() === "false") return false;
+  }
+
+  return true;
+}
+
 function getRowStats(items: any[]) {
   let assignMin = 0;
   let completedMin = 0;
@@ -491,41 +563,44 @@ const ProjectPlan: React.FC = () => {
   const [workData, setWorkData] = useState<any[]>([]);
 
   const [currentProject, setCurrentProject] = useState<string | null>(null);
-  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({});
 
   const [appliedFilters, setAppliedFilters] = useState<{
+    projectStatus: string;
     from: string;
     to: string;
     project: string[];
-    employee: string[];
+    taskType: string[];
     task: string[];
-    status: string[];
+    employee: string[];
   }>({
+    projectStatus: "ACTIVE",
     from: defaultStartDate,
     to: defaultEndDate,
     project: [],
-    employee: [],
+    taskType: [],
     task: [],
-    status: []
+    employee: [],
   });
 
   // Dialog state for TopFilterBar
-  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(true);
   const [draftFilters, setDraftFilters] = useState<{
+    projectStatus: string;
     from: string;
     to: string;
     project: string[];
-    employee: string[];
+    taskType: string[];
     task: string[];
-    status: string[];
+    employee: string[];
   }>({
+    projectStatus: "ACTIVE",
     from: defaultStartDate,
     to: defaultEndDate,
     project: [],
-    employee: [],
+    taskType: [],
     task: [],
-    status: []
+    employee: [],
   });
 
   // Tooltip state
@@ -539,21 +614,28 @@ const ProjectPlan: React.FC = () => {
   const [backendEmployees, setBackendEmployees] = useState<any[]>([]);
   const [backendProjects, setBackendProjects] = useState<any[]>([]);
 
-  // Try fetching API data if available
+  // Fetch fresh API data when component mounts
   const loadApiData = useCallback(async () => {
     const companyId = currentCompany?.companyId || undefined;
     try {
+      const todayResPromise = getEnrichedTodayPlan({}, companyId);
+      const workResPromise = getEnrichedWorkMaster({});
+      const empResPromise = getEmployeeDropdown(companyId);
+      const projResPromise = getProjectDropdown(companyId, undefined, undefined, true);
+      const taskTypeResPromise = fetchLink<any>({ address: "masters/taskType/", method: "GET" }).catch(() => null);
+      const scheduleEmpResPromise = fetchLink<any>({ address: "masters/projectScheduleEmp/list", method: "GET" }).catch(() => null);
+      const scheduleMasterResPromise = fetchLink<any>({ address: "masters/projectSchedule/", method: "GET" }).catch(() => null);
+      const masterTasksResPromise = getTaskDropdown(companyId, undefined, undefined, true).catch(() => []);
+
       const [todayRes, workRes, empRes, projRes, taskTypeRes, scheduleEmpRes, scheduleMasterRes, masterTasksRes] = await Promise.all([
-        getEnrichedTodayPlan({}, companyId),
-        getEnrichedWorkMaster({}),
-        getEmployeeDropdown(companyId),
-        getProjectDropdown(companyId, undefined, undefined, true),
-        fetchLink<any>({ address: "masters/taskType/", method: "GET" }).catch(() => null),
-        fetchLink<any>({ address: "masters/projectScheduleEmp/list", method: "GET" }).catch(() => null),
-        fetchLink<any>({ address: "masters/projectSchedule/?page=1&limit=100000&sortBy=Sch_Id&sortOrder=DESC", method: "GET" })
-          .catch(() => fetchLink<any>({ address: "masters/projectSchedule/", method: "GET" }))
-          .catch(() => null),
-        getTaskDropdown(companyId, undefined, undefined, true).catch(() => []),
+        todayResPromise,
+        workResPromise,
+        empResPromise,
+        projResPromise,
+        taskTypeResPromise,
+        scheduleEmpResPromise,
+        scheduleMasterResPromise,
+        masterTasksResPromise
       ]);
 
       if (Array.isArray(empRes) && empRes.length > 0) {
@@ -621,35 +703,11 @@ const ProjectPlan: React.FC = () => {
         projList = (projRes as any).data;
       }
 
-      const isProjectObjActive = (p: any): boolean => {
-        if (!p) return true;
-        if (p.Del_Flag === true || String(p.Del_Flag).toLowerCase() === "true" || String(p.del_flag).toLowerCase() === "true") {
-          return false;
-        }
-
-        const statusNum = Number(p.Project_Status ?? p.project_status ?? p.Project_ID_Status);
-        if (p.Project_Status !== undefined && p.Project_Status !== null && !isNaN(statusNum)) {
-          if (statusNum === 0) return false;
-        }
-
-        const activeNum = Number(p.IsActive ?? p.is_active);
-        if (p.IsActive !== undefined && p.IsActive !== null && !isNaN(activeNum)) {
-          if (activeNum === 0) return false;
-        }
-
-        if (p.statusText && String(p.statusText).trim().toLowerCase() === "inactive") {
-          return false;
-        }
-
-        return true;
-      };
-
       const projectStatusMap = new Map<string, boolean>();
-      const activeProjs = projList.filter((p: any) => isProjectObjActive(p));
-      setBackendProjects(activeProjs);
+      setBackendProjects(projList);
 
       projList.forEach((p: any) => {
-        const isActive = isProjectObjActive(p);
+        const isActive = isProjectActiveObj(p);
         const pId = p.Project_Id ?? p.project_id ?? p.Id;
         const pName = p.Project_Name ?? p.project_name ?? p.Name;
 
@@ -663,7 +721,7 @@ const ProjectPlan: React.FC = () => {
 
       const isProjectActive = (item: any): boolean => {
         if (!item) return false;
-        if (!isProjectObjActive(item)) return false;
+        if (!isProjectActiveObj(item)) return false;
 
         const projId = item.Project_Id ?? item.project_id ?? item.taskDetails?.Project_Id ?? item.projectDetails?.Project_Id;
         if (projId !== undefined && projId !== null && String(projId).trim() !== "") {
@@ -834,7 +892,7 @@ const ProjectPlan: React.FC = () => {
 
       const mappedData: any[] = [];
       todayItems.forEach(item => {
-        if (!isProjectActive(item)) return;
+        const activeProj = isProjectActive(item);
 
         const schStart = item.Sch_Time || item.Sch_Est_Start_Time || item.Start_Time || '09:30:00';
         const schEnd = item.EN_Time || item.Sch_Est_End_Time || item.End_Time || '18:30:00';
@@ -859,12 +917,13 @@ const ProjectPlan: React.FC = () => {
           executedStart: formatTime12(item.Start_Time || schStart),
           executedEnd: formatTime12(item.End_Time || schEnd),
           executedDuration: item.Tot_Minutes ? `${Math.floor(item.Tot_Minutes / 60)}h ${String(item.Tot_Minutes % 60).padStart(2, '0')}m` : (item.Task_Sch_Duaration || '8h 00m'),
-          executedStatus: item.Invovled_Stat === 3 ? 'Completed' : (item.Invovled_Stat === 2 ? 'In Progress' : '-')
+          executedStatus: item.Invovled_Stat === 3 ? 'Completed' : (item.Invovled_Stat === 2 ? 'In Progress' : '-'),
+          isProjectActive: activeProj
         });
       });
 
       workItems.forEach(item => {
-        if (!isProjectActive(item)) return;
+        const activeProj = isProjectActive(item);
 
         const schStart = item.Start_Time || item.Sch_Est_Start_Time || item.Sch_Time || '09:30:00';
         const schEnd = item.End_Time || item.Sch_Est_End_Time || item.EN_Time || '18:30:00';
@@ -889,7 +948,8 @@ const ProjectPlan: React.FC = () => {
           executedStart: formatTime12(schStart),
           executedEnd: formatTime12(schEnd),
           executedDuration: item.Tot_Minutes ? `${Math.floor(item.Tot_Minutes / 60)}h ${String(item.Tot_Minutes % 60).padStart(2, '0')}m` : (item.Task_Sch_Duaration || '8h 00m'),
-          executedStatus: item.Work_Status === 'Completed' || item.Work_Status === '3' ? 'Completed' : 'In Progress'
+          executedStatus: item.Work_Status === 'Completed' || item.Work_Status === '3' ? 'Completed' : 'In Progress',
+          isProjectActive: activeProj
         });
       });
 
@@ -906,7 +966,7 @@ const ProjectPlan: React.FC = () => {
       });
 
       scheduleMasterItems.forEach((sch: any) => {
-        if (!isProjectActive(sch)) return;
+        const activeProj = isProjectActive(sch);
 
         let projName = sch.Project_Name ?? sch.projectName ?? sch.project_name ?? sch.taskDetails?.Project_Name ?? sch.projectDetails?.Project_Name;
         const projId = sch.Project_Id ?? sch.project_id ?? sch.taskDetails?.Project_Id ?? sch.projectDetails?.Project_Id;
@@ -955,7 +1015,8 @@ const ProjectPlan: React.FC = () => {
           executedStart: '-',
           executedEnd: '-',
           executedDuration: '-',
-          executedStatus: '-'
+          executedStatus: '-',
+          isProjectActive: activeProj
         });
 
         existingScheduleKeys.add(schKey);
@@ -963,15 +1024,12 @@ const ProjectPlan: React.FC = () => {
       });
 
       masterTaskList.forEach((t: any) => {
-        if (!isProjectActive(t)) return;
+        const activeProj = isProjectActive(t);
 
         let projName = t.Project_Name ?? t.project_name ?? t.taskDetails?.Project_Name ?? t.projectDetails?.Project_Name;
         const projId = t.Project_Id ?? t.project_id ?? t.taskDetails?.Project_Id;
         if (!projName && projId !== undefined && projId !== null) {
-          const matchProj = projList.find((p: any) => String(p.Project_Id ?? p.project_id ?? p.Id) === String(projId));
-          if (matchProj) {
-            projName = matchProj.Project_Name || matchProj.project_name || matchProj.Name;
-          }
+          projName = projMap.get(String(projId).trim());
         }
         if (!projName && projId) {
           projName = `Project ${projId}`;
@@ -997,7 +1055,8 @@ const ProjectPlan: React.FC = () => {
           executedStart: '-',
           executedEnd: '-',
           executedDuration: '-',
-          executedStatus: '-'
+          executedStatus: '-',
+          isProjectActive: activeProj
         });
 
         existingProjectTaskKeys.add(key);
@@ -1033,118 +1092,200 @@ const ProjectPlan: React.FC = () => {
       return;
     }
     setAppliedFilters({ ...draftFilters });
-    setFilterDialogOpen(false);
   };
 
   const resetFilters = () => {
     const initial = {
+      projectStatus: "ACTIVE",
       from: defaultStartDate,
       to: defaultEndDate,
       project: [],
-      employee: [],
+      taskType: [],
       task: [],
-      status: []
+      employee: [],
     };
     setDraftFilters({ ...initial });
     setAppliedFilters({ ...initial });
     setCurrentProject(null);
-    setFilterDialogOpen(false);
   };
+
+  const projStatusMap = useMemo(() => {
+    const map = new Map<string, number>();
+    backendProjects.forEach((p: any) => {
+      const pName = p.Project_Name || p.project_name || p.Name;
+      const active = isProjectActiveObj(p) ? 1 : 0;
+      if (pName) {
+        map.set(String(pName).trim(), active);
+        map.set(String(pName).trim().toLowerCase(), active);
+      }
+      const pId = p.Project_Id ?? p.project_id ?? p.Id;
+      if (pId !== undefined && pId !== null) {
+        map.set(String(pId), active);
+      }
+    });
+    return map;
+  }, [backendProjects]);
 
   // Filtered dataset
   const filteredData = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, employee, task, status } = appliedFilters;
+    const { projectStatus, from, to, project, taskType, task, employee } = appliedFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
 
     return data;
-  }, [workData, appliedFilters]);
+  }, [workData, appliedFilters, projStatusMap]);
 
-  // Dropdown lists
   // Dropdown lists - dynamically cascading based on draftFilters selections
   const projectList = useMemo(() => {
     let data = [...workData];
-    const { from, to, employee, task, status } = draftFilters;
+    const { from, to, employee, taskType, task, projectStatus } = draftFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
 
     const set = new Set<string>();
     data.forEach(d => { if (d.project) set.add(d.project); });
-    if (backendProjects.length > 0 && employee.length === 0 && task.length === 0 && status.length === 0) {
-      backendProjects.forEach(p => {
-        const pName = p.Project_Name || p.project_name;
-        if (pName) set.add(pName);
+    if (backendProjects.length > 0 && employee.length === 0 && task.length === 0 && taskType.length === 0) {
+      backendProjects.forEach((p: any) => {
+        const pActive = isProjectActiveObj(p);
+        if (projectStatus === "ACTIVE" && !pActive) return;
+        if (projectStatus === "INACTIVE" && pActive) return;
+        const pName = p.Project_Name || p.project_name || p.Name;
+        if (pName) set.add(String(pName).trim());
       });
     }
-    draftFilters.project.forEach(p => set.add(p));
     return Array.from(set).sort();
-  }, [backendProjects, workData, draftFilters]);
+  }, [backendProjects, workData, draftFilters, projStatusMap]);
 
-  const employeeList = useMemo(() => {
+  const taskTypeList = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, task, status } = draftFilters;
+    const { from, to, project, employee, task, projectStatus } = draftFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
+    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
 
     const set = new Set<string>();
-    data.forEach(d => { if (d.employee && isValidEmployee(d.employee)) set.add(d.employee); });
-    if (backendEmployees.length > 0 && project.length === 0 && task.length === 0 && status.length === 0) {
-      backendEmployees.forEach(emp => {
-        if (emp.Emp_Name) set.add(emp.Emp_Name);
-      });
-    }
-    draftFilters.employee.forEach(emp => set.add(emp));
+    data.forEach(d => { if (d.taskType && d.taskType !== '-') set.add(d.taskType); });
     return Array.from(set).sort();
-  }, [backendEmployees, workData, draftFilters]);
+  }, [workData, draftFilters, projStatusMap]);
 
   const taskList = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, employee, status } = draftFilters;
+    const { from, to, project, employee, taskType, projectStatus } = draftFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
     if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
-    if (status && status.length > 0) data = data.filter(d => d.assignedStatus && status.includes(d.assignedStatus));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
 
     const set = new Set<string>();
     data.forEach(d => { if (d.taskName) set.add(d.taskName); });
-    draftFilters.task.forEach(t => set.add(t));
     return Array.from(set).sort();
-  }, [workData, draftFilters]);
+  }, [workData, draftFilters, projStatusMap]);
 
-  const statusList = useMemo(() => {
+  const employeeList = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, employee, task } = draftFilters;
+    const { from, to, project, taskType, task, projectStatus } = draftFilters;
+
+    if (projectStatus && projectStatus !== "ALL") {
+      data = data.filter(d => {
+        let isActive: boolean | undefined = d.isProjectActive;
+        if (isActive === undefined && d.project) {
+          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
+          if (mapVal !== undefined) {
+            isActive = mapVal !== 0;
+          }
+        }
+        if (isActive === undefined) return true;
+        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
+      });
+    }
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
     if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
     if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
 
-    const allStatuses = ["New", "In Progress", "Completed"];
     const set = new Set<string>();
-    data.forEach(d => { if (d.assignedStatus && allStatuses.includes(d.assignedStatus)) set.add(d.assignedStatus); });
-    draftFilters.status.forEach(s => set.add(s));
-
-    const list = Array.from(set);
-    return list.length > 0 ? allStatuses.filter(s => list.includes(s)) : allStatuses;
-  }, [workData, draftFilters]);
+    data.forEach(d => { if (d.employee && isValidEmployee(d.employee)) set.add(d.employee); });
+    if (backendEmployees.length > 0 && project.length === 0 && task.length === 0 && taskType.length === 0) {
+      backendEmployees.forEach(emp => {
+        const name = emp.Emp_Name || emp.emp_name || emp.Emp_Name_Full || emp.Name;
+        if (name && isValidEmployee(name)) set.add(String(name).trim());
+      });
+    }
+    return Array.from(set).sort();
+  }, [backendEmployees, workData, draftFilters, projStatusMap]);
 
   // Navigation handlers
   const drillback = () => {
@@ -1155,26 +1296,8 @@ const ProjectPlan: React.FC = () => {
     setCurrentProject(projName);
   };
 
-  const toggleTaskRow = (taskName: string) => {
-    setExpandedTasks(prev => ({ ...prev, [taskName]: !prev[taskName] }));
-  };
-
   const toggleEmpRow = (empKey: string) => {
     setExpandedEmployees(prev => ({ ...prev, [empKey]: !prev[empKey] }));
-  };
-
-  const toggleAllTasksExpanded = () => {
-    const projectItems = filteredData.filter(d => d.project === currentProject);
-    const uniqueEntries = removeDuplicates(projectItems);
-    
-    const taskNames = Array.from(new Set(uniqueEntries.map(e => e.taskName)));
-    const shouldExpand = taskNames.some(t => !expandedTasks[t]);
-
-    const newMap: Record<string, boolean> = { ...expandedTasks };
-    taskNames.forEach(t => {
-      newMap[t] = shouldExpand;
-    });
-    setExpandedTasks(newMap);
   };
 
   // Tooltip handlers
@@ -1192,54 +1315,82 @@ const ProjectPlan: React.FC = () => {
     setTooltip(prev => ({ ...prev, show: false }));
   };
 
+  const updateFilterField = (field: string, val: any) => {
+    setDraftFilters((prev) => {
+      const updated = { ...prev, [field]: val };
+      if (field === "projectStatus" && prev.projectStatus !== val) {
+        updated.project = [];
+        updated.taskType = [];
+        updated.task = [];
+        updated.employee = [];
+      }
+      return updated;
+    });
+  };
+
+  const validDraftProjects = useMemo(() => {
+    return draftFilters.project.filter(p => projectList.includes(p));
+  }, [draftFilters.project, projectList]);
+
   const renderFilterDialogContent = () => (
-    <Box display="flex" flexDirection="column" gap={2} sx={{ pt: 1 }}>
-      {/* From Date */}
-      <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          From Date
-        </Typography>
-        <TextField
-          type="date"
-          size="small"
-          fullWidth
-          value={draftFilters.from}
-          onChange={(e) => setDraftFilters(p => ({ ...p, from: e.target.value }))}
-          InputLabelProps={{ shrink: true }}
-        />
-      </FormControl>
+    <Box display="flex" flexDirection="column" gap={2} sx={{ pt: 0.5 }}>
+      {/* 1 & 2. From Date and To Date (Same Line) */}
+      <Box display="flex" gap={1.5}>
+        <FormControl size="small" sx={{ flex: 1 }}>
+          <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+            From Date
+          </Typography>
+          <TextField
+            type="date"
+            size="small"
+            fullWidth
+            value={draftFilters.from}
+            onChange={(e) => updateFilterField("from", e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{
+              backgroundColor: "#fff",
+              "& .MuiOutlinedInput-notchedOutline": { borderColor: "#d1d5db" },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#cda363" },
+            }}
+          />
+        </FormControl>
 
-      {/* To Date */}
-      <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          To Date
-        </Typography>
-        <TextField
-          type="date"
-          size="small"
-          fullWidth
-          value={draftFilters.to}
-          onChange={(e) => setDraftFilters(p => ({ ...p, to: e.target.value }))}
-          InputLabelProps={{ shrink: true }}
-        />
-      </FormControl>
+        <FormControl size="small" sx={{ flex: 1 }}>
+          <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+            To Date
+          </Typography>
+          <TextField
+            type="date"
+            size="small"
+            fullWidth
+            value={draftFilters.to}
+            onChange={(e) => updateFilterField("to", e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{
+              backgroundColor: "#fff",
+              "& .MuiOutlinedInput-notchedOutline": { borderColor: "#d1d5db" },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#cda363" },
+            }}
+          />
+        </FormControl>
+      </Box>
 
-      {/* Project filter */}
+      {/* 3. Project */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
           Project
         </Typography>
         <SearchableSelect
           multiple
-          value={draftFilters.project}
+          value={validDraftProjects}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, project: arr }));
+            updateFilterField("project", arr);
           }}
           allOptionLabel="All Projects"
           allOptionValue=""
-          searchPlaceholder="Search project..."
+          searchPlaceholder="Search projects..."
           options={projectList.map((p) => ({
             value: p,
             label: p,
@@ -1247,33 +1398,33 @@ const ProjectPlan: React.FC = () => {
         />
       </FormControl>
 
-      {/* Resource / Employee filter */}
+      {/* 4. Task Type */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          Resource / Employee
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Task Type
         </Typography>
         <SearchableSelect
           multiple
-          value={draftFilters.employee}
+          value={draftFilters.taskType}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, employee: arr }));
+            updateFilterField("taskType", arr);
           }}
-          allOptionLabel="All Employees"
+          allOptionLabel="All Task Types"
           allOptionValue=""
-          searchPlaceholder="Search employee..."
-          options={employeeList.map((emp) => ({
-            value: emp,
-            label: emp,
+          searchPlaceholder="Search task types..."
+          options={taskTypeList.map((tt) => ({
+            value: tt,
+            label: tt,
           }))}
         />
       </FormControl>
 
-      {/* Task Category filter */}
+      {/* 5. Task */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          Task Category
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Task
         </Typography>
         <SearchableSelect
           multiple
@@ -1281,11 +1432,11 @@ const ProjectPlan: React.FC = () => {
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, task: arr }));
+            updateFilterField("task", arr);
           }}
           allOptionLabel="All Tasks"
           allOptionValue=""
-          searchPlaceholder="Search task..."
+          searchPlaceholder="Search tasks..."
           options={taskList.map((t) => ({
             value: t,
             label: t,
@@ -1293,30 +1444,374 @@ const ProjectPlan: React.FC = () => {
         />
       </FormControl>
 
-      {/* Task Status filter */}
+      {/* 6. Employee */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>
-          Task Status
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Employee
         </Typography>
         <SearchableSelect
           multiple
-          value={draftFilters.status}
+          value={draftFilters.employee}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
-            setDraftFilters(p => ({ ...p, status: arr }));
+            updateFilterField("employee", arr);
           }}
-          allOptionLabel="All Statuses"
+          allOptionLabel="All Employees"
           allOptionValue=""
-          searchPlaceholder="Search status..."
-          options={statusList.map((st) => ({
-            value: st,
-            label: st,
+          searchPlaceholder="Search employees..."
+          options={employeeList.map((emp) => ({
+            value: emp,
+            label: emp,
           }))}
+        />
+      </FormControl>
+
+      {/* 7. Project Status */}
+      <FormControl size="small" fullWidth>
+        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
+          Project Status
+        </Typography>
+        <SearchableSelect
+          value={draftFilters.projectStatus}
+          onChange={(e) => updateFilterField("projectStatus", e.target.value)}
+          allOptionLabel="All Status"
+          allOptionValue="ALL"
+          searchPlaceholder="Search status..."
+          options={[
+            { value: "ACTIVE", label: "Active Only" },
+            { value: "INACTIVE", label: "Inactive Only" },
+          ]}
         />
       </FormControl>
     </Box>
   );
+
+  // Table Data and Column definitions for FilterableTable
+  const mainTableData = useMemo(() => {
+    const uniqueEntries = removeDuplicates(filteredData);
+    const groups: Record<string, any[]> = {};
+
+    const { projectStatus, project, taskType, task, employee } = appliedFilters;
+    const isTaskOrEmpFilterActive = (taskType && taskType.length > 0) || (task && task.length > 0) || (employee && employee.length > 0);
+
+    backendProjects.forEach((p: any) => {
+      const rawName = p.Project_Name || p.project_name || p.Name;
+      if (!rawName) return;
+      const pName = String(rawName).trim();
+      if (!pName) return;
+
+      const pActive = isProjectActiveObj(p);
+      if (projectStatus === "ACTIVE" && !pActive) return;
+      if (projectStatus === "INACTIVE" && pActive) return;
+      if (project && project.length > 0 && !project.includes(pName)) return;
+
+      if (!isTaskOrEmpFilterActive) {
+        if (!groups[pName]) groups[pName] = [];
+      }
+    });
+
+    uniqueEntries.forEach((item) => {
+      if (item.project) {
+        let pActive = item.isProjectActive;
+        if (pActive === undefined) {
+          const mapVal = projStatusMap.get(item.project) ?? projStatusMap.get(String(item.project).trim().toLowerCase());
+          if (mapVal !== undefined) pActive = mapVal !== 0;
+        }
+        if (projectStatus === "ACTIVE" && pActive === false) return;
+        if (projectStatus === "INACTIVE" && pActive === true) return;
+
+        if (!groups[item.project]) {
+          if (
+            !project ||
+            project.length === 0 ||
+            project.includes(item.project)
+          ) {
+            groups[item.project] = [];
+          }
+        }
+        if (groups[item.project]) {
+          groups[item.project].push(item);
+        }
+      }
+    });
+
+    const sortedProjects = Object.entries(groups).sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+
+    return sortedProjects.map(([project, items]) => {
+      const taskCount = new Set(
+        items.map((it) => it.taskName).filter((t) => t && t !== "-")
+      ).size;
+      const empSet = new Set(
+        items.map((it) => it.employee).filter(isValidEmployee)
+      );
+      const empCount = empSet.size;
+      const empNames = Array.from(empSet).join("||");
+      const stats = getRowStats(items);
+
+      return {
+        project,
+        taskCount,
+        empCount,
+        empNames,
+        startDate: stats.startDate,
+        assignHrs: stats.assignHrs,
+        endDate: stats.endDate,
+      };
+    });
+  }, [filteredData, appliedFilters, backendProjects, projStatusMap]);
+
+  const mainColumns: Column[] = [
+    {
+      Field_Name: "project",
+      ColumnHeader: "Project Name",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "left",
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <strong className="proj-title">{row.project as string}</strong>
+      ),
+    },
+    {
+      Field_Name: "taskCount",
+      ColumnHeader: "Tasks",
+      Fied_Data: "number",
+      isVisible: 1,
+      align: "center",
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <span className="indicator-badge">{row.taskCount as number}</span>
+      ),
+    },
+    {
+      Field_Name: "empCount",
+      ColumnHeader: "Team Size",
+      Fied_Data: "number",
+      isVisible: 1,
+      align: "center",
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <span
+          className="indicator-badge team-badge"
+          onMouseMove={(e) => showTeamTooltip(e, row.empNames as string)}
+          onMouseLeave={hideTeamTooltip}
+        >
+          <i className="fa-solid fa-users-viewfinder"></i> {row.empCount as number}
+        </span>
+      ),
+    },
+    {
+      Field_Name: "startDate",
+      ColumnHeader: "Schedule Start Date",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "center",
+    },
+    {
+      Field_Name: "assignHrs",
+      ColumnHeader: "Assign Hours",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "center",
+    },
+    {
+      Field_Name: "endDate",
+      ColumnHeader: "Schedule End Date",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "center",
+    },
+  ];
+
+  const detailTableData = useMemo(() => {
+    if (!currentProject) return [];
+    const projectItems = filteredData.filter((d) => d.project === currentProject);
+    const uniqueEntries = removeDuplicates(projectItems);
+
+    const groups: Record<string, any[]> = {};
+    uniqueEntries.forEach((item) => {
+      if (!groups[item.taskName]) groups[item.taskName] = [];
+      groups[item.taskName].push(item);
+    });
+
+    const taskEntries = Object.entries(groups);
+
+    return taskEntries.map(([taskName, items]) => {
+      const empSet = new Set(
+        items.map((it) => it.employee).filter(isValidEmployee)
+      );
+      const empCount = empSet.size;
+      const empNames = Array.from(empSet).join("||");
+      const stats = getRowStats(items);
+      const taskType =
+        items.find((it) => it.taskType && it.taskType !== "-")?.taskType ||
+        items[0]?.taskType ||
+        "-";
+
+      const empGroups: Record<string, any[]> = {};
+      items.forEach((it) => {
+        const empLabel = isValidEmployee(it.employee) ? it.employee : "Not Assigned";
+        if (!empGroups[empLabel]) empGroups[empLabel] = [];
+        empGroups[empLabel].push(it);
+      });
+
+      return {
+        taskName,
+        taskType,
+        empCount,
+        empNames,
+        startDate: stats.startDate,
+        assignHrs: stats.assignHrs,
+        endDate: stats.endDate,
+        empGroups,
+      };
+    });
+  }, [currentProject, filteredData]);
+
+  const detailColumns: Column[] = [
+    {
+      Field_Name: "taskName",
+      ColumnHeader: "Task Name",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "left",
+      isCustomCell: true,
+      Cell: ({ row }) => <span className="task-title">{row.taskName as string}</span>,
+    },
+    {
+      Field_Name: "taskType",
+      ColumnHeader: "Task Type",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "left",
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <span className="task-title" style={{ color: "var(--text-light)", fontSize: "13px", fontWeight: 500 }}>
+          {row.taskType as string}
+        </span>
+      ),
+    },
+    {
+      Field_Name: "empCount",
+      ColumnHeader: "Resources",
+      Fied_Data: "number",
+      isVisible: 1,
+      align: "left",
+      isCustomCell: true,
+      Cell: ({ row }) => (
+        <span
+          className="indicator-badge team-badge"
+          onMouseMove={(e) => showTeamTooltip(e, row.empNames as string)}
+          onMouseLeave={hideTeamTooltip}
+        >
+          <i className="fa-solid fa-user-gear"></i> {row.empCount as number}
+        </span>
+      ),
+    },
+    {
+      Field_Name: "startDate",
+      ColumnHeader: "Schedule Start Date",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "center",
+    },
+    {
+      Field_Name: "assignHrs",
+      ColumnHeader: "Assign Hours",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "center",
+    },
+    {
+      Field_Name: "endDate",
+      ColumnHeader: "Schedule End Date",
+      Fied_Data: "string",
+      isVisible: 1,
+      align: "center",
+    },
+  ];
+
+  const renderExpandedTaskDetails = ({ row }: { row: any }) => {
+    const empGroups = row.empGroups as Record<string, any[]>;
+    const taskName = row.taskName as string;
+
+    return (
+      <div className="my-expand-wrapper">
+        <table>
+          <tbody>
+            {Object.entries(empGroups).map(([employee, empItems]) => {
+              const empStats = getRowStats(empItems);
+              const empKey = taskName + "_" + employee;
+              const isEmpExpanded = !!expandedEmployees[empKey];
+
+              return (
+                <React.Fragment key={empKey}>
+                  <tr className="clickable-row detail-row" onClick={() => toggleEmpRow(empKey)}>
+                    <td style={{ borderBottom: "1px solid #f1f5f9" }}></td>
+                    <td style={{ borderBottom: "1px solid #f1f5f9" }}></td>
+                    <td style={{ borderBottom: "1px solid #f1f5f9" }}></td>
+                    <td style={{ textAlign: "left", padding: "10px 12px", fontSize: "13px", borderBottom: "1px solid #f1f5f9" }}>
+                      <button className={`expand-row-indicator ${isEmpExpanded ? "rotated" : ""}`} style={{ marginRight: "8px" }}>
+                        <i className="fa-solid fa-chevron-right"></i>
+                      </button>
+                      <strong>{isValidEmployee(employee) ? employee : "Not Assigned"}</strong>
+                      {isValidEmployee(employee) && (
+                        <span className="indicator-badge" style={{ marginLeft: "6px" }} title="Total Schedules">
+                          {empItems.length}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px", fontSize: "13px", borderBottom: "1px solid #f1f5f9", textAlign: "center" }}>
+                      {empStats.startDate}
+                    </td>
+                    <td style={{ padding: "10px", fontSize: "13px", borderBottom: "1px solid #f1f5f9", textAlign: "center" }}>
+                      {empStats.assignHrs}
+                    </td>
+                    <td style={{ padding: "10px", fontSize: "13px", borderBottom: "1px solid #f1f5f9", textAlign: "center" }}>
+                      {empStats.endDate}
+                    </td>
+                  </tr>
+
+                  {isEmpExpanded &&
+                    empItems.map((item, idx) => {
+                      const assDur = calcAssignedDuration(item.assignedStart, item.assignedEnd, item.assignedDurationRaw);
+                      const rawItemStart = item.startDate && item.startDate !== "-" ? item.startDate : item.date && item.date !== "-" ? item.date : "";
+                      const rawItemEnd = item.endDate && item.endDate !== "-" ? item.endDate : rawItemStart || "";
+                      const displayItemStart = rawItemStart ? formatDateDisplay(rawItemStart) : "-";
+                      const displayItemEnd = rawItemEnd ? formatDateDisplay(rawItemEnd) : "-";
+
+                      return (
+                        <tr key={idx} className="detail-row">
+                          <td style={{ borderBottom: "1px solid #e2e8f0" }}></td>
+                          <td style={{ borderBottom: "1px solid #e2e8f0" }}></td>
+                          <td style={{ borderBottom: "1px solid #e2e8f0" }}></td>
+                          <td style={{ textAlign: "left", padding: "8px 12px 8px 36px", fontSize: "12px", borderBottom: "1px solid #e2e8f0" }}>
+                            <span style={{ color: "var(--text-light)", marginRight: "6px" }}>#{idx + 1}</span>
+                            {item.scheduleType || "-"}
+                          </td>
+                          <td style={{ textAlign: "center", padding: "8px", fontSize: "12px", borderBottom: "1px solid #e2e8f0" }}>
+                            {displayItemStart}
+                          </td>
+                          <td style={{ textAlign: "center", padding: "8px", fontSize: "12px", borderBottom: "1px solid #e2e8f0" }}>
+                            {assDur}
+                          </td>
+                          <td style={{ textAlign: "center", padding: "8px", fontSize: "12px", borderBottom: "1px solid #e2e8f0" }}>
+                            {displayItemEnd}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -1325,379 +1820,164 @@ const ProjectPlan: React.FC = () => {
         <div className="card-panel" id="dashboardPanel">
           {!currentProject ? (
             // MAIN PROJECTS LIST VIEW
-            (() => {
-              const uniqueEntries = removeDuplicates(filteredData);
-              const groups: Record<string, any[]> = {};
-
-              const hasTaskSpecificFilter = (appliedFilters.employee && appliedFilters.employee.length > 0) ||
-                                            (appliedFilters.task && appliedFilters.task.length > 0) ||
-                                            (appliedFilters.status && appliedFilters.status.length > 0);
-
-              if (!hasTaskSpecificFilter) {
-                backendProjects.forEach((p: any) => {
-                  const pName = p.Project_Name || p.project_name || p.Name;
-                  if (pName) {
-                    const trimmedName = String(pName).trim();
-                    if (!appliedFilters.project || appliedFilters.project.length === 0 || appliedFilters.project.includes(trimmedName)) {
-                      groups[trimmedName] = [];
-                    }
-                  }
-                });
+            <FilterableTable
+              key="project-plan-main-table"
+              headerTitle={
+                <div className="panel-title">
+                  <h2 style={{ margin: 0 }}>Project Plan List</h2>
+                </div>
               }
-
-              uniqueEntries.forEach(item => {
-                if (item.project) {
-                  if (!groups[item.project]) {
-                    if (!appliedFilters.project || appliedFilters.project.length === 0 || appliedFilters.project.includes(item.project)) {
-                      groups[item.project] = [];
-                    }
-                  }
-                  if (groups[item.project]) {
-                    groups[item.project].push(item);
-                  }
-                }
-              });
-
-              const sortedProjects = Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
-
-              return (
-                <>
-                  <div className="panel-header-row">
-                    <div className="panel-title">
-                      <h2>Project Plan List</h2>
-                    </div>
-                    <div className="panel-actions-row">
-                      <div className="filter-date-badge-wrapper" id="innerPillsBar">
-                        {(appliedFilters.from || appliedFilters.to) && (
-                          <div className="filter-badge date-badge">
-                            <i className="fa-regular fa-calendar"></i>
-                            <span>{appliedFilters.from ? formatDateDisplay(appliedFilters.from) : 'Start'} - {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : 'End'}</span>
-                          </div>
-                        )}
-                        {appliedFilters.project && appliedFilters.project.length > 0 && (
-                          <div className="filter-badge project-badge">
-                            <span className="badge-lbl">Proj:</span>
-                            <span>{appliedFilters.project.join(', ')}</span>
-                          </div>
-                        )}
-                        {appliedFilters.employee && appliedFilters.employee.length > 0 && (
-                          <div className="filter-badge resource-badge">
-                            <span className="badge-lbl">Resource:</span>
-                            <span>{appliedFilters.employee.join(', ')}</span>
-                          </div>
-                        )}
-                        {appliedFilters.task && appliedFilters.task.length > 0 && (
-                          <div className="filter-badge task-badge">
-                            <span className="badge-lbl">Task:</span>
-                            <span>{appliedFilters.task.join(', ')}</span>
-                          </div>
-                        )}
-                        {appliedFilters.status && appliedFilters.status.length > 0 && (
-                          <div className="filter-badge status-badge">
-                            <span className="badge-lbl">Status:</span>
-                            <span>{appliedFilters.status.join(', ')}</span>
-                          </div>
-                        )}
+              headerActions={
+                <div className="panel-actions-row">
+                  <div className="filter-date-badge-wrapper" id="innerPillsBar">
+                    {(appliedFilters.from || appliedFilters.to) && (
+                      <div className="filter-badge date-badge">
+                        <i className="fa-regular fa-calendar"></i>
+                        <span>
+                          {appliedFilters.from ? formatDateDisplay(appliedFilters.from) : "Start"} -{" "}
+                          {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : "End"}
+                        </span>
                       </div>
-                      <DashboardTopFilterBar
-                        dialogOpen={filterDialogOpen}
-                        onOpenDialog={openFilterDialog}
-                        onCloseDialog={closeFilterDialog}
-                        onSearch={applyFilters}
-                        onReset={resetFilters}
-                      >
-                        {renderFilterDialogContent()}
-                      </DashboardTopFilterBar>
-                    </div>
+                    )}
+                    {appliedFilters.projectStatus && appliedFilters.projectStatus !== "ALL" && (
+                      <div className="filter-badge status-badge">
+                        <span className="badge-lbl">Status:</span>
+                        <span>{appliedFilters.projectStatus === "ACTIVE" ? "Active Only" : "Inactive Only"}</span>
+                      </div>
+                    )}
+                    {appliedFilters.project && appliedFilters.project.length > 0 && (
+                      <div className="filter-badge project-badge">
+                        <span className="badge-lbl">Proj:</span>
+                        <span>{appliedFilters.project.join(", ")}</span>
+                      </div>
+                    )}
+                    {appliedFilters.taskType && appliedFilters.taskType.length > 0 && (
+                      <div className="filter-badge task-badge">
+                        <span className="badge-lbl">Type:</span>
+                        <span>{appliedFilters.taskType.join(", ")}</span>
+                      </div>
+                    )}
+                    {appliedFilters.task && appliedFilters.task.length > 0 && (
+                      <div className="filter-badge task-badge">
+                        <span className="badge-lbl">Task:</span>
+                        <span>{appliedFilters.task.join(", ")}</span>
+                      </div>
+                    )}
+                    {appliedFilters.employee && appliedFilters.employee.length > 0 && (
+                      <div className="filter-badge resource-badge">
+                        <span className="badge-lbl">Resource:</span>
+                        <span>{appliedFilters.employee.join(", ")}</span>
+                      </div>
+                    )}
                   </div>
-
-                  <div className="table-wrapper">
-                    <table className="custom-dashboard-table" style={{ tableLayout: 'fixed', width: '100%' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left', width: '25%' }}>Project Name</th>
-                          <th style={{ width: '5%' }}>Tasks</th>
-                          <th style={{ width: '10%' }}>Team Size</th>
-                          <th style={{ width: '20%' }}>Schedule Start Date</th>
-                          <th style={{ width: '20%' }}>Assign Hours</th>
-                          <th style={{ width: '20%' }}>Schedule End Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedProjects.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="no-data">No matching records found. Try adjusting filters or click Reset.</td>
-                          </tr>
-                        ) : (
-                          sortedProjects.map(([project, items]) => {
-                            const taskCount = new Set(items.map(it => it.taskName).filter(t => t && t !== '-')).size;
-                            const empSet = new Set(items.map(it => it.employee).filter(isValidEmployee));
-                            const empCount = empSet.size;
-                            const empNames = Array.from(empSet).join('||');
-                            const stats = getRowStats(items);
-
-                            return (
-                              <tr key={project} className="clickable-row" onClick={() => selectProject(project)}>
-                                <td style={{ textAlign: 'left' }}><strong className="proj-title">{project}</strong></td>
-                                <td><span className="indicator-badge">{taskCount}</span></td>
-                                <td>
-                                  <span
-                                    className="indicator-badge team-badge"
-                                    onMouseMove={(e) => showTeamTooltip(e, empNames)}
-                                    onMouseLeave={hideTeamTooltip}
-                                  >
-                                    <i className="fa-solid fa-users-viewfinder"></i> {empCount}
-                                  </span>
-                                </td>
-                                <td>{stats.startDate}</td>
-                                <td>{stats.assignHrs}</td>
-                                <td>{stats.endDate}</td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()
+                  <DashboardTopFilterBar
+                    showTopButton={false}
+                    useSlider={true}
+                    dialogOpen={filterDialogOpen}
+                    onOpenDialog={openFilterDialog}
+                    onCloseDialog={closeFilterDialog}
+                    onSearch={applyFilters}
+                    onReset={resetFilters}
+                  >
+                    {renderFilterDialogContent()}
+                  </DashboardTopFilterBar>
+                </div>
+              }
+              dataArray={mainTableData}
+              columns={mainColumns}
+              onClickFun={(row) => selectProject(row.project as string)}
+              disablePagination={false}
+              tableMaxHeight={700}
+              CellSize="medium"
+              bodyFontSizePx={14}
+              headerFontSizePx={15}
+              PDFPrintOption={false}
+              ExcelPrintOption={false}
+              emptyMessage="No matching records found. Try adjusting filters or click Reset."
+              tableProps={{ sx: { width: "100%", minWidth: "100%" } }}
+            />
           ) : (
             // DETAILED PROJECT TASKS DRILLDOWN VIEW
-            (() => {
-              const projectItems = filteredData.filter(d => d.project === currentProject);
-              const uniqueEntries = removeDuplicates(projectItems);
-
-              const groups: Record<string, any[]> = {};
-              uniqueEntries.forEach(item => {
-                if (!groups[item.taskName]) groups[item.taskName] = [];
-                groups[item.taskName].push(item);
-              });
-
-              const taskEntries = Object.entries(groups);
-
-              return (
-                <>
-                  <div className="drilldown-header">
-                    <div className="drilldown-title">
-                      <button className="back-icon-btn" onClick={drillback}>
-                        <i className="fa-solid fa-arrow-left"></i>
-                      </button>
-                      <h2>{currentProject}</h2>
-                    </div>
-                    <div className="panel-actions-row">
-                      <div className="filter-date-badge-wrapper" id="innerPillsBar">
-                        {(appliedFilters.from || appliedFilters.to) && (
-                          <div className="filter-badge date-badge">
-                            <i className="fa-regular fa-calendar"></i>
-                            <span>{appliedFilters.from ? formatDateDisplay(appliedFilters.from) : 'Start'} - {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : 'End'}</span>
-                          </div>
-                        )}
-                        {appliedFilters.project && appliedFilters.project.length > 0 && (
-                          <div className="filter-badge project-badge">
-                            <span className="badge-lbl">Proj:</span>
-                            <span>{appliedFilters.project.join(', ')}</span>
-                          </div>
-                        )}
-                        {appliedFilters.employee && appliedFilters.employee.length > 0 && (
-                          <div className="filter-badge resource-badge">
-                            <span className="badge-lbl">Resource:</span>
-                            <span>{appliedFilters.employee.join(', ')}</span>
-                          </div>
-                        )}
-                        {appliedFilters.task && appliedFilters.task.length > 0 && (
-                          <div className="filter-badge task-badge">
-                            <span className="badge-lbl">Task:</span>
-                            <span>{appliedFilters.task.join(', ')}</span>
-                          </div>
-                        )}
-                        {appliedFilters.status && appliedFilters.status.length > 0 && (
-                          <div className="filter-badge status-badge">
-                            <span className="badge-lbl">Status:</span>
-                            <span>{appliedFilters.status.join(', ')}</span>
-                          </div>
-                        )}
+            <FilterableTable
+              key={`project-plan-detail-table-${currentProject}`}
+              headerTitle={
+                <div className="drilldown-title">
+                  <button className="back-icon-btn" onClick={drillback} title="Back">
+                    <i className="fa-solid fa-arrow-left"></i>
+                  </button>
+                  <h2 style={{ margin: 0 }}>{currentProject}</h2>
+                </div>
+              }
+              headerActions={
+                <div className="panel-actions-row">
+                  <div className="filter-date-badge-wrapper" id="innerPillsBar">
+                    {(appliedFilters.from || appliedFilters.to) && (
+                      <div className="filter-badge date-badge">
+                        <i className="fa-regular fa-calendar"></i>
+                        <span>
+                          {appliedFilters.from ? formatDateDisplay(appliedFilters.from) : "Start"} -{" "}
+                          {appliedFilters.to ? formatDateDisplay(appliedFilters.to) : "End"}
+                        </span>
                       </div>
-                      <DashboardTopFilterBar
-                        dialogOpen={filterDialogOpen}
-                        onOpenDialog={openFilterDialog}
-                        onCloseDialog={closeFilterDialog}
-                        onSearch={applyFilters}
-                        onReset={resetFilters}
-                      >
-                        {renderFilterDialogContent()}
-                      </DashboardTopFilterBar>
-                    </div>
+                    )}
+                    {appliedFilters.projectStatus && appliedFilters.projectStatus !== "ALL" && (
+                      <div className="filter-badge status-badge">
+                        <span className="badge-lbl">Status:</span>
+                        <span>{appliedFilters.projectStatus === "ACTIVE" ? "Active Only" : "Inactive Only"}</span>
+                      </div>
+                    )}
+                    {appliedFilters.project && appliedFilters.project.length > 0 && (
+                      <div className="filter-badge project-badge">
+                        <span className="badge-lbl">Proj:</span>
+                        <span>{appliedFilters.project.join(", ")}</span>
+                      </div>
+                    )}
+                    {appliedFilters.taskType && appliedFilters.taskType.length > 0 && (
+                      <div className="filter-badge task-badge">
+                        <span className="badge-lbl">Type:</span>
+                        <span>{appliedFilters.taskType.join(", ")}</span>
+                      </div>
+                    )}
+                    {appliedFilters.task && appliedFilters.task.length > 0 && (
+                      <div className="filter-badge task-badge">
+                        <span className="badge-lbl">Task:</span>
+                        <span>{appliedFilters.task.join(", ")}</span>
+                      </div>
+                    )}
+                    {appliedFilters.employee && appliedFilters.employee.length > 0 && (
+                      <div className="filter-badge resource-badge">
+                        <span className="badge-lbl">Resource:</span>
+                        <span>{appliedFilters.employee.join(", ")}</span>
+                      </div>
+                    )}
                   </div>
-
-                  <div className="table-wrapper">
-                    <table className="custom-dashboard-table task-view" style={{ tableLayout: 'fixed', width: '100%' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ width: '45px', textAlign: 'center', padding: 0 }}>
-                            <button
-                              className="toggle-all-rows-btn-inline"
-                              onClick={toggleAllTasksExpanded}
-                              title="Toggle All Details"
-                            >
-                              <i className="fa-solid fa-expand"></i>
-                            </button>
-                          </th>
-                          <th style={{ textAlign: 'left', width: '15%' }}>Task Name</th>
-                          <th style={{ textAlign: 'left', width: '10%' }}>Task Type</th>
-                          <th style={{ width: '15%' }}>Resources</th>
-                          <th style={{ width: '20%' }}>Schedule Start Date</th>
-                          <th style={{ width: '20%' }}>Assign Hours</th>
-                          <th style={{ width: '20%' }}>Schedule End Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {taskEntries.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="no-data">No tasks match the filters for this project.</td>
-                          </tr>
-                        ) : (
-                            taskEntries.map(([taskName, items]) => {
-                            const empSet = new Set(items.map(it => it.employee).filter(isValidEmployee));
-                            const empCount = empSet.size;
-                            const empNames = Array.from(empSet).join('||');
-
-                            const stats = getRowStats(items);
-                            const isExpanded = !!expandedTasks[taskName];
-                            const taskType = items.find(it => it.taskType && it.taskType !== '-')?.taskType || items[0]?.taskType || '-';
-
-                            const empGroups: Record<string, any[]> = {};
-                            items.forEach(it => {
-                              const empLabel = isValidEmployee(it.employee) ? it.employee : 'Not Assigned';
-                              if (!empGroups[empLabel]) empGroups[empLabel] = [];
-                              empGroups[empLabel].push(it);
-                            });
-
-                            return (
-                              <React.Fragment key={taskName}>
-                                <tr className="clickable-row" onClick={() => toggleTaskRow(taskName)}>
-                                  <td>
-                                    <button className={`expand-row-indicator ${isExpanded ? 'rotated' : ''}`}>
-                                      <i className="fa-solid fa-chevron-right"></i>
-                                    </button>
-                                  </td>
-                                  <td style={{ textAlign: 'left' }}><span className="task-title">{taskName}</span></td>
-                                  <td style={{ textAlign: 'left' }}><span className="task-title" style={{ color: 'var(--text-light)', fontSize: '13px', fontWeight: 500 }}>{taskType}</span></td>
-                                  <td>
-                                    <span
-                                      className="indicator-badge team-badge"
-                                      onMouseMove={(e) => showTeamTooltip(e, empNames)}
-                                      onMouseLeave={hideTeamTooltip}
-                                    >
-                                      <i className="fa-solid fa-user-gear"></i> {empCount}
-                                    </span>
-                                  </td>
-                                  <td>{stats.startDate}</td>
-                                  <td>{stats.assignHrs}</td>
-                                  <td>{stats.endDate}</td>
-                                </tr>
-
-                                {isExpanded && (
-                                  <tr className="detail-row">
-                                    <td colSpan={7} style={{ padding: 0 }}>
-                                      <div className="nested-table-container">
-                                        <table className="nested-dashboard-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                                          <colgroup>
-                                            <col style={{ width: '45px' }} />
-                                            <col style={{ width: '15%' }} />
-                                            <col style={{ width: '10%' }} />
-                                            <col style={{ width: '15%' }} />
-                                            <col style={{ width: '20%' }} />
-                                            <col style={{ width: '20%' }} />
-                                            <col style={{ width: '20%' }} />
-                                          </colgroup>
-                                          <tbody>
-                                            {Object.entries(empGroups).map(([employee, empItems]) => {
-                                              const empStats = getRowStats(empItems);
-                                              const empKey = taskName + '_' + employee;
-                                              const isEmpExpanded = !!expandedEmployees[empKey];
-
-                                              return (
-                                                <React.Fragment key={empKey}>
-                                                  <tr className="clickable-row" onClick={() => toggleEmpRow(empKey)}>
-                                                    <td style={{ borderBottom: '1px solid #f1f5f9' }}></td>
-                                                    <td style={{ borderBottom: '1px solid #f1f5f9' }}></td>
-                                                    <td style={{ borderBottom: '1px solid #f1f5f9' }}></td>
-                                                    <td style={{ textAlign: 'left', padding: '12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9' }}>
-                                                      <button className={`expand-row-indicator ${isEmpExpanded ? 'rotated' : ''}`} style={{ marginRight: '8px' }}>
-                                                        <i className="fa-solid fa-chevron-right"></i>
-                                                      </button>
-                                                      <strong>{isValidEmployee(employee) ? employee : 'Not Assigned'}</strong>
-                                                      {isValidEmployee(employee) && (
-                                                        <span className="indicator-badge" style={{ marginLeft: '6px' }} title="Total Schedules">{empItems.length}</span>
-                                                      )}
-                                                    </td>
-                                                    <td style={{ padding: '12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9' }}>{empStats.startDate}</td>
-                                                    <td style={{ padding: '12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9' }}>{empStats.assignHrs}</td>
-                                                    <td style={{ padding: '12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9' }}>{empStats.endDate}</td>
-                                                  </tr>
-
-                                                  {isEmpExpanded && (
-                                                    <tr className="detail-row">
-                                                      <td style={{ border: 'none' }}></td>
-                                                      <td colSpan={6} style={{ padding: 0 }}>
-                                                        <div className="nested-table-container">
-                                                          <table className="nested-dashboard-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                                                            <colgroup>
-                                                              <col style={{ width: '15%' }} />
-                                                              <col style={{ width: '10%' }} />
-                                                              <col style={{ width: '15%' }} />
-                                                              <col style={{ width: '20%' }} />
-                                                              <col style={{ width: '20%' }} />
-                                                              <col style={{ width: '20%' }} />
-                                                            </colgroup>
-                                                            <tbody>
-                                                              {empItems.map((item, idx) => {
-                                                                const assDur = calcAssignedDuration(item.assignedStart, item.assignedEnd, item.assignedDurationRaw);
-                                                                const rawItemStart = item.startDate && item.startDate !== '-' ? item.startDate : (item.date && item.date !== '-' ? item.date : '');
-                                                                const rawItemEnd = item.endDate && item.endDate !== '-' ? item.endDate : (rawItemStart || '');
-                                                                const displayItemStart = rawItemStart ? formatDateDisplay(rawItemStart) : '-';
-                                                                const displayItemEnd = rawItemEnd ? formatDateDisplay(rawItemEnd) : '-';
-
-                                                                return (
-                                                                  <tr key={idx}>
-                                                                    <td style={{ borderBottom: '1px solid #e2e8f0' }}></td>
-                                                                    <td style={{ borderBottom: '1px solid #e2e8f0' }}></td>
-                                                                    <td style={{ textAlign: 'left', padding: '8px 12px', fontSize: '12px', borderBottom: '1px solid #e2e8f0' }}>
-                                                                      <span style={{ color: 'var(--text-light)', marginRight: '6px' }}>#{idx + 1}</span>
-                                                                      {item.scheduleType || '-'}
-                                                                    </td>
-                                                                    <td style={{ textAlign: 'center', padding: '8px', fontSize: '12px', borderBottom: '1px solid #e2e8f0' }}>{displayItemStart}</td>
-                                                                    <td style={{ padding: '8px', fontSize: '12px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>{assDur}</td>
-                                                                    <td style={{ textAlign: 'center', padding: '8px', fontSize: '12px', borderBottom: '1px solid #e2e8f0' }}>{displayItemEnd}</td>
-                                                                  </tr>
-                                                                );
-                                                              })}
-                                                            </tbody>
-                                                          </table>
-                                                        </div>
-                                                      </td>
-                                                    </tr>
-                                                  )}
-                                                </React.Fragment>
-                                              );
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()
+                  <DashboardTopFilterBar
+                    showTopButton={false}
+                    useSlider={true}
+                    dialogOpen={filterDialogOpen}
+                    onOpenDialog={openFilterDialog}
+                    onCloseDialog={closeFilterDialog}
+                    onSearch={applyFilters}
+                    onReset={resetFilters}
+                  >
+                    {renderFilterDialogContent()}
+                  </DashboardTopFilterBar>
+                </div>
+              }
+              dataArray={detailTableData}
+              columns={detailColumns}
+              isExpendable={true}
+              expandableComp={renderExpandedTaskDetails}
+              disablePagination={false}
+              tableMaxHeight={700}
+              CellSize="medium"
+              bodyFontSizePx={14}
+              headerFontSizePx={15}
+              PDFPrintOption={false}
+              ExcelPrintOption={false}
+              emptyMessage="No tasks match the filters for this project."
+              tableProps={{ sx: { width: "100%", minWidth: "100%" } }}
+            />
           )}
         </div>
       </div>

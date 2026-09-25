@@ -10,6 +10,7 @@ import {
 import { FilterList, RotateLeft } from '@mui/icons-material';
 import SearchableSelect from './SearchableSelect';
 import AppDialog from './appDialog';
+import FilterSideSlider from './FilterSideSlider';
 
 export type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
@@ -55,6 +56,8 @@ export interface DashboardTopFilterBarProps {
   // Custom filter inputs slot for page-specific inputs
   children?: React.ReactNode;
   filterButtonSx?: any;
+  useSlider?: boolean;
+  showTopButton?: boolean;
 }
 
 const toYMD = (val: unknown): string => {
@@ -147,6 +150,8 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
   numEq,
   children,
   filterButtonSx,
+  useSlider = false,
+  showTopButton = true,
 }) => {
   const employeeActiveProjectIds = React.useMemo(() => {
     if (employeeIdFilter === "ALL") return null;
@@ -316,7 +321,6 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
 
   const handleApplyFilter = () => {
     onSearch();
-    onCloseDialog();
   };
 
   const renderFilterInputs = (isInDialog: boolean = false) => (
@@ -592,27 +596,33 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
 
   return (
     <>
-      <Tooltip title="Filter Options">
-        <IconButton
-          onClick={onOpenDialog}
-          sx={{
-            color: "#000000",
-            border: "1.5px solid #000000",
-            backgroundColor: "#ffffff",
-            width: 36,
-            height: 36,
-            padding: 0,
-            "&:hover": {
-              backgroundColor: "#f5f5f5",
+      {showTopButton && (
+        <Tooltip title="Filter Options">
+          <IconButton
+            onClick={onOpenDialog}
+            sx={{
+              color: "#000000",
               border: "1.5px solid #000000",
-            },
-            boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-            ...filterButtonSx
-          }}
-        >
-          <FilterList sx={{ fontSize: (filterButtonSx?.iconFontSize ?? 20), color: (filterButtonSx?.iconColor ?? "#000000") }} />
-        </IconButton>
-      </Tooltip>
+              backgroundColor: "#ffffff",
+              width: 36,
+              height: 36,
+              padding: 0,
+              alignSelf: "center",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              "&:hover": {
+                backgroundColor: "#f5f5f5",
+                border: "1.5px solid #000000",
+              },
+              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+              ...filterButtonSx
+            }}
+          >
+            <FilterList sx={{ fontSize: (filterButtonSx?.iconFontSize ?? 20), color: (filterButtonSx?.iconColor ?? "#000000") }} />
+          </IconButton>
+        </Tooltip>
+      )}
 
       {onReset && (
         <Tooltip title="Reset Filters">
@@ -625,6 +635,10 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
               width: 36,
               height: 36,
               padding: 0,
+              alignSelf: "center",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               "&:hover": {
                 backgroundColor: "#fdf3e7",
                 border: "1.5px solid #b88a4f",
@@ -637,19 +651,33 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
         </Tooltip>
       )}
 
-     <AppDialog
-  open={dialogOpen}
-  onClose={onCloseDialog}
-  title="Filter Options"
-  onSubmit={handleApplyFilter}
-  submitText="SEARCH"
-  closeText="CANCEL"
-  maxWidth="xs"
-  fullWidth
-  extraActions={null}
->
-  {children ? children : renderFilterInputs(true)}
-</AppDialog>
+      {useSlider ? (
+        <FilterSideSlider
+          open={dialogOpen}
+          onOpen={onOpenDialog}
+          onClose={onCloseDialog}
+          title="Filter Options"
+          onSubmit={handleApplyFilter}
+          submitText="SEARCH"
+          closeText="CANCEL"
+        >
+          {children ? children : renderFilterInputs(true)}
+        </FilterSideSlider>
+      ) : (
+        <AppDialog
+          open={dialogOpen}
+          onClose={onCloseDialog}
+          title="Filter Options"
+          onSubmit={handleApplyFilter}
+          submitText="SEARCH"
+          closeText="CANCEL"
+          maxWidth="xs"
+          fullWidth
+          extraActions={null}
+        >
+          {children ? children : renderFilterInputs(true)}
+        </AppDialog>
+      )}
     </>
   );
 };
