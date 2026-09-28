@@ -205,8 +205,13 @@ const fetchEmployeeNames = async (): Promise<Map<number, string>> => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const getProjectScheduleEmpWithStaffNames = async (
   loadingOn?: () => void,
-  loadingOff?: () => void
+  loadingOff?: () => void,
+  forceRefresh: boolean = false
 ): Promise<ProjectScheduleEmp[]> => {
+  if (forceRefresh) {
+    projectScheduleEmpPromise = null;
+    scheduleEmpDataCache = null;
+  }
   if (!projectScheduleEmpPromise) {
     projectScheduleEmpPromise = (async () => {
       try {
@@ -229,11 +234,13 @@ export const getProjectScheduleEmpWithStaffNames = async (
           return scheduleEmpDataCache;
         } else {
           toast.error(res?.message || "Failed to load employee schedule data");
+          projectScheduleEmpPromise = null;
           return [];
         }
       } catch (e: unknown) {
         console.error("getProjectScheduleEmpWithStaffNames Error:", e);
         toast.error("Network error loading employee schedule data");
+        projectScheduleEmpPromise = null;
         return [];
       }
     })();
@@ -372,7 +379,7 @@ const buildExecutionDetailsMap = (
     }
 
     const details = map.get(key)!;
-    
+
     // Normalise Work_Dt to YYYY-MM-DD
     const dateOnly = work.Work_Dt ? work.Work_Dt.split("T")[0] : null;
 
@@ -381,7 +388,7 @@ const buildExecutionDetailsMap = (
       const staffName = employeeNameMap.get(work.Emp_Id) || `Unknown Staff (ID: ${work.Emp_Id})`;
       details.executedStaffNames.add(staffName);
       details.executedStaff.set(work.Emp_Id, staffName);
-      
+
       if (!details.staffWorkDates.has(staffName)) {
         details.staffWorkDates.set(staffName, new Set<string>());
       }
@@ -462,7 +469,7 @@ export const getTasksWithStaff = async (
           globalExecutionDaysByTaskAndEmp.set(taskKey, new Set<string>());
         }
         globalExecutionDaysByTaskAndEmp.get(taskKey)!.add(dateOnly);
-        
+
         if (work.Sch_Id) {
           const schKey = `${work.Sch_Id}_${work.Emp_Id}_${work.Task_Id}`;
           if (!globalExecutionDaysBySchAndEmp.has(schKey)) {
@@ -472,9 +479,9 @@ export const getTasksWithStaff = async (
         }
       }
     });
-    
+
     // ── Build staff map keyed by Sch_Id ────────────────────────────
-    const staffMapBySchId = new Map<string, {empId: number, staffName: string}[]>();
+    const staffMapBySchId = new Map<string, { empId: number, staffName: string }[]>();
     scheduleEmpData.forEach((item) => {
       const key = item.Sch_Id;
       if (key && item.Staff_Name && !item.Staff_Name.includes("Unknown Staff")) {
@@ -500,23 +507,23 @@ export const getTasksWithStaff = async (
 
     for (const schedule of projectScheduleData) {
       processedKeys.add(schedule.schId);
-      
+
       // Get execution details by Sch_Id
       const executionDetails = executionDetailsMap.get(schedule.schId);
-      
+
       // Get scheduled staff names by Sch_Id
       const scheduledStaff = staffMapBySchId.get(schedule.schId) || [];
-      
-      let staffToUse: {empId: number, staffName: string}[] = [];
-      
+
+      let staffToUse: { empId: number, staffName: string }[] = [];
+
       // Combine scheduled staff and executed staff to show everyone involved
       const combinedStaffMap = new Map<number, string>();
       scheduledStaff.forEach(s => combinedStaffMap.set(s.empId, s.staffName));
-      
+
       if (executionDetails && executionDetails.executedStaff.size > 0) {
         executionDetails.executedStaff.forEach((name, id) => combinedStaffMap.set(id, name));
       }
-      
+
       staffToUse = Array.from(combinedStaffMap.entries()).map(([empId, staffName]) => ({ empId, staffName }));
 
       if (staffToUse.length === 0) {
@@ -786,11 +793,11 @@ export const fetchUsersByTask = async (
     // Filter users who are involved in this task
     // Map to store unique users by Emp_Id
     const uniqueUsers = new Map<number, UserDropdown>();
-    
+
     scheduleEmpData.forEach((item) => {
       const itemTaskId = Number(item.Task_Id);
       const itemProjectId = item.Project_Id ? Number(item.Project_Id) : null;
-      
+
       const projectMatches = projectId === null || itemProjectId === projectId;
       const taskMatches = taskId === null || itemTaskId === taskId;
 
@@ -808,7 +815,7 @@ export const fetchUsersByTask = async (
     workMasterData.forEach((item) => {
       const itemTaskId = Number(item.Task_Id);
       const itemProjectId = item.Project_Id ? Number(item.Project_Id) : null;
-      
+
       const projectMatches = projectId === null || itemProjectId === projectId;
       const taskMatches = taskId === null || itemTaskId === taskId;
 
@@ -827,12 +834,12 @@ export const fetchUsersByTask = async (
     });
 
     const users = Array.from(uniqueUsers.values());
-    
+
     // Cache the result
     taskUsersCache.set(cacheKey as any, users);
-    
+
     console.log(`[fetchUsersByTask] Found ${users.length} users for project ${projectId} task ${taskId}`);
-    
+
     return users;
   } catch (e: unknown) {
     console.error("fetchUsersByTask Error:", e);
@@ -847,7 +854,7 @@ export const clearTaskUsersCache = (): void => {
   taskUsersCache.clear();
   scheduleEmpDataCache = null;
   workMasterDataCache = null;
-  
+
   // Clear promise caches
   projectMasterPromise = null;
   activeProjectMasterPromise = null;

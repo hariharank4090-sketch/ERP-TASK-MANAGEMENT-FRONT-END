@@ -432,7 +432,8 @@ const ProjectMainPage: React.FC<PageProps> = () => {
     }
 
     let success = false;
-    const statusValue = projectObj.Project_Status === 0 ? 0 : 1;
+    const statusValue = Number(projectObj.Project_Status ?? 1);
+    const isActiveValue = projectObj.IsActive != null ? Number(projectObj.IsActive) : (statusValue === 0 ? 0 : 1);
 
     if (selectedId) {
       // Update existing project
@@ -445,7 +446,7 @@ const ProjectMainPage: React.FC<PageProps> = () => {
         Est_Start_Dt: projectObj.Est_Start_Dt,
         Est_End_Dt: projectObj.Est_End_Dt,
         Project_Status: statusValue,
-        IsActive: statusValue
+        IsActive: isActiveValue
       };
       
       console.log("Update Payload:", updatePayload);
@@ -460,7 +461,7 @@ const ProjectMainPage: React.FC<PageProps> = () => {
         Est_Start_Dt: projectObj.Est_Start_Dt,
         Est_End_Dt: projectObj.Est_End_Dt,
         Project_Status: statusValue,
-        IsActive: statusValue
+        IsActive: isActiveValue
       };
       
       console.log("Create Payload:", createPayload);
@@ -476,6 +477,7 @@ const ProjectMainPage: React.FC<PageProps> = () => {
   // Delete Confirm
   const deleteProjectConfirm = useCallback(async () => {
     if (!selectedId) return;
+    if (!window.confirm("Are you sure you want to delete this project?")) return;
 
     const success = await deleteProjectMaster(selectedId, loadingOn, loadingOff);
 

@@ -251,6 +251,7 @@ const NotificationScreen: React.FC = () => {
   };
 
   const deleteNotification = (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this notification?")) return;
     setNotifications((prev) => prev.filter((notif) => notif.id !== id));
     const userId = user?.Global_User_ID || user?.id || "";
     if (userId) {
@@ -281,6 +282,7 @@ const NotificationScreen: React.FC = () => {
   };
 
   const deleteAll = () => {
+    if (!window.confirm("Are you sure you want to delete all notifications?")) return;
     setNotifications([]);
     const userId = user?.Global_User_ID || user?.id || "";
     if (userId) {

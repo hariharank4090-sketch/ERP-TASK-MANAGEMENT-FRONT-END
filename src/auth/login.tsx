@@ -296,6 +296,7 @@ const Login: React.FC<LoginProps> = ({
     const [form, setForm] = useState({ username: "", password: "" });
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
     const [showCompanySelect, setShowCompanySelect] = useState(false);
 
     const pendingLoginRef = useRef<{
@@ -389,11 +390,19 @@ const Login: React.FC<LoginProps> = ({
         async (e: React.FormEvent) => {
             e.preventDefault();
             setError(null);
+            setFieldErrors({});
             loadingOn();
 
             const parsed = schema.safeParse(form);
             if (!parsed.success) {
-                setError(parsed.error.issues[0].message);
+                const errs: { username?: string; password?: string } = {};
+                parsed.error.issues.forEach(issue => {
+                    const field = issue.path[0] as keyof typeof errs;
+                    if (field && !errs[field]) {
+                        errs[field] = issue.message;
+                    }
+                });
+                setFieldErrors(errs);
                 loadingOff();
                 return;
             }
@@ -478,6 +487,7 @@ const Login: React.FC<LoginProps> = ({
         setShowCompanySelect(false);
         setSelectedCompany(null);
         setError(null);
+        setFieldErrors({});
         setCompaniesForModal([]);
         setUserNameForModal("");
         pendingLoginRef.current = null;
@@ -533,13 +543,24 @@ const Login: React.FC<LoginProps> = ({
                             Username
                         </span>
                         <input
-                            style={inputStyle}
+                            style={{
+                                ...inputStyle,
+                                borderColor: fieldErrors.username ? "#dc2626" : "#ddd",
+                            }}
                             value={form.username}
-                            onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                            onChange={e => {
+                                setForm(f => ({ ...f, username: e.target.value }));
+                                setFieldErrors(prev => ({ ...prev, username: undefined }));
+                            }}
                             placeholder="Enter your username"
                             autoComplete="username"
                             disabled={loading}
                         />
+                        {fieldErrors.username && (
+                            <span style={{ color: "#dc2626", fontSize: "12px", display: "block", marginTop: "-4px" }}>
+                                {fieldErrors.username}
+                            </span>
+                        )}
                     </label>
 
                     <label style={{ display: "block", marginBottom: 20 }}>
@@ -554,12 +575,20 @@ const Login: React.FC<LoginProps> = ({
                         >
                             Password
                         </span>
-                        <div style={{ position: "relative", marginBottom: 12 }}>
+                        <div style={{ position: "relative", marginBottom: fieldErrors.password ? 4 : 12 }}>
                             <input
-                                style={{ ...inputStyle, paddingRight: "2.5rem", marginBottom: 0 }}
+                                style={{
+                                    ...inputStyle,
+                                    paddingRight: "2.5rem",
+                                    marginBottom: 0,
+                                    borderColor: fieldErrors.password ? "#dc2626" : "#ddd",
+                                }}
                                 type={showPassword ? "text" : "password"}
                                 value={form.password}
-                                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                                onChange={e => {
+                                    setForm(f => ({ ...f, password: e.target.value }));
+                                    setFieldErrors(prev => ({ ...prev, password: undefined }));
+                                }}
                                 placeholder="Enter your password"
                                 autoComplete="current-password"
                                 disabled={loading}
@@ -589,6 +618,11 @@ const Login: React.FC<LoginProps> = ({
                                 )}
                             </button>
                         </div>
+                        {fieldErrors.password && (
+                            <span style={{ color: "#dc2626", fontSize: "12px", display: "block", marginTop: "4px" }}>
+                                {fieldErrors.password}
+                            </span>
+                        )}
                     </label>
 
                     {error && (

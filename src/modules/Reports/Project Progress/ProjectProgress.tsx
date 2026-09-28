@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Box, FormControl, Typography } from "@mui/material";
+import { Box, FormControl } from "@mui/material";
 import { useAuth } from "../../../auth/authContext";
 import {
   getEnrichedTodayPlan,
@@ -659,34 +659,23 @@ export default function Projectprogress() {
     try {
       if (isRefresh) {
         setRefreshing(true);
-        cachedTodayPlanPromise = null;
-        cachedWorkMasterPromise = null;
-        cachedProjectSchedulePromise = null;
-        cachedTaskTypePromise = null;
-        cachedEmployeePromise = null;
-        cachedProjectPromise = null;
       } else {
         setLoading(true);
       }
 
-      if (!cachedTodayPlanPromise) {
-        cachedTodayPlanPromise = getEnrichedTodayPlan({}, currentCompany.companyId);
-      }
-      if (!cachedWorkMasterPromise) {
-        cachedWorkMasterPromise = getEnrichedWorkMaster({});
-      }
-      if (!cachedProjectSchedulePromise) {
-        cachedProjectSchedulePromise = fetchLink({ address: "masters/projectSchedule/", method: "GET" });
-      }
-      if (!cachedTaskTypePromise) {
-        cachedTaskTypePromise = fetchLink({ address: "masters/taskType/", method: "GET" });
-      }
-      if (!cachedEmployeePromise) {
-        cachedEmployeePromise = getEmployeeDropdown(currentCompany.companyId);
-      }
-      if (!cachedProjectPromise) {
-        cachedProjectPromise = getProjectDropdown(currentCompany.companyId, undefined, undefined, true);
-      }
+      cachedTodayPlanPromise = null;
+      cachedWorkMasterPromise = null;
+      cachedProjectSchedulePromise = null;
+      cachedTaskTypePromise = null;
+      cachedEmployeePromise = null;
+      cachedProjectPromise = null;
+
+      cachedTodayPlanPromise = getEnrichedTodayPlan({}, currentCompany.companyId);
+      cachedWorkMasterPromise = getEnrichedWorkMaster({});
+      cachedProjectSchedulePromise = fetchLink({ address: "masters/projectSchedule/", method: "GET" });
+      cachedTaskTypePromise = fetchLink({ address: "masters/taskType/", method: "GET" });
+      cachedEmployeePromise = getEmployeeDropdown(currentCompany.companyId);
+      cachedProjectPromise = getProjectDropdown(currentCompany.companyId, undefined, undefined, true);
 
       const [todayRes, workRes, scheduleRes, taskTypeRes, empRes, projRes] = await Promise.all([
         cachedTodayPlanPromise,
@@ -736,6 +725,12 @@ export default function Projectprogress() {
       setScheduleData(scheduleItems);
     } catch (error) {
       console.error("Error loading task comparison data:", error);
+      cachedTodayPlanPromise = null;
+      cachedWorkMasterPromise = null;
+      cachedProjectSchedulePromise = null;
+      cachedTaskTypePromise = null;
+      cachedEmployeePromise = null;
+      cachedProjectPromise = null;
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -746,6 +741,8 @@ export default function Projectprogress() {
     if(isSwitchingCompany) return;
     loadData();
     return () => {
+      cachedTodayPlanPromise = null;
+      cachedWorkMasterPromise = null;
       cachedProjectSchedulePromise = null;
       cachedTaskTypePromise = null;
       cachedEmployeePromise = null;
@@ -1111,21 +1108,7 @@ export default function Projectprogress() {
 
   const taskTypeList = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, employee, task, projectStatus } = draftFilters;
-
-    if (projectStatus && projectStatus !== "ALL") {
-      data = data.filter(d => {
-        let isActive: boolean | undefined = d.isProjectActive;
-        if (isActive === undefined && d.project) {
-          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
-          if (mapVal !== undefined) {
-            isActive = mapVal !== 0;
-          }
-        }
-        if (isActive === undefined) return true;
-        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
-      });
-    }
+    const { from, to, project, employee, task } = draftFilters;
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
@@ -1136,25 +1119,11 @@ export default function Projectprogress() {
     const set = new Set<string>();
     data.forEach(d => { if (d.taskType && d.taskType !== '-') set.add(d.taskType); });
     return Array.from(set).sort();
-  }, [workData, draftFilters, projStatusMap]);
+  }, [workData, draftFilters]);
 
   const taskList = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, employee, taskType, projectStatus } = draftFilters;
-
-    if (projectStatus && projectStatus !== "ALL") {
-      data = data.filter(d => {
-        let isActive: boolean | undefined = d.isProjectActive;
-        if (isActive === undefined && d.project) {
-          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
-          if (mapVal !== undefined) {
-            isActive = mapVal !== 0;
-          }
-        }
-        if (isActive === undefined) return true;
-        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
-      });
-    }
+    const { from, to, project, employee, taskType } = draftFilters;
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
@@ -1165,25 +1134,11 @@ export default function Projectprogress() {
     const set = new Set<string>();
     data.forEach(d => { if (d.taskName) set.add(d.taskName); });
     return Array.from(set).sort();
-  }, [workData, draftFilters, projStatusMap]);
+  }, [workData, draftFilters]);
 
   const employeeList = useMemo(() => {
     let data = [...workData];
-    const { from, to, project, taskType, task, projectStatus } = draftFilters;
-
-    if (projectStatus && projectStatus !== "ALL") {
-      data = data.filter(d => {
-        let isActive: boolean | undefined = d.isProjectActive;
-        if (isActive === undefined && d.project) {
-          const mapVal = projStatusMap.get(d.project) ?? projStatusMap.get(String(d.project).trim().toLowerCase());
-          if (mapVal !== undefined) {
-            isActive = mapVal !== 0;
-          }
-        }
-        if (isActive === undefined) return true;
-        return projectStatus === "ACTIVE" ? isActive === true : isActive === false;
-      });
-    }
+    const { from, to, project, taskType, task } = draftFilters;
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
@@ -1211,12 +1166,12 @@ export default function Projectprogress() {
       }
     });
 
-    if (backendEmpNames.size > 0 && project.length === 0 && task.length === 0 && taskType.length === 0 && (projectStatus === "ALL" || !projectStatus)) {
+    if (backendEmpNames.size > 0 && project.length === 0 && task.length === 0 && taskType.length === 0) {
       backendEmpNames.forEach(name => set.add(name));
     }
 
     return Array.from(set).sort();
-  }, [employees, workData, draftFilters, projStatusMap]);
+  }, [employees, workData, draftFilters]);
 
   const openFilterDialog = () => {
     setDraftFilters({ ...appliedFilters });
@@ -1240,32 +1195,16 @@ export default function Projectprogress() {
   };
 
   const updateFilterField = (field: string, val: any) => {
-    setDraftFilters((prev) => {
-      const updated = { ...prev, [field]: val };
-      if (field === "projectStatus" && prev.projectStatus !== val) {
-        updated.project = [];
-        updated.taskType = [];
-        updated.task = [];
-        updated.employee = [];
-      }
-      return updated;
-    });
+    setDraftFilters((prev) => ({ ...prev, [field]: val }));
   };
-
-  const validDraftProjects = useMemo(() => {
-    return draftFilters.project.filter(p => projectList.includes(p));
-  }, [draftFilters.project, projectList]);
 
   const renderFilterDialogContent = () => (
     <Box display="flex" flexDirection="column" gap={2} sx={{ pt: 0.5 }}>
       {/* 1. Project */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Project
-        </Typography>
         <SearchableSelect
           multiple
-          value={validDraftProjects}
+          value={draftFilters.project}
           onChange={(e) => {
             const val = e.target.value;
             const arr = Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',') : []);
@@ -1283,9 +1222,6 @@ export default function Projectprogress() {
 
       {/* 2. Task Type */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Task Type
-        </Typography>
         <SearchableSelect
           multiple
           value={draftFilters.taskType}
@@ -1306,9 +1242,6 @@ export default function Projectprogress() {
 
       {/* 3. Task */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Task
-        </Typography>
         <SearchableSelect
           multiple
           value={draftFilters.task}
@@ -1329,9 +1262,6 @@ export default function Projectprogress() {
 
       {/* 4. Employee */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Employee
-        </Typography>
         <SearchableSelect
           multiple
           value={draftFilters.employee}
@@ -1352,9 +1282,6 @@ export default function Projectprogress() {
 
       {/* 5. Project Status */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Project Status
-        </Typography>
         <SearchableSelect
           value={draftFilters.projectStatus}
           onChange={(e) => updateFilterField("projectStatus", e.target.value)}
@@ -1505,46 +1432,7 @@ export default function Projectprogress() {
           stats.workingDelta = '+' + deltaSum.toFixed(1) + 'h';
         }
 
-        // Find latest Actual Completed Date across all tasks of this project (from task table's latest schEndDate / completed date)
-        let latestProjectCompDateRaw = "";
-
-        Object.entries(groupsByTask).forEach(([tName, tItems]) => {
-          const taskIds = new Set(tItems.map(it => String(it.taskId)));
-          const schIds = new Set(tItems.map(it => String(it.schId)).filter(Boolean));
-          
-          let latestSchEndDate = "";
-          taskIds.forEach(tId => {
-            const d = schByTaskIdMap.get(tId);
-            if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
-          });
-          schIds.forEach(sId => {
-            const d = schByIdMap.get(sId);
-            if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
-          });
-          const nameD = schByTaskNameMap.get(tName.toLowerCase());
-          if (nameD && (!latestSchEndDate || nameD > latestSchEndDate)) latestSchEndDate = nameD;
-
-          const latestActualDate = tItems.reduce((latest, item) => {
-            const actualDate = item.rawActualCompletedDate || '';
-            return actualDate > latest ? actualDate : latest;
-          }, '');
-          const taskDate = latestActualDate || latestSchEndDate;
-
-          if (taskDate) {
-            let ymd = taskDate;
-            if (taskDate.length !== 10) {
-              const rawDate = tItems.find(it => it.rawActualCompletedDate)?.rawActualCompletedDate;
-              if (rawDate) ymd = rawDate;
-            }
-            if (!latestProjectCompDateRaw || ymd > latestProjectCompDateRaw) {
-              latestProjectCompDateRaw = ymd;
-            }
-          }
-        });
-
-        const projCompletedDateDisplay = latestProjectCompDateRaw 
-          ? (latestProjectCompDateRaw.length === 10 && latestProjectCompDateRaw.includes('-') ? formatDateDisplay(latestProjectCompDateRaw) : latestProjectCompDateRaw)
-          : stats.actualCompletedDate;
+        const projCompletedDateDisplay = stats.actualCompletedDate;
 
         // Calculate project progress bar as the average of task progress bars of this project
         const taskProgresses: number[] = [];
@@ -1709,7 +1597,7 @@ export default function Projectprogress() {
                     )}
                   </div>
                   <TopFilterBar
-                    showTopButton={false}
+                    showTopButton={true}
                     useSlider={true}
                     dialogOpen={filterDialogOpen}
                     onOpenDialog={openFilterDialog}
@@ -1789,31 +1677,7 @@ export default function Projectprogress() {
           stats.workingDelta = '+' + deltaSum.toFixed(1) + 'h';
         }
 
-        // Find latest schEndDate from scheduleData (masters/projectSchedule/) for this task
-        const taskIds = new Set(items.map(it => String(it.taskId)));
-        const schIds = new Set(items.map(it => String(it.schId)).filter(Boolean));
-        
-        let latestSchEndDate = "";
-        taskIds.forEach(tId => {
-          const d = schByTaskIdMap.get(tId);
-          if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
-        });
-        schIds.forEach(sId => {
-          const d = schByIdMap.get(sId);
-          if (d && (!latestSchEndDate || d > latestSchEndDate)) latestSchEndDate = d;
-        });
-        const nameD = schByTaskNameMap.get(taskName.toLowerCase());
-        if (nameD && (!latestSchEndDate || nameD > latestSchEndDate)) latestSchEndDate = nameD;
-
-        const latestActualDate = items.reduce((latest, item) => {
-          const actualDate = item.rawActualCompletedDate || '';
-          return actualDate > latest ? actualDate : latest;
-        }, '');
-        const taskCompletedDateDisplay = latestActualDate
-          ? formatDateDisplay(latestActualDate)
-          : latestSchEndDate
-            ? formatDateDisplay(latestSchEndDate)
-            : stats.actualCompletedDate;
+        const taskCompletedDateDisplay = stats.actualCompletedDate;
 
         return {
           taskName,
@@ -2014,7 +1878,7 @@ export default function Projectprogress() {
                     )}
                   </div>
                   <TopFilterBar
-                    showTopButton={false}
+                    showTopButton={true}
                     useSlider={true}
                     dialogOpen={filterDialogOpen}
                     onOpenDialog={openFilterDialog}

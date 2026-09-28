@@ -20,12 +20,29 @@ let tasksCache: TaskDropdown[] = [];
 let employeesCache: EmployeeDropdown[] = [];
 let projectsCache: ProjectDropdown[] = [];
 
-// Clear caches (called on login/logout/company switch)
+// Clear caches (called on login/logout/company switch/CRUD actions)
 export const clearDashboardCaches = () => {
     tasksCache = [];
     employeesCache = [];
     projectsCache = [];
 };
+
+export const clearTasksCache = () => {
+    tasksCache = [];
+};
+
+export const clearEmployeesCache = () => {
+    employeesCache = [];
+};
+
+export const clearProjectsCache = () => {
+    projectsCache = [];
+};
+
+export const invalidateTasksCache = clearTasksCache;
+export const invalidateEmployeesCache = clearEmployeesCache;
+export const invalidateProjectsCache = clearProjectsCache;
+export const invalidateDashboardCache = clearDashboardCaches;
 
 // Helper to build query string from params
 const buildQueryString = (params?: WorkMasterQueryParams): string => {

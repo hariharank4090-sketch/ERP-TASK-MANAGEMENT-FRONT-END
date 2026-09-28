@@ -1,5 +1,6 @@
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
+import { invalidateProjectsCache } from "../../Dashboard/All.api";
 import type {
   projectData,
   projectCreateInput,
@@ -144,7 +145,8 @@ export const createProjectMaster = async (
   loadingOff?: () => void
 ): Promise<boolean> => {
   try {
-    const statusValue = body.Project_Status === 0 ? 0 : 1;
+    const statusValue = Number(body.Project_Status ?? 1);
+    const isActiveValue = body.IsActive != null ? Number(body.IsActive) : (statusValue === 0 ? 0 : 1);
     
     const cleanBody = {
       Project_Name: body.Project_Name.trim(),
@@ -154,7 +156,7 @@ export const createProjectMaster = async (
       Est_Start_Dt: body.Est_Start_Dt || null,
       Est_End_Dt: body.Est_End_Dt || null,
       Project_Status: statusValue,
-      IsActive: statusValue
+      IsActive: isActiveValue
     };
 
     console.log("Creating Project with payload:", cleanBody); // Debug log
@@ -168,6 +170,7 @@ export const createProjectMaster = async (
     });
 
     if (res && res.success) {
+      invalidateProjectsCache();
       toast.success(res.message || "Project created successfully");
       return true;
     } else {
@@ -193,7 +196,8 @@ export const updateProjectMaster = async (
       return false;
     }
 
-    const statusValue = body.Project_Status === 0 ? 0 : 1;
+    const statusValue = Number(body.Project_Status ?? 1);
+    const isActiveValue = body.IsActive != null ? Number(body.IsActive) : (statusValue === 0 ? 0 : 1);
     
     const cleanBody = {
       Project_Name: body.Project_Name.trim(),
@@ -203,7 +207,7 @@ export const updateProjectMaster = async (
       Est_Start_Dt: body.Est_Start_Dt || null,
       Est_End_Dt: body.Est_End_Dt || null,
       Project_Status: statusValue,
-      IsActive: statusValue
+      IsActive: isActiveValue
     };
 
     console.log("Updating Project with payload:", cleanBody); // Debug log
@@ -217,6 +221,7 @@ export const updateProjectMaster = async (
     });
 
     if (res?.success) {
+      invalidateProjectsCache();
       toast.success(res.message || "Project updated successfully");
       return true;
     } else {
@@ -245,6 +250,7 @@ export const deleteProjectMaster = async (
     });
 
     if (res && res.success) {
+      invalidateProjectsCache();
       toast.success(res.message || "Project deleted successfully");
       return true;
     } else {

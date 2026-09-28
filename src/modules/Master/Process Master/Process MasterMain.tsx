@@ -140,6 +140,7 @@ const ProcessMasterMain: React.FC<PageProps> = ({
   /** Delete Confirm */
   const deleteProcessConfirm = async () => {
     if (!selectedId) return;
+    if (!window.confirm("Are you sure you want to delete this process?")) return;
 
     const success = await deleteProcessMaster(selectedId, loadingOn, loadingOff);
 

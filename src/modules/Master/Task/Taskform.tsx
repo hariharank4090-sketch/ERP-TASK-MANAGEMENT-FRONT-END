@@ -9,9 +9,6 @@ import {
   Chip,
   Box,
   Typography,
-  
-  Checkbox,
-  ListItemText,
 } from "@mui/material";
 
 import AppDialog from "../../../Components/appDialog";
@@ -325,13 +322,14 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
             options={validParameters.map((param) => ({
               value: String(param.Paramet_Id),
               label: (
-                <>
-                  <Checkbox checked={(taskObj.Paramet_Ids || []).includes(param.Paramet_Id)} />
-                  <ListItemText
-                    primary={param.Paramet_Name}
-                    secondary={param.Para_Display_Name}
-                  />
-                </>
+                <Box component="span">
+                  <Typography variant="body2">{param.Paramet_Name}</Typography>
+                  {param.Para_Display_Name && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {param.Para_Display_Name}
+                    </Typography>
+                  )}
+                </Box>
               ),
               searchText: `${param.Paramet_Name} ${param.Para_Display_Name}`
             }))}

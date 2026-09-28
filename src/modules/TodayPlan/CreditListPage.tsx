@@ -120,12 +120,6 @@ const formatTime = (timeStr: any): string => {
   return "--:--";
 };
 
-const isTodayDate = (dateString: string): boolean => {
-  if (!dateString) return false;
-  const datePart = getDateOnly(dateString);
-  const todayPart = getDateOnly(new Date());
-  return datePart === todayPart && datePart !== "";
-};
 
 const removeDuplicates = <T extends {
   Id?: string;
@@ -367,7 +361,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
         else if ((todayRes as any)?.items && Array.isArray((todayRes as any).items)) todayItems = (todayRes as any).items;
         else if (Array.isArray(todayRes)) todayItems = todayRes as AssignedTask[];
 
-        const todayData = todayItems.filter((plan) => isTodayDate(plan.Task_Assign_dt));
+        const todayData = todayItems;
         const uniqueAssigned = removeDuplicates(todayData, "assigned");
 
         const scopedA =

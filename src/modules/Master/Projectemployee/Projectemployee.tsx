@@ -500,6 +500,8 @@ const ProjectEmployeeMainPage: React.FC<PageProps> = ({
       return;
     }
 
+    if (!window.confirm("Are you sure you want to delete this project employee?")) return;
+
     const success = await deleteProjectEmployee(selectedEmployeeId, loadingOn, loadingOff);
 
     if (success) {
@@ -511,6 +513,8 @@ const ProjectEmployeeMainPage: React.FC<PageProps> = ({
   /** Delete Multiple Confirm */
   const deleteMultipleProjectEmployeesConfirm = async () => {
     if (!deleteMultipleObj) return;
+
+    if (!window.confirm("Are you sure you want to delete these project employees?")) return;
     
     const empIds = deleteMultipleObj.Employees.map(emp => emp.Emp_Id);
     

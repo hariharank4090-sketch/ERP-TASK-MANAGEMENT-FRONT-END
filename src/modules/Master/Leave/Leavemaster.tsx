@@ -568,6 +568,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
 
   const deleteLeave = async () => {
     if (!selectedDeleteId) return;
+    if (!window.confirm("Are you sure you want to delete this leave record?")) return;
     setIsSubmitting(true);
     try {
       const success = await deleteLeaveRecord(

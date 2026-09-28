@@ -12,10 +12,10 @@ interface ProtectedRouteProps {
 // Component
 // --------------------
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const session = localStorage.getItem("session");
+  const token = localStorage.getItem("token");
 
-  if (!session) {
-    // If no session, redirect to login
+  if (!token) {
+    // If no token, redirect to login
     return <Navigate to="/" replace />;
   }
 

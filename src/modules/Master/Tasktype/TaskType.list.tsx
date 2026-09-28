@@ -190,6 +190,7 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
   /** Delete Confirm */
   const deleteTaskTypeConfirm = async () => {
     if (!selectedId) return;
+    if (!window.confirm("Are you sure you want to delete this task type?")) return;
 
     const success = await deleteTaskType(selectedId, loadingOn, loadingOff);
 

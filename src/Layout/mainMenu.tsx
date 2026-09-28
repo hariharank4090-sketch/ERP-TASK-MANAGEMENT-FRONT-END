@@ -88,6 +88,9 @@ const MenuPill = styled(Box)(({ theme }) => ({
     flexWrap: "nowrap",
     overflow: "hidden",
     [theme.breakpoints.up("md")]: {
+        gap: 4,
+    },
+    [theme.breakpoints.up("lg")]: {
         gap: 6,
     },
 }));
@@ -96,7 +99,7 @@ const MenuButton = styled(Button)(({ theme }) => ({
     textTransform: "none",
     fontSize: "0.72rem",
     borderRadius: 20,
-    padding: "4px 10px",
+    padding: "4px 8px",
     minHeight: 28,
     whiteSpace: "nowrap",
     backgroundColor: "transparent",
@@ -108,13 +111,18 @@ const MenuButton = styled(Button)(({ theme }) => ({
     "&.active": { backgroundColor: "#d2a15f", color: "#fff", fontWeight: 600 },
 
     [theme.breakpoints.up("sm")]: {
-        fontSize: "0.78rem",
-        padding: "5px 14px",
-        minHeight: 30,
+        fontSize: "0.75rem",
+        padding: "4px 10px",
+        minHeight: 28,
     },
     [theme.breakpoints.up("md")]: {
+        fontSize: "0.75rem",
+        padding: "5px 10px",
+        minHeight: 30,
+    },
+    [theme.breakpoints.up("lg")]: {
         fontSize: "0.8rem",
-        padding: "6px 18px",
+        padding: "6px 16px",
     },
 }));
 

@@ -171,6 +171,7 @@ const ParameterMainPage: React.FC<PageProps> = ({
   /** Delete Confirm */
   const deleteParameterConfirm = async () => {
     if (!selectedId) return;
+    if (!window.confirm("Are you sure you want to delete this parameter?")) return;
 
     console.log("Deleting parameter ID:", selectedId);
     const success = await deleteparameter(selectedId, loadingOn, loadingOff);

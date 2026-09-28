@@ -474,6 +474,7 @@ const EmpSchedulesMainPage: React.FC = () => {
 
   const confirmDeleteWork = async () => {
     if (!workToDelete || !workToDelete.SNo) return;
+    if (!window.confirm(`Are you sure you want to delete work for ${workToDelete.Emp_Name || 'employee'}?`)) return;
     
     try {
       const response = await fetchLink<any>({

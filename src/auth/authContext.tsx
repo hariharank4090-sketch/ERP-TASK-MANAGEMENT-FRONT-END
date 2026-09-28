@@ -264,7 +264,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 clearDashboardCaches();
                 clearTodayActivityCaches();
 
-                console.log("✅ Switched to company:", targetCompany.companyName);
+                if (import.meta.env.DEV) {
+                    console.log("✅ Switched to company:", targetCompany.companyName);
+                }
                 return true;
 
             } catch (error) {

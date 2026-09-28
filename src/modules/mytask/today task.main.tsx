@@ -50,13 +50,16 @@ import SearchableSelect from "../../Components/SearchableSelect";
 
 const getDateOnly = (dateInput: string | Date): string => {
   if (!dateInput) return "";
+  if (typeof dateInput === "string") {
+    const s = dateInput.trim();
+    if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  }
   try {
-    const date =
-      typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+    const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
     if (isNaN(date.getTime())) return "";
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   } catch {
     return "";
@@ -833,13 +836,13 @@ const CreditListPage = () => {
   const assignedCountForView = assignedEvents.filter((e) => {
     const d = (e.extendedProps as any)?._taskDate as string | undefined;
     if (!d) return false;
-    return d >= assignedViewStart && d < assignedViewEnd;
+    if (!assignedViewEnd || assignedViewStart === assignedViewEnd) return d === assignedViewStart; return d >= assignedViewStart && d < assignedViewEnd;
   }).length;
 
   const executedCountForView = executedEvents.filter((e) => {
     const d = (e.extendedProps as any)?._workDate as string | undefined;
     if (!d) return false;
-    return d >= executedViewStart && d < executedViewEnd;
+    if (!executedViewEnd || executedViewStart === executedViewEnd) return d === executedViewStart; return d >= executedViewStart && d < executedViewEnd;
   }).length;
 
   const assignedInitialDate: string = getCurrentDateFormatted();

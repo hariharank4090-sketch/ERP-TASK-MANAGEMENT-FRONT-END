@@ -1139,8 +1139,8 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     setExpandedRefreshKeys(prev => ({ ...prev, [taskId]: (prev[taskId] || 0) + 1 }));
   }, []);
 
-  const fetchAllData = useCallback(async () => {
-    if (dataFetched.current && tasks.length > 0) return;
+  const fetchAllData = useCallback(async (force = false) => {
+    if (!force && dataFetched.current && tasks.length > 0) return;
     try {
       if (isMounted.current) { setLoading(true); setError(null); }
 
@@ -1198,7 +1198,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
       if (isMounted.current) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingOn, loadingOff, tasks.length]);
+  }, [loadingOn, loadingOff]);
 
   const fetchDropdownData = useCallback(async () => {
     if (isMounted.current) setLoadingDropdowns(true);
@@ -1430,7 +1430,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
       } else if (taskDialogType === "create") {
         success = await createTask(taskObj, loadingOn, loadingOff);
       }
-      if (success && isMounted.current) { closeAllDialogs(); dataFetched.current = false; await fetchAllData(); }
+      if (success && isMounted.current) { closeAllDialogs(); dataFetched.current = false; await fetchAllData(true); }
     } catch (err) {
       console.error("saveTask error:", err);
       if (isMounted.current) toast.error("Failed to save task");
@@ -1439,9 +1439,10 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
 
   const deleteTaskConfirm = useCallback(async () => {
     if (!selectedTask) return;
+    if (!window.confirm("Are you sure you want to delete this task?")) return;
     try {
       const success = await deleteTask(selectedTask.Task_Id, loadingOn, loadingOff);
-      if (success && isMounted.current) { closeAllDialogs(); dataFetched.current = false; await fetchAllData(); }
+      if (success && isMounted.current) { closeAllDialogs(); dataFetched.current = false; await fetchAllData(true); }
     } catch (err) {
       console.error("deleteTaskConfirm error:", err);
       if (isMounted.current) toast.error("Failed to delete task");
@@ -1716,18 +1717,19 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     if (success && isMounted.current) {
       toast.success(`Schedule ${scheduleDialogType === "edit" ? "updated" : "created"} successfully`);
       const affectedTaskId = selectedTaskForSch;
-      closeAllDialogs(); dataFetched.current = false; await fetchAllData();
+      closeAllDialogs(); dataFetched.current = false; await fetchAllData(true);
       if (affectedTaskId) refreshExpanded(affectedTaskId);
     }
   }, [scheduleObj, selectedScheduleId, scheduleDialogType, selectedTaskForSch, closeAllDialogs, fetchAllData, refreshExpanded]);
 
   const deleteScheduleConfirm = useCallback(async () => {
     if (!selectedScheduleId) return;
+    if (!window.confirm("Are you sure you want to delete this schedule?")) return;
     const success = await deleteprojectschedule(selectedScheduleId);
     if (success && isMounted.current) {
       toast.success("Schedule deleted successfully");
       const affectedTaskId = selectedTaskForSch;
-      closeAllDialogs(); dataFetched.current = false; await fetchAllData();
+      closeAllDialogs(); dataFetched.current = false; await fetchAllData(true);
       if (affectedTaskId) refreshExpanded(affectedTaskId);
     }
   }, [selectedScheduleId, selectedTaskForSch, closeAllDialogs, fetchAllData, refreshExpanded]);
@@ -1788,7 +1790,6 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   return (
     <Box sx={{ width: "100%", boxSizing: "border-box", overflowX: "hidden" }}>
       {error  && <Alert severity="error" sx={{ mb: 2, fontSize: "0.75rem", py: 0.5 }}>{error}</Alert>}
-      {loading && <Alert severity="info"  sx={{ mb: 2, fontSize: "0.75rem", py: 0.5 }}>Refreshing data…</Alert>}
 
       <DataTable
         headerTitle="Task Schedule Master"
@@ -1893,7 +1894,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
 
                   dataFetched.current = false;
                   setResetKey(prev => prev + 1);
-                  fetchAllData();
+                  fetchAllData(true);
                   fetchDropdownData();
                   toast.info("Page filters reset and refreshed");
                 }}

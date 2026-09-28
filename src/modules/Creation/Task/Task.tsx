@@ -16,6 +16,7 @@ import type {
   ParameterDropdown 
 } from "../../Master/Task/Task.variables";
 import { TaskDialog } from "../../Master/Task/Taskform";
+import { useAuth } from "../../../auth/authContext";
 
 interface TaskProps {
   onClose?: () => void;
@@ -24,6 +25,8 @@ interface TaskProps {
 
 const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const currentUserId = Number(user?.Global_User_ID || user?.id || user?.Local_User_ID || 1);
 
   // State for dropdown options
   const [projects, setProjects] = useState<ProjectDropdown[]>([]);
@@ -50,8 +53,15 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
     Paramet_Ids: [],
     Paramet_Data_Types: [],
     Para_Display_Names: [],
-    Created_By: 1
+    Created_By: currentUserId
   });
+
+  // Keep Created_By updated if user context loads asynchronously
+  useEffect(() => {
+    if (currentUserId) {
+      setTaskObj((prev) => ({ ...prev, Created_By: currentUserId }));
+    }
+  }, [currentUserId]);
 
   // Sync dialog open state with prop
   useEffect(() => {
@@ -114,7 +124,7 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
       Paramet_Ids: [],
       Paramet_Data_Types: [],
       Para_Display_Names: [],
-      Created_By: 1
+      Created_By: currentUserId
     });
     setError(null);
     setSuccessMessage(null);
@@ -130,7 +140,7 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
     }
 
     if (!taskObj.Task_Type_Id) {
-      setError("Please select a task group");
+      setError("Please select a Task Type");
       setShowErrorAlert(true);
       return false;
     }
@@ -161,7 +171,7 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
         Paramet_Ids: taskObj.Paramet_Ids || [],
         Paramet_Data_Types: taskObj.Paramet_Data_Types || [],
         Para_Display_Names: taskObj.Para_Display_Names || [],
-        Created_By: taskObj.Created_By || 1
+        Created_By: taskObj.Created_By || currentUserId
       };
 
       // Call API to create task - returns boolean directly
@@ -175,10 +185,10 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
         // Reset form after successful submission
         resetForm();
         
-        // Close dialog after 2 seconds
+        // Close dialog after 3 seconds to match alert banner duration
         setTimeout(() => {
           handleCloseDialog();
-        }, 2000);
+        }, 3000);
       } else {
         setError("Failed to create task");
         setShowErrorAlert(true);

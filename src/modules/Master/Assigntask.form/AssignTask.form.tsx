@@ -510,6 +510,13 @@ const AssignTask: React.FC<PageProps> = ({
           (orig) => !selectedEmployeeIds.includes(Number(orig.Emp_Id))
         );
 
+        if (removedAssignments.length > 0) {
+          if (!window.confirm(`Are you sure you want to remove ${removedAssignments.length} employee assignment(s)?`)) {
+            loadingOff();
+            return;
+          }
+        }
+
         for (const removed of removedAssignments) {
           const deleteId = removed.Id || removed.id;
           if (deleteId) {

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Box, FormControl, Typography, TextField } from "@mui/material";
+import { Box, FormControl, TextField } from "@mui/material";
 import { useAuth } from "../../../auth/authContext";
 import {
   getEnrichedTodayPlan,
@@ -1337,9 +1337,6 @@ const ProjectPlan: React.FC = () => {
       {/* 1 & 2. From Date and To Date (Same Line) */}
       <Box display="flex" gap={1.5}>
         <FormControl size="small" sx={{ flex: 1 }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-            From Date
-          </Typography>
           <TextField
             type="date"
             size="small"
@@ -1356,9 +1353,6 @@ const ProjectPlan: React.FC = () => {
         </FormControl>
 
         <FormControl size="small" sx={{ flex: 1 }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-            To Date
-          </Typography>
           <TextField
             type="date"
             size="small"
@@ -1377,9 +1371,6 @@ const ProjectPlan: React.FC = () => {
 
       {/* 3. Project */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Project
-        </Typography>
         <SearchableSelect
           multiple
           value={validDraftProjects}
@@ -1400,9 +1391,6 @@ const ProjectPlan: React.FC = () => {
 
       {/* 4. Task Type */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Task Type
-        </Typography>
         <SearchableSelect
           multiple
           value={draftFilters.taskType}
@@ -1423,9 +1411,6 @@ const ProjectPlan: React.FC = () => {
 
       {/* 5. Task */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Task
-        </Typography>
         <SearchableSelect
           multiple
           value={draftFilters.task}
@@ -1446,9 +1431,6 @@ const ProjectPlan: React.FC = () => {
 
       {/* 6. Employee */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Employee
-        </Typography>
         <SearchableSelect
           multiple
           value={draftFilters.employee}
@@ -1469,9 +1451,6 @@ const ProjectPlan: React.FC = () => {
 
       {/* 7. Project Status */}
       <FormControl size="small" fullWidth>
-        <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, color: "#64748b", display: "block" }}>
-          Project Status
-        </Typography>
         <SearchableSelect
           value={draftFilters.projectStatus}
           onChange={(e) => updateFilterField("projectStatus", e.target.value)}

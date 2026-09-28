@@ -631,9 +631,24 @@ const ExpandedSchedulesComponent: React.FC<{
 
       const empCounts: Record<number, number> = {};
       try {
+        if (projectEmpSchedules && projectEmpSchedules.length > 0) {
+          const schEmpMap = new Map<number, Set<number>>();
+          projectEmpSchedules.forEach((emp: any) => {
+            const sId = Number(emp.Sch_Id || emp.schId);
+            const eId = Number(emp.Emp_Id || emp.empId);
+            if (sId && eId) {
+              if (!schEmpMap.has(sId)) schEmpMap.set(sId, new Set());
+              schEmpMap.get(sId)!.add(eId);
+            }
+          });
+          schEmpMap.forEach((empSet, sId) => {
+            empCounts[sId] = empSet.size;
+          });
+        }
         projectSchedules.forEach((ps: any) => {
-          if (ps.schId) {
-            empCounts[ps.schId] = ps.empCount || 0;
+          const sId = Number(ps.schId || ps.Sch_Id);
+          if (sId && empCounts[sId] === undefined) {
+            empCounts[sId] = ps.empCount || 0;
           }
         });
       } catch (e) {
@@ -1595,7 +1610,6 @@ const TaskExpandedComponent: React.FC<{
         success = await createTask(taskObj);
       }
       if (success && isMounted.current) {
-        toast.success(selectedTask ? "Task updated successfully" : "Task created successfully");
         await fetchTasks();
         await onDataChange?.();
         closeAllDialogs();
@@ -1608,10 +1622,10 @@ const TaskExpandedComponent: React.FC<{
 
   const deleteTaskConfirm = useCallback(async () => {
     if (!selectedTask) return;
+    if (!window.confirm("Are you sure you want to delete this task?")) return;
     try {
       const success = await deleteTask(selectedTask.Task_Id);
       if (success && isMounted.current) {
-        toast.success("Task deleted successfully");
         await fetchTasks();
         await onDataChange?.();
         closeAllDialogs();
@@ -1840,10 +1854,11 @@ const TaskExpandedComponent: React.FC<{
     }
 
     if (success && isMounted.current) {
-      toast.success(`Schedule ${scheduleDialogType === "edit" ? "updated" : "created"} successfully`);
-      const affectedTaskId = selectedTaskForSch;
+      const oldTaskId = selectedTaskForSch;
+      const newTaskId = Number(scheduleObj.Task_Id);
       await fetchTasks();
-      if (affectedTaskId) refreshExpanded(affectedTaskId);
+      if (oldTaskId) refreshExpanded(oldTaskId);
+      if (newTaskId && newTaskId !== oldTaskId) refreshExpanded(newTaskId);
       await onDataChange?.();
       closeAllDialogs();
     }
@@ -1851,16 +1866,16 @@ const TaskExpandedComponent: React.FC<{
 
   const deleteScheduleConfirm = useCallback(async () => {
     if (!selectedScheduleId) return;
+    if (!window.confirm("Are you sure you want to delete this schedule?")) return;
     const success = await deleteprojectschedule(selectedScheduleId);
     if (success && isMounted.current) {
-      toast.success("Schedule deleted successfully");
-      const affectedTaskId = selectedTaskForSch;
+      const affectedTaskId = selectedTaskForSch || Number(scheduleObj.Task_Id);
       await fetchTasks();
       if (affectedTaskId) refreshExpanded(affectedTaskId);
       await onDataChange?.();
       closeAllDialogs();
     }
-  }, [selectedScheduleId, selectedTaskForSch, closeAllDialogs, fetchTasks, refreshExpanded, onDataChange]);
+  }, [selectedScheduleId, scheduleObj.Task_Id, selectedTaskForSch, closeAllDialogs, fetchTasks, refreshExpanded, onDataChange]);
 
   const handleProjectChange = useCallback(
     async (projectIdVal: number) => fetchTasksForProject(projectIdVal),
@@ -2400,7 +2415,6 @@ const TaskTypeExpandedComponent: React.FC<{
     }
 
     if (success && isMounted.current) {
-      toast.success(selectedTaskType ? "Task Type updated successfully" : "Task Type created successfully");
       await fetchTaskTypes();
       await onDataChange?.();
       closeAllDialogs();
@@ -2409,11 +2423,11 @@ const TaskTypeExpandedComponent: React.FC<{
 
   const deleteTaskTypeConfirm = useCallback(async () => {
     if (!selectedTaskType) return;
+    if (!window.confirm("Are you sure you want to delete this task type?")) return;
 
     const success = await deleteTaskType(selectedTaskType.Task_Type_Id);
 
     if (success && isMounted.current) {
-      toast.success("Task Type deleted successfully");
       await fetchTaskTypes();
       await onDataChange?.();
       closeAllDialogs();
@@ -2710,7 +2724,7 @@ const All = () => {
       setProjects(formattedProjects);
       setProjectSchedules(psRes?.data || []);
       
-      const empData: any[] = await getProjectScheduleEmpWithStaffNames().catch(() => []);
+      const empData: any[] = await getProjectScheduleEmpWithStaffNames(undefined, undefined, forceRefresh).catch(() => []);
       setProjectEmpSchedules(empData);
     } catch (err) {
       console.error("Error loading dropdowns", err);
@@ -2772,7 +2786,7 @@ const All = () => {
     setLoading(true);
     try {
       await Promise.all([
-        loadMasterData(),
+        loadMasterData(true),
         loadWorkData(),
         loadTaskTypes()
       ]);
@@ -3171,7 +3185,7 @@ const All = () => {
       Fied_Data: "date", align: "left", isVisible: 1, isCustomCell: true,
       Cell: ({ row }) => {
         const d = (row as unknown as ProjectRow).Est_End_Dt;
-        if (!d) return "N/A";
+        if (!d) return <span style={{ color: "#ed6c02", fontWeight: 600 }}>Project works not started yet</span>;
         const ymd = toYMD(d);
         if (!ymd) return d;
         const parts = ymd.split("-");
@@ -3230,7 +3244,7 @@ const All = () => {
         const taskCount = Number(projectRow.Task_Name);
         if (taskCount === 0) {
           return (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, color: "#ed6c02" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, color: "#ed6c02", minWidth: 360 }}>
               <span style={{ fontSize: "1.1rem", display: "inline-flex", alignItems: "center" }}>⚠️</span>
               <span style={{ fontWeight: 600, fontSize: "0.82rem" }}>Project works not started yet</span>
             </Box>
@@ -3241,7 +3255,9 @@ const All = () => {
         const hasActualSchedules = s.Completed > 0 || ((s as any).Inprocess ?? s["In Progress"] ?? 0) > 0;
         if (!hasActualSchedules) {
           return (
-            <Chip label={`Not Started (${s.Pending})`} sx={{ background: "#ed6c02", color: "#fff", fontWeight: 600 }} />
+            <Box sx={{ minWidth: 360, display: "flex", alignItems: "center" }}>
+              <Chip label={`Not Started (${s.Pending})`} sx={{ background: "#ed6c02", color: "#fff", fontWeight: 600 }} />
+            </Box>
           );
         }
         const completedVal = s.Completed;
@@ -3263,11 +3279,13 @@ const All = () => {
         });
 
         return (
-          <Stack direction="row" spacing={1}>
-            <Chip label={`Completed (${completedVal})`} sx={{ background: colorMap["Completed"], color: "#fff", fontWeight: 600 }} />
-            <Chip label={`Pending (${pendingVal})`} sx={{ background: colorMap["Pending"], color: "#fff", fontWeight: 600 }} />
-            <Chip label={`Inprocess (${inprocessVal})`} sx={{ background: colorMap["Inprocess"], color: "#fff", fontWeight: 600 }} />
-          </Stack>
+          <Box sx={{ minWidth: 360, display: "flex", alignItems: "center" }}>
+            <Stack direction="row" spacing={1}>
+              <Chip label={`Completed (${completedVal})`} sx={{ background: colorMap["Completed"], color: "#fff", fontWeight: 600 }} />
+              <Chip label={`Pending (${pendingVal})`} sx={{ background: colorMap["Pending"], color: "#fff", fontWeight: 600 }} />
+              <Chip label={`Inprocess (${inprocessVal})`} sx={{ background: colorMap["Inprocess"], color: "#fff", fontWeight: 600 }} />
+            </Stack>
+          </Box>
         );
       },
     },

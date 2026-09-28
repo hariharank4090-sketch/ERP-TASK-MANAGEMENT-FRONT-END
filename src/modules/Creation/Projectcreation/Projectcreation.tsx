@@ -18,7 +18,7 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
   const [companies, setCompanies] = useState<companyDropdown[]>([]);
   const [projectHeads, setProjectHeads] = useState<projectheadDropdown[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(false);
+  const [isLoadingDropdowns, setIsLoadingDropdowns] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -56,14 +56,17 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
         getProjectHeadDropdown()
       ]);
       
-      setCompanies(companiesData);
-      setProjectHeads(projectHeadsData);
+      const safeCompanies = Array.isArray(companiesData) ? companiesData : [];
+      const safeProjectHeads = Array.isArray(projectHeadsData) ? projectHeadsData : [];
+
+      setCompanies(safeCompanies);
+      setProjectHeads(safeProjectHeads);
 
       // Auto-select the first company if none is selected
-      if (companiesData.length > 0 && !projectObj.Company_Id) {
+      if (safeCompanies.length > 0 && !projectObj.Company_Id) {
         setProjectObj(prev => ({
           ...prev,
-          Company_Id: companiesData[0].value
+          Company_Id: safeCompanies[0].value
         }));
       }
     } catch (err) {
@@ -87,7 +90,7 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
   };
 
   const resetForm = () => {
-    const defaultCompany = companies.length > 0 ? companies[0].value : null;
+    const defaultCompany = (Array.isArray(companies) && companies.length > 0) ? companies[0].value : null;
 
     setProjectObj({
       Project_Name: "",
@@ -129,20 +132,42 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
         return;
       }
 
+      // Validate start date if provided
+      if (projectObj.Est_Start_Dt) {
+        const startDate = new Date(projectObj.Est_Start_Dt);
+        if (isNaN(startDate.getTime())) {
+          setError("Invalid estimated start date");
+          setShowErrorAlert(true);
+          return;
+        }
+      }
+
+      // Validate end date if provided
+      if (projectObj.Est_End_Dt) {
+        const endDate = new Date(projectObj.Est_End_Dt);
+        if (isNaN(endDate.getTime())) {
+          setError("Invalid estimated end date");
+          setShowErrorAlert(true);
+          return;
+        }
+      }
+
       // Validate date range if both dates are provided
       if (projectObj.Est_Start_Dt && projectObj.Est_End_Dt) {
         const startDate = new Date(projectObj.Est_Start_Dt);
         const endDate = new Date(projectObj.Est_End_Dt);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(0, 0, 0, 0);
         
-        if (endDate <= startDate) {
-          setError("End date must be after start date");
+        if (endDate < startDate) {
+          setError("End date must be on or after start date");
           setShowErrorAlert(true);
           return;
         }
       }
 
       // Validate status
-      if (projectObj.Project_Status !== 0 && projectObj.Project_Status !== 1) {
+      if (projectObj.Project_Status === undefined || projectObj.Project_Status === null || isNaN(Number(projectObj.Project_Status))) {
         setError("Please select a valid status");
         setShowErrorAlert(true);
         return;
@@ -158,8 +183,8 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
         Project_Head: projectObj.Project_Head,
         Est_Start_Dt: projectObj.Est_Start_Dt,
         Est_End_Dt: projectObj.Est_End_Dt,
-        Project_Status: projectObj.Project_Status,
-        IsActive: projectObj.Project_Status // Set IsActive same as Project_Status
+        Project_Status: Number(projectObj.Project_Status),
+        IsActive: projectObj.IsActive ?? (Number(projectObj.Project_Status) === 0 ? 0 : 1)
       };
 
       const success = await createProjectMaster(projectData);

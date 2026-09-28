@@ -767,6 +767,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
 
   const deleteScheduleConfirm = async () => {
     if (!selectedId) return;
+    if (!window.confirm("Are you sure you want to delete this project schedule?")) return;
     if (await deleteprojectschedule(selectedId)) { closeAllDialogs(); fetchSchedulesList(); }
   };
 

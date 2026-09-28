@@ -36,7 +36,7 @@ export const isValidJSON = (str: string): boolean => {
   try {
     JSON.parse(str);
     return true;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (e) {
     return false;
   }
@@ -45,7 +45,7 @@ export const isValidJSON = (str: string): boolean => {
 export const getSessionUser = (): { storage: string | null; user: SessionUser } => {
   const storage = localStorage.getItem('user');
   let user: SessionUser = {};
-  
+
   if (storage && isValidJSON(storage)) {
     try {
       user = JSON.parse(storage);
@@ -53,16 +53,16 @@ export const getSessionUser = (): { storage: string | null; user: SessionUser } 
       user = {};
     }
   }
-  
+
   return { storage, user };
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const isValidObject = (obj: any): boolean => {
-  return obj !== null && 
-         typeof obj === 'object' && 
-         !Array.isArray(obj) && 
-         Object.keys(obj).length > 0;
+  return obj !== null &&
+    typeof obj === 'object' &&
+    !Array.isArray(obj) &&
+    Object.keys(obj).length > 0;
 };
 
 export const storageValue = isValidObject(getSessionUser().user) ? getSessionUser().user : {};
@@ -95,33 +95,33 @@ export const getDaysInMonth = (year: number, month: number): number => {
 
 export const LocalDate = (dateObj?: string | Date): string => {
   const receivedDate = dateObj ? new Date(dateObj) : new Date();
-  
+
   // Check if date is valid
   if (isNaN(receivedDate.getTime())) {
     return 'Invalid Date';
   }
-  
-  return receivedDate.toLocaleDateString('en-IN', { 
-    day: '2-digit', 
-    month: '2-digit', 
-    year: 'numeric' 
+
+  return receivedDate.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
   });
 };
 
 export const LocalDateWithTime = (dateObj?: string | Date): string => {
   const receivedDate = dateObj ? new Date(dateObj) : new Date();
-  
+
   if (isNaN(receivedDate.getTime())) {
     return 'Invalid Date';
   }
-  
-  return receivedDate.toLocaleDateString('en-IN', { 
-    day: '2-digit', 
-    month: '2-digit', 
-    year: 'numeric', 
-    hour: '2-digit', 
+
+  return receivedDate.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
-    hour12: false 
+    hour12: false
   });
 };
 
@@ -151,21 +151,21 @@ export const DaysBetween = (StartDate: Date, EndDate: Date): number => {
   const oneDay = 1000 * 60 * 60 * 24;
   const start = Date.UTC(StartDate.getFullYear(), StartDate.getMonth(), StartDate.getDate());
   const end = Date.UTC(EndDate.getFullYear(), EndDate.getMonth(), EndDate.getDate());
-  
+
   return Math.round((end - start) / oneDay) + 1;
 };
 
 export const LocalTime = (dateObj?: string | Date): string => {
   const receivedDate = dateObj ? new Date(dateObj) : new Date();
-  
+
   if (isNaN(receivedDate.getTime())) {
     return 'Invalid Time';
   }
-  
-  return receivedDate.toLocaleTimeString('en-IN', { 
-    hour: '2-digit', 
+
+  return receivedDate.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
     minute: '2-digit',
-    hour12: false 
+    hour12: false
   });
 };
 
@@ -178,11 +178,11 @@ export const getMonth = (date?: Date): string => {
 
 export const TimeDisplay = (dateObj: string | Date): string => {
   const reqTime = new Date(dateObj);
-  
+
   if (isNaN(reqTime.getTime())) {
     return 'Invalid Time';
   }
-  
+
   let hours = reqTime.getHours();
   const minutes = reqTime.getMinutes();
   const ampm = hours >= 12 ? 'PM' : 'AM';
@@ -198,7 +198,7 @@ export const formatTime24 = (time24: string): string => {
   if (!time24 || !time24.includes(':')) {
     return '00:00 AM';
   }
-  
+
   const [hoursStr, minutesStr] = time24.split(':');
   const hours = parseInt(hoursStr, 10);
   const minutes = parseInt(minutesStr, 10);
@@ -212,7 +212,7 @@ export const formatTime24 = (time24: string): string => {
   const period = hours < 12 ? 'AM' : 'PM';
   const formattedHours = hours12 < 10 ? '0' + hours12 : hours12.toString();
   const formattedMinutes = minutes < 10 ? '0' + minutes : minutes.toString();
-  
+
   return `${formattedHours}:${formattedMinutes} ${period}`;
 };
 
@@ -231,7 +231,7 @@ export const timeToDate = (time: string): Date => {
   const [hoursStr, minutesStr] = time.split(':').map(Number);
   const hours = isNaN(hoursStr) ? 12 : hoursStr;
   const minutes = isNaN(minutesStr) ? 0 : minutesStr;
-  
+
   return new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
 };
 
@@ -252,7 +252,7 @@ export const combineDateTime = (date: string = ISOString(), time: string): strin
 
 export const isValidDate = (dateString: string): boolean => {
   if (!dateString) return false;
-  
+
   const date = new Date(dateString);
   return !isNaN(date.getTime()) && date.toISOString().split('T')[0] === dateString;
 };
@@ -260,7 +260,7 @@ export const isValidDate = (dateString: string): boolean => {
 export const getPreviousDate = (days?: string | number): string => {
   const num = days ? Number(days) : 1;
   if (isNaN(num)) return ISOString();
-  
+
   const date = new Date();
   date.setDate(date.getDate() - num);
   return date.toISOString().split('T')[0];
@@ -269,30 +269,30 @@ export const getPreviousDate = (days?: string | number): string => {
 export const firstDayOfMonth = (monthAndYear: string = ''): string => {
   const date = monthAndYear ? new Date(monthAndYear) : new Date();
   if (isNaN(date.getTime())) return ISOString();
-  
-  return new Date(date.getFullYear(), date.getMonth(), 2).toISOString().split('T')[0];
+
+  return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
 };
 
 export const ISOString = (dateObj?: string | Date): string => {
   const receivedDate = dateObj ? new Date(dateObj) : new Date();
-  
+
   if (isNaN(receivedDate.getTime())) {
     return new Date().toISOString().split('T')[0];
   }
-  
+
   return receivedDate.toISOString().split('T')[0];
 };
 
 export const timeDuration = (startDate: string | Date, endDate: string | Date): string => {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
+
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return '00:00:00';
   }
 
   const diff = end.getTime() - start.getTime();
-  
+
   if (diff < 0) return '00:00:00';
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -300,13 +300,13 @@ export const timeDuration = (startDate: string | Date, endDate: string | Date): 
   const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
   const pad = (num: number): string => String(num).padStart(2, '0');
-  
+
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 };
 
 export const formatDateToCustom = (dateString: string | Date): string => {
   const date = dateString instanceof Date ? dateString : new Date(dateString);
-  
+
   if (isNaN(date.getTime())) {
     return 'Invalid Date';
   }
@@ -322,10 +322,10 @@ export const formatDateToCustom = (dateString: string | Date): string => {
 
 export const customTimeDifference = (startTime: string, endTime: string): string => {
   if (!startTime || !endTime) return '00:00';
-  
+
   const [startHoursStr, startMinutesStr] = startTime.split(':').map(Number);
   const [endHoursStr, endMinutesStr] = endTime.split(':').map(Number);
-  
+
   const startHours = isNaN(startHoursStr) ? 0 : startHoursStr;
   const startMinutes = isNaN(startMinutesStr) ? 0 : startMinutesStr;
   const endHours = isNaN(endHoursStr) ? 0 : endHoursStr;
@@ -333,43 +333,43 @@ export const customTimeDifference = (startTime: string, endTime: string): string
 
   const start = new Date(1970, 0, 1, startHours, startMinutes);
   const end = new Date(1970, 0, 1, endHours, endMinutes);
-  
+
   const diff = end.getTime() - start.getTime();
-  
+
   if (diff < 0) return '00:00';
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   const pad = (num: number): string => String(num).padStart(2, '0');
-  
+
   return `${pad(hours)}:${pad(minutes)}`;
 };
 
 export const timeDifferenceHHMM = (startDate: string | Date, endDate: string | Date): string => {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
+
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return '00:00';
   }
 
   const diff = end.getTime() - start.getTime();
-  
+
   if (diff < 0) return '00:00';
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   const pad = (num: number): string => String(num).padStart(2, '0');
-  
+
   return `${pad(hours)}:${pad(minutes)}`;
 };
 
 export const formatDateForTimeLocal = (dateInput?: string | Date): string => {
   try {
     const date = dateInput instanceof Date ? dateInput : new Date(dateInput || new Date());
-    
+
     if (isNaN(date.getTime())) {
       return '00:00';
     }
@@ -388,7 +388,7 @@ export const formatDateForTimeLocal = (dateInput?: string | Date): string => {
 export const formatDateForDatetimeLocal = (date?: Date): string => {
   try {
     const targetDate = date || new Date();
-    
+
     if (isNaN(targetDate.getTime())) {
       const now = new Date();
       return formatDateForDatetimeLocal(now);
@@ -419,12 +419,12 @@ export const isEqualNumber = (a: any, b: any): boolean => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const toNumber = (value: any): number => {
   if (!value && value !== 0) return 0;
-  
+
   if (typeof value === 'string') {
     const parsed = parseFloat(value.replace(/,/g, ''));
     return isNaN(parsed) ? 0 : parsed;
   }
-  
+
   return typeof value === 'number' ? value : 0;
 };
 
@@ -435,7 +435,7 @@ export const isEqualObject = (obj1: any, obj2: any): boolean => {
   }
 
   if (obj1 == null || typeof obj1 !== 'object' ||
-      obj2 == null || typeof obj2 !== 'object') {
+    obj2 == null || typeof obj2 !== 'object') {
     return false;
   }
 
@@ -528,7 +528,7 @@ export const parseJSON = <T = any>(str: string): JSONParseResult<T> => {
   try {
     const value = JSON.parse(str);
     return { isJSON: true, data: value };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (e) {
     return { isJSON: false };
   }
@@ -547,14 +547,14 @@ export const groupData = <T>(arr: T[], key: keyof T): GroupedData<T>[] => {
 
   return arr.reduce((acc: GroupedData<T>[], item: T) => {
     const groupKey = item[key];
-    
+
     if (groupKey === undefined || groupKey === null) {
       return acc;
     }
 
     const groupIndex = acc.findIndex(
-  group => group.groupKey === groupKey
-);
+      group => group[key as string] === groupKey
+    );
 
 
     if (groupIndex === -1) {
@@ -572,7 +572,7 @@ export const groupData = <T>(arr: T[], key: keyof T): GroupedData<T>[] => {
 
 export const calcTotal = <T>(arr: T[], column: keyof T): number => {
   if (!Array.isArray(arr)) return 0;
-  
+
   return arr.reduce((total, obj) => {
     const value = obj[column];
     const numValue = typeof value === 'number' ? value : Number(value) || 0;
@@ -584,7 +584,7 @@ export const calcAvg = <T>(arr: T[], column: keyof T): number => {
   if (!Array.isArray(arr) || arr.length === 0 || !column) {
     return 0;
   }
-  
+
   const total = calcTotal(arr, column);
   return total / arr.length;
 };
@@ -616,7 +616,7 @@ export const getUniqueData = <T extends Record<string, unknown>>(
     }
   });
 
- 
+
 
 
   return uniqueArray.sort((a, b) => {

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
+import { invalidateTasksCache } from "../../Dashboard/All.api";
 import type {
   taskData,
   taskCreateInput,
@@ -461,6 +462,7 @@ export const createTask = async (
     });
 
     if (res && res.success) {
+      invalidateTasksCache();
       let taskId: number | null = null;
 
       if (res.data) {
@@ -549,6 +551,7 @@ export const updateTask = async (
     });
 
     if (res?.success) {
+      invalidateTasksCache();
       if (body.Paramet_Ids && body.Paramet_Ids.length > 0) {
         const paramSuccess = await updateTaskParameterDetails(
           body.Task_Id,
@@ -605,6 +608,7 @@ export const deleteTask = async (
     });
 
     if (res && res.success) {
+      invalidateTasksCache();
       toast.success(res.message || "Task deleted successfully");
       return true;
     } else {
