@@ -105,7 +105,7 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
           label="Approved"
           color="success"
           size="small"
-          sx={{ minWidth: 90 }}
+          sx={{ minWidth: 100, fontSize: "14px" }}
         />
       );
     case "rejected":
@@ -115,7 +115,7 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
           label="Rejected"
           color="error"
           size="small"
-          sx={{ minWidth: 90 }}
+          sx={{ minWidth: 100, fontSize: "14px" }}
         />
       );
     default:
@@ -125,7 +125,7 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
           label={status || "Pending"}
           color="warning"
           size="small"
-          sx={{ minWidth: 90 }}
+          sx={{ minWidth: 100, fontSize: "14px" }}
         />
       );
   }
@@ -653,18 +653,29 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const isLoading = isLoadingList || isLoadingDropdowns;
 
   const dateInputStyle: React.CSSProperties = {
-    padding: "8px",
+    padding: "8px 12px",
     borderRadius: "8px",
     border: "1px solid #d1d5db",
-    height: "38px",
+    height: "40px",
+    fontSize: "15px",
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <>
+    <Box
+      sx={{
+        fontSize: "15px",
+        "& .MuiTableCell-root": { fontSize: "15px" },
+        "& .MuiInputBase-root": { fontSize: "15px" },
+        "& .MuiInputBase-input": { fontSize: "15px" },
+        "& .MuiMenuItem-root": { fontSize: "15px" },
+        "& .MuiButton-root": { fontSize: "15px" },
+        "& .MuiTypography-root": { fontSize: "15px" },
+      }}
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 2, fontSize: "15px" }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
@@ -684,8 +695,8 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
             alignItems: "flex-end",
           }}
         >
-          <Box sx={{ minWidth: 220 }}>
-            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+          <Box sx={{ minWidth: 240 }}>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5} sx={{ fontSize: "15px", fontWeight: 600 }}>
               Employee
             </Typography>
             <SearchableSelect
@@ -713,7 +724,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
           </Box>
 
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5} sx={{ fontSize: "15px", fontWeight: 600 }}>
               From Date
             </Typography>
             <input
@@ -727,7 +738,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
           </Box>
 
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5} sx={{ fontSize: "15px", fontWeight: 600 }}>
               To Date
             </Typography>
             <input
@@ -753,8 +764,8 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
             alignItems: "flex-end",
           }}
         >
-          <Box sx={{ minWidth: 220 }}>
-            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+          <Box sx={{ minWidth: 240 }}>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5} sx={{ fontSize: "15px", fontWeight: 600 }}>
               Employee
             </Typography>
             <SearchableSelect
@@ -782,7 +793,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
           </Box>
 
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5} sx={{ fontSize: "15px", fontWeight: 600 }}>
               From Date
             </Typography>
             <input
@@ -796,7 +807,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
           </Box>
 
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5} sx={{ fontSize: "15px", fontWeight: 600 }}>
               To Date
             </Typography>
             <input
@@ -836,12 +847,14 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               }}
               disabled={isLoading}
               style={{ 
-                padding: "8px 20px", 
+                padding: "8px 22px", 
                 borderRadius: "8px", 
-                height: "38px",
+                height: "40px",
                 backgroundColor: "#c99f65",
                 border: "none",
                 color: "white",
+                fontSize: "15px",
+                fontWeight: 600,
                 cursor: isLoading ? "not-allowed" : "pointer"
               }}
             >
@@ -857,12 +870,14 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               }}
               disabled={isLoading}
               style={{ 
-                padding: "8px 20px", 
+                padding: "8px 22px", 
                 borderRadius: "8px", 
-                height: "38px",
+                height: "40px",
                 backgroundColor: "#1976d2",
                 border: "none",
                 color: "white",
+                fontSize: "15px",
+                fontWeight: 600,
                 cursor: isLoading ? "not-allowed" : "pointer"
               }}
             >
@@ -880,12 +895,14 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               }}
               disabled={isLoading}
               style={{ 
-                padding: "8px 20px", 
+                padding: "8px 22px", 
                 borderRadius: "8px", 
-                height: "38px",
+                height: "40px",
                 backgroundColor: "#6c757d",
                 border: "none",
                 color: "white",
+                fontSize: "15px",
+                fontWeight: 600,
                 cursor: isLoading ? "not-allowed" : "pointer"
               }}
             >
@@ -944,7 +961,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         selectedId={selectedDeleteId}
         isLoading={isSubmitting}
       />
-    </>
+    </Box>
   );
 };
 
