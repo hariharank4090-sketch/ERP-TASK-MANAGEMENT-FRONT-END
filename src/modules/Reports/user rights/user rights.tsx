@@ -272,12 +272,25 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
         const userRes = await fetchUsersList();
         let loadedUsers: UserDropdownItem[] = [];
         if (userRes?.success && Array.isArray(userRes.data)) {
-          loadedUsers = userRes.data.map((u: any) => ({
-            UserId: u.UserId ?? u.id ?? u.User_Id ?? u.user_id,
-            Name: u.Name ?? u.name ?? u.User_Name ?? u.username ?? "",
-            UserTypeId: u.UserTypeId ?? u.UserType ?? u.user_type_id ?? u.User_Type_Id,
-            UserType: u.UserType ?? u.UserTypeName ?? u.user_type,
-          }));
+          loadedUsers = userRes.data.map((u: any) => {
+            const uTypeId = u.UserTypeId ?? u.user_type_id ?? u.User_Type_Id;
+            let uType = u.UserType ?? u.UserTypeName ?? u.user_type ?? u.User_Type ?? u.task_type ?? u.TaskType;
+            if ((!uType || !isNaN(Number(uType))) && uTypeId !== undefined) {
+              const matchedUt = loadedUsers.find(
+                (ut) => String(ut.Id).trim() === String(uTypeId).trim()
+              );
+              if (matchedUt) {
+                uType = matchedUt.UserType;
+              }
+            }
+            return {
+              ...u,
+              UserId: u.UserId ?? u.id ?? u.User_Id ?? u.user_id,
+              Name: u.Name ?? u.name ?? u.User_Name ?? u.username ?? "",
+              UserTypeId: uTypeId,
+              UserType: typeof uType === "string" ? uType : "",
+            };
+          });
           setUsers(loadedUsers);
         } else {
           toast.error("Failed to load users list");
@@ -795,21 +808,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
   };
 
   return (
-    <Box
-      sx={{
-        height: "100%",
-        minHeight: "100%",
-        flex: 1,
-        mt: 0,
-        background: "linear-gradient(to bottom, #f0f6fa, #e1ecf5)",
-        p: 1.25,
-        display: "flex",
-        flexDirection: "column",
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
-    >
-      <Box sx={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", gap: 1.5 }}>
+    <Box sx={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", gap: 1.5 }}>
         {/* Main 2-Panel Layout Container */}
         <Box
           sx={{
@@ -862,7 +861,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Box display="flex" alignItems="center" gap={0.75}>
                     <BadgeIcon color="primary" sx={{ fontSize: 18 }} />
-                    <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.8rem" }}>
+                    <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.92rem" }}>
                       User Type
                     </Typography>
                   </Box>
@@ -871,14 +870,14 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                       label="Collective Mode"
                       size="small"
                       color="secondary"
-                      sx={{ height: 19, fontSize: "0.65rem", fontWeight: 700 }}
+                      sx={{ height: 22, fontSize: "0.75rem", fontWeight: 700 }}
                     />
                   ) : (
                     <Chip
                       label="Single User Mode"
                       size="small"
                       variant="outlined"
-                      sx={{ height: 19, fontSize: "0.65rem", fontWeight: 600, color: "text.secondary" }}
+                      sx={{ height: 22, fontSize: "0.75rem", fontWeight: 600, color: "text.secondary" }}
                     />
                   )}
                 </Box>
@@ -900,7 +899,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                       sx={{
                         "& .MuiOutlinedInput-root": {
                           borderRadius: 1.5,
-                          fontSize: "0.78rem",
+                          fontSize: "0.88rem",
                         },
                       }}
                     />
@@ -913,14 +912,14 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                     <Box display="flex" alignItems="center" justifyContent="space-between">
                       <Box display="flex" alignItems="center" gap={0.75}>
                         <GroupIcon color="primary" sx={{ fontSize: 18 }} />
-                        <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.8rem" }}>
+                        <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.92rem" }}>
                           Target Users ({selectedGroupUsers.length})
                         </Typography>
                       </Box>
                       <Box display="flex" gap={0.5}>
                         <Button
                           size="small"
-                          sx={{ fontSize: "0.65rem", py: "1px", px: "6px", minWidth: 0, textTransform: "none", fontWeight: 600 }}
+                          sx={{ fontSize: "0.76rem", py: "1px", px: "6px", minWidth: 0, textTransform: "none", fontWeight: 600 }}
                           onClick={() => setSelectedGroupUsers(filteredUsersForDropdown)}
                         >
                           Select All
@@ -928,7 +927,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                         <Button
                           size="small"
                           color="error"
-                          sx={{ fontSize: "0.65rem", py: "1px", px: "6px", minWidth: 0, textTransform: "none", fontWeight: 600 }}
+                          sx={{ fontSize: "0.76rem", py: "1px", px: "6px", minWidth: 0, textTransform: "none", fontWeight: 600 }}
                           onClick={() => setSelectedGroupUsers([])}
                         >
                           Clear
@@ -953,7 +952,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                             checked={selected}
                             sx={{ mr: 1, p: 0.25 }}
                           />
-                          <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+                          <Typography variant="body2" sx={{ fontSize: "0.88rem" }}>
                             {option.Name}
                           </Typography>
                         </li>
@@ -968,7 +967,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                           sx={{
                             "& .MuiOutlinedInput-root": {
                               borderRadius: 1.5,
-                              fontSize: "0.78rem",
+                              fontSize: "0.88rem",
                             },
                           }}
                         />
@@ -992,7 +991,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                       <Box display="flex" alignItems="center" justifyContent="space-between">
                         <Box display="flex" alignItems="center" gap={0.5}>
                           <GroupIcon sx={{ fontSize: 15, color: "#15803d" }} />
-                          <Typography variant="caption" sx={{ fontWeight: 700, color: "#166534", fontSize: "0.72rem" }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: "#166534", fontSize: "0.82rem" }}>
                             {selectedGroupUsers.length} Users ({selectedUserType.UserType})
                           </Typography>
                         </Box>
@@ -1002,7 +1001,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                           sx={{
                             p: "0px 6px",
                             minWidth: 0,
-                            fontSize: "0.65rem",
+                            fontSize: "0.75rem",
                             textTransform: "none",
                             fontWeight: 600,
                             color: "#15803d",
@@ -1037,14 +1036,14 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                 )
                               }
                               sx={{
-                                height: 19,
-                                fontSize: "0.65rem",
+                                height: 22,
+                                fontSize: "0.75rem",
                                 fontWeight: 600,
                                 bgcolor: "#ffffff",
                                 color: "#166534",
                                 border: "1px solid #bbf7d0",
                                 "& .MuiChip-deleteIcon": {
-                                  fontSize: 13,
+                                  fontSize: 14,
                                   color: "#166534",
                                   "&:hover": { color: "#b91c1c" },
                                 },
@@ -1059,7 +1058,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                   <>
                     <Box display="flex" alignItems="center" gap={0.75}>
                       <PersonIcon color="primary" sx={{ fontSize: 18 }} />
-                      <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.8rem" }}>
+                      <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.92rem" }}>
                         Select Employee
                       </Typography>
                     </Box>
@@ -1085,7 +1084,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                             sx={{
                               "& .MuiOutlinedInput-root": {
                                 borderRadius: 1.5,
-                                fontSize: "0.78rem",
+                                fontSize: "0.88rem",
                               },
                             }}
                           />
@@ -1098,8 +1097,8 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                         sx={{
                           p: 0.75,
                           px: 1,
-                          bgcolor: "#eff6ff",
-                          border: "1px solid #bfdbfe",
+                          bgcolor: "#fcf7ef",
+                          border: "1px solid #e0c496",
                           borderRadius: 1.5,
                           display: "flex",
                           alignItems: "center",
@@ -1108,29 +1107,37 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                         }}
                       >
                         <Box display="flex" alignItems="center" gap={0.75} sx={{ minWidth: 0, flex: 1 }}>
-                          <PersonIcon sx={{ fontSize: 16, color: "#1d4ed8" }} />
+                          <PersonIcon sx={{ fontSize: 16, color: "#C99F65" }} />
                           <Typography
                             variant="caption"
                             sx={{
                               fontWeight: 700,
-                              color: "#1e40af",
-                              fontSize: "0.74rem",
+                              color: "#7a5925",
+                              fontSize: "0.85rem",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
                             }}
                           >
                             {selectedUser.Name}
-                            <Typography component="span" sx={{ color: "#64748b", fontWeight: 500, fontSize: "0.68rem", ml: 0.5 }}>
-                              (ID: {selectedUser.UserId}{selectedUser.UserType ? ` • ${selectedUser.UserType}` : ""})
-                            </Typography>
+                            {(() => {
+                              const uTypeDisplay =
+                                selectedUser.UserType ||
+                                userTypes.find(
+                                  (ut) => String(ut.Id).trim() === String(selectedUser.UserTypeId).trim()
+                                )?.UserType;
+                              return (
+                                <Typography component="span" sx={{ color: "#64748b", fontWeight: 500, fontSize: "0.78rem", ml: 0.5 }}>
+                                  (ID: {selectedUser.UserId}{uTypeDisplay ? ` • ${uTypeDisplay}` : ""})
+                                </Typography>
+                              );
+                            })()}
                           </Typography>
                         </Box>
                         <Chip
                           label="Active"
                           size="small"
-                          color="primary"
-                          sx={{ height: 18, fontSize: "0.65rem", fontWeight: 700 }}
+                          sx={{ height: 22, fontSize: "0.75rem", fontWeight: 700, bgcolor: "#C99F65", color: "#ffffff" }}
                         />
                       </Box>
                     )}
@@ -1167,19 +1174,18 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                       }}
                     >
                       <Box display="flex" alignItems="center" gap={0.75}>
-                        <SecurityIcon sx={{ fontSize: 16, color: "#1e3a8a" }} />
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.76rem", color: "#1e293b" }}>
+                        <SecurityIcon sx={{ fontSize: 16, color: "#7a5925" }} />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.9rem", color: "#1e293b" }}>
                           Selected Task Management & Menus
                         </Typography>
                         <Chip
                           size="small"
                           label={`${activeMenuDetails.length}`}
-                          color="success"
                           sx={{
-                            height: 18,
-                            fontSize: "0.68rem",
+                            height: 22,
+                            fontSize: "0.78rem",
                             fontWeight: 700,
-                            bgcolor: "#15803d",
+                            bgcolor: "#C99F65",
                             color: "#ffffff",
                           }}
                         />
@@ -1194,10 +1200,10 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                             sx={{
                               p: "1px 6px",
                               minWidth: 0,
-                              fontSize: "0.68rem",
+                              fontSize: "0.78rem",
                               textTransform: "none",
                               fontWeight: 600,
-                              height: 20,
+                              height: 22,
                             }}
                           >
                             Clear All
@@ -1230,7 +1236,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                               borderRadius: 1.5,
                               bgcolor: "#f8fafc",
                               border: "1px solid #e2e8f0",
-                              borderLeft: "3px solid #16a34a",
+                              borderLeft: "3px solid #C99F65",
                               display: "flex",
                               flexDirection: "column",
                               gap: 0.35,
@@ -1240,18 +1246,18 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                 bgcolor: "#ffffff",
                                 boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
                                 borderColor: "#cbd5e1",
-                                borderLeftColor: "#15803d",
+                                borderLeftColor: "#b3894f",
                               },
                             }}
                           >
                             <Box display="flex" alignItems="center" justifyContent="space-between" gap={0.5}>
                               <Box display="flex" alignItems="center" gap={0.6} sx={{ minWidth: 0, flex: 1 }}>
-                                <CheckCircleIcon sx={{ fontSize: 14, color: "#16a34a", flexShrink: 0 }} />
+                                <CheckCircleIcon sx={{ fontSize: 14, color: "#C99F65", flexShrink: 0 }} />
                                 <Typography
                                   variant="body2"
                                   sx={{
                                     fontWeight: 700,
-                                    fontSize: "0.73rem",
+                                    fontSize: "0.85rem",
                                     color: "#1e293b",
                                     lineHeight: 1.25,
                                     overflow: "hidden",
@@ -1284,8 +1290,8 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                 label={menu.parentName}
                                 size="small"
                                 sx={{
-                                  height: 16,
-                                  fontSize: "0.62rem",
+                                  height: 20,
+                                  fontSize: "0.72rem",
                                   fontWeight: 600,
                                   bgcolor: "#e2e8f0",
                                   color: "#334155",
@@ -1297,12 +1303,12 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                   label={tag}
                                   size="small"
                                   sx={{
-                                    height: 16,
-                                    fontSize: "0.62rem",
+                                    height: 20,
+                                    fontSize: "0.72rem",
                                     fontWeight: 600,
-                                    bgcolor: "#dcfce7",
-                                    color: "#15803d",
-                                    border: "1px solid #86efac",
+                                    bgcolor: "#fcf7ef",
+                                    color: "#7a5925",
+                                    border: "1px solid #e0c496",
                                   }}
                                 />
                               ))}
@@ -1312,10 +1318,10 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                       ) : (
                         <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" sx={{ flex: 1, py: 3, color: "text.disabled" }}>
                           <LayersIcon sx={{ fontSize: 28, mb: 0.5, opacity: 0.5 }} />
-                          <Typography variant="caption" align="center" sx={{ fontWeight: 600, color: "#64748b" }}>
+                          <Typography variant="caption" align="center" sx={{ fontWeight: 600, color: "#64748b", fontSize: "0.82rem" }}>
                             No reports selected yet
                           </Typography>
-                          <Typography variant="caption" align="center" sx={{ fontSize: "0.68rem", opacity: 0.8, mt: 0.25 }}>
+                          <Typography variant="caption" align="center" sx={{ fontSize: "0.78rem", opacity: 0.8, mt: 0.25 }}>
                             Select menus on the right to add them here.
                           </Typography>
                         </Box>
@@ -1339,10 +1345,10 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                     }}
                   >
                     <SecurityIcon sx={{ fontSize: 36, mb: 1, opacity: 0.4 }} />
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#64748b", fontSize: "0.75rem" }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: "#64748b", fontSize: "0.88rem" }}>
                       No Target Selected
                     </Typography>
-                    <Typography variant="caption" sx={{ mt: 0.5, maxWidth: 220 }}>
+                    <Typography variant="caption" sx={{ mt: 0.5, maxWidth: 220, fontSize: "0.78rem" }}>
                       Select an employee above, or pick a User Type to assign rights collectively.
                     </Typography>
                   </Box>
@@ -1351,7 +1357,6 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                 {/* 4. Save Button (Pinned at Bottom) */}
                 <Button
                   variant="contained"
-                  color="success"
                   size="medium"
                   startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
                   onClick={handleSaveRights}
@@ -1362,13 +1367,16 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                   sx={{
                     py: 1,
                     borderRadius: 1.5,
+                    fontSize: "0.92rem",
                     fontWeight: 700,
                     textTransform: "none",
-                    boxShadow: "0 4px 10px rgba(46, 125, 50, 0.15)",
+                    bgcolor: "#C99F65",
+                    color: "#ffffff",
+                    boxShadow: "0 4px 10px rgba(201, 159, 101, 0.3)",
                     transition: "all 0.2s",
                     flexShrink: 0,
                     "&:hover": {
-                      backgroundColor: "#1b5e20",
+                      backgroundColor: "#b3894f",
                     },
                   }}
                 >
@@ -1429,7 +1437,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                   mb={1.5}
                   flexShrink={0}
                 >
-                  <Typography variant="subtitle2" fontWeight={700}>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ fontSize: "0.92rem" }}>
                     Available Menus & Task Management
                   </Typography>
 
@@ -1440,7 +1448,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                         size="small"
                         startIcon={<CheckCircleIcon />}
                         onClick={handleSelectAll}
-                        sx={{ textTransform: "none", borderRadius: 1, py: 0.2, fontSize: "0.75rem" }}
+                        sx={{ textTransform: "none", borderRadius: 1, py: 0.2, fontSize: "0.85rem" }}
                       >
                         Select All
                       </Button>
@@ -1450,7 +1458,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                         size="small"
                         startIcon={<ClearIcon />}
                         onClick={handleClearAll}
-                        sx={{ textTransform: "none", borderRadius: 1, py: 0.2, fontSize: "0.75rem" }}
+                        sx={{ textTransform: "none", borderRadius: 1, py: 0.2, fontSize: "0.85rem" }}
                       >
                         Clear All
                       </Button>
@@ -1471,6 +1479,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                     flexShrink: 0,
                     "& .MuiOutlinedInput-root": {
                       borderRadius: 2,
+                      fontSize: "0.88rem",
                       backgroundColor: "#f8fafc",
                     },
                   }}
@@ -1492,24 +1501,24 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                     sx={{ flex: 1, color: "text.secondary", py: 4 }}
                   >
                     <SecurityIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1.5 }} />
-                    <Typography variant="body2" fontWeight={600} align="center">
+                    <Typography variant="body2" fontWeight={600} align="center" sx={{ fontSize: "0.88rem" }}>
                       Please select an employee or a User Type
                     </Typography>
-                    <Typography variant="caption" color="text.disabled" align="center" sx={{ mt: 0.5 }}>
+                    <Typography variant="caption" color="text.disabled" align="center" sx={{ mt: 0.5, fontSize: "0.78rem" }}>
                       Select a single employee or select a User Type to configure menu privileges collectively.
                     </Typography>
                   </Box>
                 ) : loadingRights ? (
                   <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" sx={{ flex: 1, py: 4 }}>
                     <CircularProgress size={30} sx={{ mb: 1.5 }} />
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.82rem" }}>
                       Loading permissions list...
                     </Typography>
                   </Box>
                 ) : Object.keys(filteredGroupedMenus).length === 0 ? (
                   <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" sx={{ flex: 1, py: 4 }}>
                     <ClearIcon sx={{ fontSize: 36, color: "text.disabled", mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.82rem" }}>
                       No menus found matching "{searchQuery}"
                     </Typography>
                   </Box>
@@ -1581,7 +1590,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                               ) : (
                                 <ChevronRightIcon color="action" fontSize="small" />
                               )}
-                              <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.8rem" }}>
+                              <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ fontSize: "0.92rem" }}>
                                 {category.toUpperCase()}
                               </Typography>
                             </Box>
@@ -1591,9 +1600,9 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                 px: 1,
                                 py: 0.2,
                                 borderRadius: 4,
-                                backgroundColor: categoryActiveCount > 0 ? "rgba(46, 125, 50, 0.1)" : "#f1f5f9",
-                                color: categoryActiveCount > 0 ? "success.main" : "text.secondary",
-                                fontSize: "0.7rem",
+                                backgroundColor: categoryActiveCount > 0 ? "rgba(201, 159, 101, 0.15)" : "#f1f5f9",
+                                color: categoryActiveCount > 0 ? "#7a5925" : "text.secondary",
+                                fontSize: "0.82rem",
                                 fontWeight: 700,
                               }}
                             >
@@ -1610,7 +1619,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                 backgroundColor: "#f8fafc",
                               }}
                             >
-                              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(1, 1fr)", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" }, gap: 1.5 }}>
+                              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))" }, gap: 1.5 }}>
                                 {items.map((item) => {
                                   const isChecked = userRightsIds.includes(Number(item.id));
                                   const hasChildren = Boolean(item.childItems && item.childItems.length > 0);
@@ -1624,22 +1633,23 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                         elevation={0}
                                         sx={{
                                           width: "100%",
-                                          minHeight: 90,
+                                          height: isSubExpanded ? "auto" : 108,
+                                          minHeight: 108,
                                           display: "flex",
                                           flexDirection: "column",
                                           justifyContent: "space-between",
                                           p: 1.25,
                                           borderRadius: 2,
-                                          border: isChecked ? "1.5px solid #22c55e" : "1px solid #e2e8f0",
-                                          backgroundColor: isChecked ? "#f0fdf4" : "#ffffff",
+                                          border: isChecked ? "1.5px solid #C99F65" : "1px solid #e2e8f0",
+                                          backgroundColor: isChecked ? "#fcf7ef" : "#ffffff",
                                           boxShadow: isChecked
-                                            ? "0 2px 8px rgba(34, 197, 94, 0.12)"
+                                            ? "0 2px 8px rgba(201, 159, 101, 0.2)"
                                             : "0 1px 3px rgba(0, 0, 0, 0.03)",
                                           transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                                           "&:hover": {
                                             transform: "translateY(-2px)",
                                             boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                                            borderColor: isChecked ? "#16a34a" : "#cbd5e1",
+                                            borderColor: isChecked ? "#b3894f" : "#cbd5e1",
                                           },
                                         }}
                                       >
@@ -1661,14 +1671,13 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                               e.stopPropagation();
                                               handleParentSubToggle(item);
                                             }}
-                                            color="success"
                                             size="small"
                                             sx={{
                                               p: 0,
                                               mt: 0.1,
                                               color: "#94a3b8",
                                               "&.Mui-checked": {
-                                                color: "#16a34a",
+                                                color: "#C99F65",
                                               },
                                             }}
                                           />
@@ -1678,36 +1687,37 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                               variant="body2"
                                               sx={{
                                                 fontWeight: isChecked ? 700 : 600,
-                                                fontSize: "0.78rem",
-                                                color: isChecked ? "#15803d" : "#1e293b",
+                                                fontSize: "0.88rem",
+                                                color: isChecked ? "#7a5925" : "#1e293b",
                                                 lineHeight: 1.25,
-                                                wordBreak: "break-word",
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
                                               }}
                                             >
                                               {item.name}
                                             </Typography>
 
-                                            {item.rUrl && (
-                                              <Typography
-                                                variant="caption"
-                                                sx={{
-                                                  fontSize: "0.625rem",
-                                                  color: "#64748b",
-                                                  display: "block",
-                                                  mt: 0.25,
-                                                  whiteSpace: "nowrap",
-                                                  overflow: "hidden",
-                                                  textOverflow: "ellipsis",
-                                                  fontFamily: "monospace",
-                                                  opacity: 0.85,
-                                                }}
-                                              >
-                                                {item.rUrl}
-                                              </Typography>
-                                            )}
+                                            <Typography
+                                              variant="caption"
+                                              sx={{
+                                                fontSize: "0.75rem",
+                                                color: "#64748b",
+                                                display: "block",
+                                                mt: 0.25,
+                                                minHeight: "1.1rem",
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                fontFamily: "monospace",
+                                                opacity: 0.85,
+                                              }}
+                                            >
+                                              {item.rUrl || "/"}
+                                            </Typography>
                                           </Box>
 
-                                          {hasChildren && (
+                                          {hasChildren ? (
                                             <IconButton
                                               size="small"
                                               onClick={(e) => {
@@ -1724,6 +1734,8 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                             >
                                               <ExpandMoreIcon fontSize="small" />
                                             </IconButton>
+                                          ) : (
+                                            <Box sx={{ width: 28, height: 28, flexShrink: 0 }} />
                                           )}
                                         </Box>
 
@@ -1732,7 +1744,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                           sx={{
                                             mt: 1,
                                             pt: 0.75,
-                                            borderTop: isChecked ? "1px dashed #bbf7d0" : "1px dashed #e2e8f0",
+                                            borderTop: isChecked ? "1px dashed #e0c496" : "1px dashed #e2e8f0",
                                           }}
                                         >
                                           <Box
@@ -1745,14 +1757,14 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                               <ViewAgendaIcon
                                                 sx={{
                                                   fontSize: 12,
-                                                  color: isChecked ? "#16a34a" : "#cbd5e1",
+                                                  color: isChecked ? "#C99F65" : "#cbd5e1",
                                                 }}
                                               />
                                               <Typography
                                                 variant="caption"
                                                 sx={{
-                                                  fontSize: "0.625rem",
-                                                  color: isChecked ? "#15803d" : "#94a3b8",
+                                                  fontSize: "0.75rem",
+                                                  color: isChecked ? "#7a5925" : "#94a3b8",
                                                   fontWeight: 600,
                                                 }}
                                               >
@@ -1771,11 +1783,11 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                 sx={{
                                                   p: "0px 6px",
                                                   minWidth: 0,
-                                                  fontSize: "0.625rem",
+                                                  fontSize: "0.75rem",
                                                   textTransform: "none",
                                                   fontWeight: 700,
-                                                  color: isSubExpanded ? "#1d4ed8" : "#475569",
-                                                  bgcolor: isSubExpanded ? "#eff6ff" : "#f1f5f9",
+                                                  color: isSubExpanded ? "#7a5925" : "#475569",
+                                                  bgcolor: isSubExpanded ? "#fcf7ef" : "#f1f5f9",
                                                   borderRadius: 1,
                                                 }}
                                               >
@@ -1786,16 +1798,19 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                 label="Active"
                                                 size="small"
                                                 sx={{
-                                                  height: 16,
-                                                  fontSize: "0.55rem",
+                                                  height: 20,
+                                                  fontSize: "0.7rem",
                                                   fontWeight: 700,
-                                                  backgroundColor: "#dcfce7",
-                                                  color: "#15803d",
+                                                  backgroundColor: "#fcf7ef",
+                                                  color: "#7a5925",
+                                                  border: "1px solid #e0c496",
                                                   borderRadius: 0.75,
                                                   "& .MuiChip-label": { px: 0.5 },
                                                 }}
                                               />
-                                            ) : null}
+                                            ) : (
+                                              <Box sx={{ height: 16 }} />
+                                            )}
                                           </Box>
                                         </Box>
 
@@ -1817,7 +1832,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                   variant="caption"
                                                   sx={{
                                                     fontWeight: 700,
-                                                    fontSize: "0.68rem",
+                                                    fontSize: "0.8rem",
                                                     color: "#334155",
                                                     letterSpacing: "0.02em",
                                                     textTransform: "uppercase",
@@ -1828,7 +1843,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                 <Typography
                                                   variant="caption"
                                                   sx={{
-                                                    fontSize: "0.625rem",
+                                                    fontSize: "0.75rem",
                                                     color: "#64748b",
                                                     fontWeight: 600,
                                                   }}
@@ -1840,7 +1855,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                               <Box
                                                 sx={{
                                                   display: "grid",
-                                                  gridTemplateColumns: { xs: "repeat(1, 1fr)", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
+                                                  gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))" },
                                                   gap: 1,
                                                 }}
                                               >
@@ -1858,7 +1873,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                       sx={{
                                                         p: 1,
                                                         borderRadius: 1.5,
-                                                        border: isChildChecked ? "1.5px solid #22c55e" : "1px solid #cbd5e1",
+                                                        border: isChildChecked ? "1.5px solid #C99F65" : "1px solid #cbd5e1",
                                                         backgroundColor: isChildChecked ? "#ffffff" : "#f8fafc",
                                                         cursor: "pointer",
                                                         userSelect: "none",
@@ -1867,7 +1882,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                         gap: 0.75,
                                                         transition: "all 0.15s ease",
                                                         "&:hover": {
-                                                          borderColor: isChildChecked ? "#16a34a" : "#94a3b8",
+                                                          borderColor: isChildChecked ? "#b3894f" : "#94a3b8",
                                                           boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
                                                         },
                                                       }}
@@ -1878,13 +1893,12 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                           e.stopPropagation();
                                                           handleChildToggle(Number(child.id), item);
                                                         }}
-                                                        color="success"
                                                         size="small"
                                                         sx={{
                                                           p: 0,
                                                           mt: 0.1,
                                                           color: "#94a3b8",
-                                                          "&.Mui-checked": { color: "#16a34a" },
+                                                          "&.Mui-checked": { color: "#C99F65" },
                                                         }}
                                                       />
 
@@ -1894,8 +1908,8 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                             variant="body2"
                                                             sx={{
                                                               fontWeight: isChildChecked ? 700 : 600,
-                                                              fontSize: "0.74rem",
-                                                              color: isChildChecked ? "#15803d" : "#1e293b",
+                                                              fontSize: "0.85rem",
+                                                              color: isChildChecked ? "#7a5925" : "#1e293b",
                                                               lineHeight: 1.2,
                                                             }}
                                                           >
@@ -1906,11 +1920,12 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                               label="Active"
                                                               size="small"
                                                               sx={{
-                                                                height: 14,
-                                                                fontSize: "0.55rem",
+                                                                height: 18,
+                                                                fontSize: "0.68rem",
                                                                 fontWeight: 700,
-                                                                backgroundColor: "#dcfce7",
-                                                                color: "#15803d",
+                                                                backgroundColor: "#fcf7ef",
+                                                                color: "#7a5925",
+                                                                border: "1px solid #e0c496",
                                                                 borderRadius: 0.5,
                                                                 "& .MuiChip-label": { px: 0.4 },
                                                               }}
@@ -1922,7 +1937,7 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
                                                           <Typography
                                                             variant="caption"
                                                             sx={{
-                                                              fontSize: "0.6rem",
+                                                              fontSize: "0.72rem",
                                                               color: "#64748b",
                                                               display: "block",
                                                               mt: 0.25,
@@ -1960,7 +1975,6 @@ const UserBasedTreeView: React.FC<UserBasedTreeViewProps> = (props) => {
           </Box>
         </Box>
       </Box>
-    </Box>
   );
 };
 
