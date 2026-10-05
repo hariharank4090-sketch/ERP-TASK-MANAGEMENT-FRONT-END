@@ -24,6 +24,8 @@ import {
 import { Edit, Delete, Person, History, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
 import { fetchLink } from "../../../Components/customFetch";
+import { getProjectMaster } from "../Projects/Projects.api";
+import type { projectData } from "../Projects/Projects.variables";
 
 import DataTable, { createCol } from "../../../Components/dataTable";
 import TopFilterBar from "../../../Components/TopFilterBar";
@@ -229,9 +231,31 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   const [appliedPlanType, setAppliedPlanType] = useState<string | "ALL">("ALL");
   const [appliedStatus, setAppliedStatus] = useState<number | "ALL">("ALL");
 
+  const [projectsList, setProjectsList] = useState<projectData[]>([]);
+
   const numEq = (a: any, b: any) => {
     if (a == null || b == null) return false;
     return Number(a) === Number(b);
+  };
+
+  /** Helper to check if project associated with schedule is active */
+  const isProjectActive = (item: ProjectScheduleDisplay) => {
+    if (item.Project_Id != null) {
+      const proj = projectsList.find(p => numEq(p.Project_Id, item.Project_Id));
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    if ((item as any).Project_Status !== undefined && (item as any).Project_Status !== null) {
+      return Number((item as any).Project_Status) === 1;
+    }
+    if ((item as any).Project_IsActive !== undefined && (item as any).Project_IsActive !== null) {
+      return Number((item as any).Project_IsActive) === 1;
+    }
+    return true;
   };
 
   // Get unique options from schedules data for dropdowns
@@ -491,12 +515,14 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   const fetchDropdownData = async () => {
     setIsLoadingDropdowns(true);
     try {
-      const [p, pl] = await Promise.all([
+      const [p, pl, masterProjects] = await Promise.all([
         getprojectDropdown(), 
-        getschedulePlanDropdown()
+        getschedulePlanDropdown(),
+        getProjectMaster().catch(() => [])
       ]);
       setProjects(p); 
       setSchedulePlans(pl);
+      setProjectsList(masterProjects || []);
       // Don't fetch task types initially - they will be fetched when project is selected
       setTaskTypes([]);
     } catch {
@@ -778,7 +804,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
   };
 
   const filteredSchedules = useMemo(() => {
-    let filtered = schedules;
+    let filtered = schedules.filter(item => isProjectActive(item));
 
     // Project filter
     if (appliedProjectId !== "ALL") {
@@ -824,7 +850,7 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
       item.taskType?.toLowerCase().includes(term)    ||
       item.projectName?.toLowerCase().includes(term)
     );
-  }, [searchTerm, schedules, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedSchType, appliedPlanType, appliedStatus]);
+  }, [searchTerm, schedules, projectsList, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedSchType, appliedPlanType, appliedStatus]);
 
   const formatTimeTo12Hour = (timeString: string) => {
     if (!timeString) return "-";

@@ -38,7 +38,12 @@ import {
   getEmployeeDropdown,
   getEnrichedWorkMaster,
   getWorkMaster,
+  getProjectScheduleMaster,
+  isScheduleCompletedForNextDate,
 } from "../TodayPlan/todayplan.api";
+
+import { getProjectMaster } from "../Master/Projects/Projects.api";
+import type { projectData } from "../Master/Projects/Projects.variables";
 
 import TodayTaskDialog from "../work master/TodayTaskDialog";
 import { useAuth } from "../../auth/authContext";
@@ -396,6 +401,8 @@ const CreditListPage = () => {
   const [dbRunningKeys, setDbRunningKeys] = useState<Set<string>>(new Set());
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [projectsList, setProjectsList] = useState<projectData[]>([]);
+  const [projectSchedules, setProjectSchedules] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -491,13 +498,18 @@ const CreditListPage = () => {
         const eStart = executedViewStart || todayStr;
         const eEnd = executedViewEnd || eStart;
 
-        const [empRes, todayRes, workRes] = await Promise.all([
+        const [empRes, todayRes, workRes, projectsRes, schedulesRes] = await Promise.all([
           getEmployeeDropdown(companyId ?? undefined),
           getEnrichedTodayPlan({ from_Task_Assign_dt: aStart, to_Task_Assign_dt: aEnd }, companyId),
           getEnrichedWorkMaster({ fromDate: eStart, toDate: eEnd }),
+          getProjectMaster().catch(() => []),
+          getProjectScheduleMaster().catch(() => []),
         ]);
 
         if (!isMounted.current) return;
+
+        setProjectsList(projectsRes || []);
+        setProjectSchedules(schedulesRes || []);
 
         let empList: Employee[] = [];
         if (Array.isArray(empRes)) empList = empRes as Employee[];
@@ -673,9 +685,59 @@ const CreditListPage = () => {
     };
   }, []);
 
-  const filteredAssigned = selectedEmployee
+  /** Helper to check if project associated with task is active */
+  const isProjectActive = useCallback((item: any) => {
+    const projId = item?.Project_Id 
+      ?? item?.project_id 
+      ?? item?.Project_ID 
+      ?? item?.Sch_Project_Id 
+      ?? item?.sch_project_id 
+      ?? item?.taskDetails?.Project_Id 
+      ?? item?.projectDetails?.Project_Id;
+    if (projId != null && projId !== 0 && projId !== "" && projId !== "0") {
+      const proj = projectsList.find(p => Number(p.Project_Id) === Number(projId));
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    const projName = item?.Project_Name 
+      ?? item?.project_name 
+      ?? item?.Project_NAME 
+      ?? item?.Sch_Project_Name 
+      ?? item?.sch_project_name 
+      ?? item?.taskDetails?.Project_Name 
+      ?? item?.projectDetails?.Project_Name;
+    if (projName) {
+      const cleanName = String(projName).trim().toLowerCase();
+      const proj = projectsList.find(p => p.Project_Name && p.Project_Name.trim().toLowerCase() === cleanName);
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    if (item?.Project_Status !== undefined && item?.Project_Status !== null) {
+      return Number(item.Project_Status) === 1;
+    }
+    if (item?.Project_IsActive !== undefined && item?.Project_IsActive !== null) {
+      return Number(item.Project_IsActive) === 1;
+    }
+    if (item?.IsActive !== undefined && item?.IsActive !== null) {
+      return Number(item.IsActive) === 1;
+    }
+    return true;
+  }, [projectsList]);
+
+  const filteredAssigned = (selectedEmployee
     ? scopedAssigned.filter((t) => t.Emp_Id === Number(selectedEmployee))
-    : scopedAssigned;
+    : scopedAssigned
+  )
+    .filter(isProjectActive)
+    .filter((plan) => !isScheduleCompletedForNextDate(plan, projectSchedules, scopedExecuted));
 
   const filteredExecuted = selectedEmployee
     ? scopedExecuted.filter((t) => t.Emp_Id === Number(selectedEmployee))

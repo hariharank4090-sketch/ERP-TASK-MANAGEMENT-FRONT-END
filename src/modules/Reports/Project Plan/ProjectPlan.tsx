@@ -470,15 +470,19 @@ function getRowStats(items: any[]) {
   let maxDate = '';
   let maxCompletedDate = '';
 
+  const uniqueAssignDates = new Set<string>();
+
   items.forEach(it => {
     const sDate = (it.startDate && it.startDate !== '-') ? it.startDate : (it.date && it.date !== '-' ? it.date : '');
     const eDate = (it.endDate && it.endDate !== '-') ? it.endDate : sDate;
 
     if (sDate) {
       if (!minDate || sDate < minDate) minDate = sDate;
+      uniqueAssignDates.add(sDate);
     }
     if (eDate) {
       if (!maxDate || eDate > maxDate) maxDate = eDate;
+      uniqueAssignDates.add(eDate);
     }
     
     if (it.executedStatus === 'Completed') {
@@ -522,11 +526,16 @@ function getRowStats(items: any[]) {
 
   const actualCompletedDate = maxCompletedDate ? formatDateDisplay(maxCompletedDate) : '-';
 
+  const assignHrsStr = (assignMin / 60).toFixed(1) + 'h';
+  const assignDaysCount = uniqueAssignDates.size;
+  const assignDaysStr = `${assignDaysCount} ${assignDaysCount === 1 ? 'day' : 'days'}`;
+  const assignHrsDisplay = `${assignHrsStr} (${assignDaysStr})`;
+
   return {
     startDate: minDate ? formatDateDisplay(minDate) : '-',
     endDate: maxDate ? formatDateDisplay(maxDate) : '-',
     actualCompletedDate: actualCompletedDate,
-    assignHrs: (assignMin / 60).toFixed(1) + 'h',
+    assignHrs: assignHrsDisplay,
     completedHrs: (completedMin / 60).toFixed(1) + 'h',
     delayHrs: delayHrsStr,
     workingHrs: (totalWorkingMin / 60).toFixed(1) + 'h',
@@ -1147,10 +1156,22 @@ const ProjectPlan: React.FC = () => {
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
-    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
-    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (project && project.length > 0) {
+      const set = new Set(project.map(p => String(p).trim().toLowerCase()));
+      data = data.filter(d => d.project && set.has(String(d.project).trim().toLowerCase()));
+    }
+    if (taskType && taskType.length > 0) {
+      const set = new Set(taskType.map(tt => String(tt).trim().toLowerCase()));
+      data = data.filter(d => d.taskType && set.has(String(d.taskType).trim().toLowerCase()));
+    }
+    if (task && task.length > 0) {
+      const set = new Set(task.map(t => String(t).trim().toLowerCase()));
+      data = data.filter(d => d.taskName && set.has(String(d.taskName).trim().toLowerCase()));
+    }
+    if (employee && employee.length > 0) {
+      const set = new Set(employee.map(e => String(e).trim().toLowerCase()));
+      data = data.filter(d => d.employee && set.has(String(d.employee).trim().toLowerCase()));
+    }
 
     return data;
   }, [workData, appliedFilters, projStatusMap]);
@@ -1595,6 +1616,8 @@ const ProjectPlan: React.FC = () => {
       Fied_Data: "string",
       isVisible: 1,
       align: "center",
+      isCustomCell: true,
+      Cell: ({ row }) => <div style={{ minWidth: '110px' }}>{row.assignHrs as string}</div>,
     },
     {
       Field_Name: "endDate",
@@ -1703,6 +1726,8 @@ const ProjectPlan: React.FC = () => {
       Fied_Data: "string",
       isVisible: 1,
       align: "center",
+      isCustomCell: true,
+      Cell: ({ row }) => <div style={{ minWidth: '110px' }}>{row.assignHrs as string}</div>,
     },
     {
       Field_Name: "endDate",
@@ -1857,6 +1882,7 @@ const ProjectPlan: React.FC = () => {
                     onCloseDialog={closeFilterDialog}
                     onSearch={applyFilters}
                     onReset={resetFilters}
+                    closeOnSearch={false}
                   >
                     {renderFilterDialogContent()}
                   </DashboardTopFilterBar>
@@ -1938,6 +1964,7 @@ const ProjectPlan: React.FC = () => {
                     onCloseDialog={closeFilterDialog}
                     onSearch={applyFilters}
                     onReset={resetFilters}
+                    closeOnSearch={false}
                   >
                     {renderFilterDialogContent()}
                   </DashboardTopFilterBar>

@@ -2666,6 +2666,7 @@ const All = () => {
 
   // ── IsActive filter for the project dropdown list itself AND data filtering ──
   const [projectIsActiveFilter, setProjectIsActiveFilter] = useState<StatusFilter>("ACTIVE");
+  const [appliedProjectIsActiveFilter, setAppliedProjectIsActiveFilter] = useState<StatusFilter>("ACTIVE");
 
   // ── AssignTask (Corrections) Dialog ──────────────────────────────────────
   const [assignTaskOpen, setAssignTaskOpen] = useState(false);
@@ -2715,12 +2716,15 @@ const All = () => {
       setTasks(tasksData || []);
       setEmployees(employeesData || []);
       
-      const formattedProjects = (projectsData || []).map((p: any) => ({
-        ...p,
-        Project_Id: p.Project_Id ?? p.value ?? p.id,
-        Project_Name: p.Project_Name ?? p.label ?? p.name,
-        IsActive: p.IsActive !== undefined ? Number(p.IsActive) : (p.isActive !== undefined ? Number(p.isActive) : 1)
-      }));
+      const formattedProjects = (projectsData || []).map((p: any) => {
+        const rawActive = p.IsActive ?? p.isActive ?? p.Status ?? p.status ?? p.Project_Status;
+        return {
+          ...p,
+          Project_Id: p.Project_Id ?? p.value ?? p.id,
+          Project_Name: p.Project_Name ?? p.label ?? p.name,
+          IsActive: rawActive !== undefined && rawActive !== null ? Number(rawActive) : 1,
+        };
+      });
       setProjects(formattedProjects);
       setProjectSchedules(psRes?.data || []);
       
@@ -2803,15 +2807,18 @@ const All = () => {
     return projects.filter(p => Number(p.IsActive) === 0);
   }, [projects, projectIsActiveFilter]);
 
-  // ── Get project IDs matching the current IsActive filter ────
+  // ── Get project IDs matching the applied IsActive filter ────
   const activeProjectIds = useMemo(() => {
-    if (projectIsActiveFilter === "ALL") return null;
+    if (appliedProjectIsActiveFilter === "ALL") return null;
+    const targetProjects = appliedProjectIsActiveFilter === "ACTIVE"
+      ? projects.filter(p => Number(p.IsActive) === 1)
+      : projects.filter(p => Number(p.IsActive) === 0);
     return new Set(
-      projectsFilteredByIsActive
+      targetProjects
         .map(p => Number(p.Project_Id))
         .filter(id => id != null && !isNaN(id))
     );
-  }, [projectsFilteredByIsActive, projectIsActiveFilter]);
+  }, [projects, appliedProjectIsActiveFilter]);
 
   // ── Group workData → ProjectRows WITH active project filtering ────────────
   const groupedData: ProjectRow[] = useMemo(
@@ -2824,10 +2831,10 @@ const All = () => {
         if (tid) schedCountMap.set(Number(tid), (schedCountMap.get(Number(tid)) || 0) + 1);
       });
 
-      // 1. Initialize map with all projects matching the IsActive filter
-      const projectsToInclude = projectIsActiveFilter === "ALL" 
+      // 1. Initialize map with all projects matching the applied IsActive filter
+      const projectsToInclude = appliedProjectIsActiveFilter === "ALL" 
         ? projects 
-        : projectIsActiveFilter === "ACTIVE" 
+        : appliedProjectIsActiveFilter === "ACTIVE" 
           ? projects.filter(p => Number(p.IsActive) === 1)
           : projects.filter(p => Number(p.IsActive) === 0);
 
@@ -2935,7 +2942,7 @@ const All = () => {
             : null;
 
         // Skip work data if it doesn't match the active filter
-        if (projectIsActiveFilter !== "ALL") {
+        if (appliedProjectIsActiveFilter !== "ALL") {
           if (projectId == null || activeProjectIds === null || !activeProjectIds.has(projectId)) {
             return;
           }
@@ -3042,21 +3049,10 @@ const All = () => {
 
       // 3. Map into the final array
       const grouped = Object.values(projectMap).map((item: any) => {
-        // Filter task types by project and also filter by active status if needed
+        // Filter task types by project
         let projectTaskTypes = taskTypes.filter(tt =>
           numEq(tt.Project_Id, item.Project_Id)
         );
-        
-        // If active filter is on, also filter task types by their status
-        if (projectIsActiveFilter === "ACTIVE") {
-          projectTaskTypes = projectTaskTypes.filter(tt => 
-            (tt as any).Status !== 0 && (tt as any).Is_Active !== 0
-          );
-        } else if (projectIsActiveFilter === "INACTIVE") {
-          projectTaskTypes = projectTaskTypes.filter(tt => 
-            (tt as any).Status === 0 || (tt as any).Is_Active === 0
-          );
-        }
 
         // If employee filter is active, filter project task types
         if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
@@ -3087,7 +3083,7 @@ const All = () => {
       
       return grouped;
     },
-    [workData, taskTypes, activeProjectIds, projectIsActiveFilter, projects, tasks, projectSchedules, projectEmpSchedules, appliedEmployeeId],
+    [workData, taskTypes, activeProjectIds, appliedProjectIsActiveFilter, projects, tasks, projectSchedules, projectEmpSchedules, appliedEmployeeId],
   );
 
   // ── Apply project id filter (on already filtered data) ───────────────────
@@ -3312,6 +3308,7 @@ const All = () => {
   // ── Open dialog: sync pending values FROM applied values ─────────────────
   const handleOpenFilterDialog = useCallback(() => {
     // Sync pending values with applied values so dialog shows current filter state
+    setProjectIsActiveFilter(appliedProjectIsActiveFilter);
     setProjectIdFilter(appliedProjectId);
     setTaskTypeIdFilter(appliedTaskTypeId);
     setTaskIdFilter(appliedTaskId);
@@ -3319,23 +3316,25 @@ const All = () => {
     setFromDateFilter(appliedFromDate || getTodayString());
     setToDateFilter(appliedToDate || getTodayString());
     setFilterDialogOpen(true);
-  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate]);
+  }, [appliedProjectIsActiveFilter, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate]);
 
   // ── Close dialog: revert pending values to applied values ─────────────────
   const handleCloseFilterDialog = useCallback(() => {
     setFilterDialogOpen(false);
     // Revert pending filter values back to the last applied values
+    setProjectIsActiveFilter(appliedProjectIsActiveFilter);
     setProjectIdFilter(appliedProjectId);
     setTaskTypeIdFilter(appliedTaskTypeId);
     setTaskIdFilter(appliedTaskId);
     setEmployeeIdFilter(appliedEmployeeId);
     setFromDateFilter(appliedFromDate || getTodayString());
     setToDateFilter(appliedToDate || getTodayString());
-  }, [appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate]);
+  }, [appliedProjectIsActiveFilter, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate]);
 
   // ── Reset all filters to defaults ─────────────────────────────────────────
   const handleResetFilters = useCallback(() => {
     setProjectIsActiveFilter("ACTIVE");
+    setAppliedProjectIsActiveFilter("ACTIVE");
     setProjectIdFilter("ALL");
     setTaskTypeIdFilter("ALL");
     setTaskIdFilter("ALL");
@@ -3398,12 +3397,14 @@ const All = () => {
                 projectSchedules={projectSchedules}
                 workData={workData}
                 onSearch={() => {
+                  setAppliedProjectIsActiveFilter(projectIsActiveFilter);
                   setAppliedProjectId(projectIdFilter);
                   setAppliedTaskTypeId(taskTypeIdFilter);
                   setAppliedTaskId(taskIdFilter);
                   setAppliedEmployeeId(employeeIdFilter);
                   setAppliedFromDate(fromDateFilter);
                   setAppliedToDate(toDateFilter);
+                  setFilterDialogOpen(false);
                 }}
                 dialogOpen={filterDialogOpen}
                 onOpenDialog={handleOpenFilterDialog}

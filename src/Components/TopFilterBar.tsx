@@ -58,6 +58,7 @@ export interface DashboardTopFilterBarProps {
   filterButtonSx?: any;
   useSlider?: boolean;
   showTopButton?: boolean;
+  closeOnSearch?: boolean;
 }
 
 const toYMD = (val: unknown): string => {
@@ -152,6 +153,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
   filterButtonSx,
   useSlider = false,
   showTopButton = true,
+  closeOnSearch = true,
 }) => {
   const employeeActiveProjectIds = React.useMemo(() => {
     if (employeeIdFilter === "ALL") return null;
@@ -321,6 +323,7 @@ const DashboardTopFilterBar: React.FC<DashboardTopFilterBarProps> = ({
 
   const handleApplyFilter = () => {
     onSearch();
+    if (closeOnSearch && onCloseDialog) onCloseDialog();
   };
 
   const renderFilterInputs = (isInDialog: boolean = false) => (

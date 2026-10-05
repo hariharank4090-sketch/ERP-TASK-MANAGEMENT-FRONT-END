@@ -262,6 +262,9 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
                   handleDateChange("Est_Start_Dt", value as Dayjs | null)
                 }
                 slotProps={{ 
+                  popper: {
+                    placement: "top-start",
+                  },
                   textField: { 
                     fullWidth: true,
                     placeholder: "DD/MM/YYYY"
@@ -277,6 +280,9 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
                   handleDateChange("Est_End_Dt", value as Dayjs | null)
                 }
                 slotProps={{ 
+                  popper: {
+                    placement: "top-start",
+                  },
                   textField: { 
                     fullWidth: true,
                     placeholder: "DD/MM/YYYY"

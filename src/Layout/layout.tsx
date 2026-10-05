@@ -404,6 +404,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, loadingOn, loadingOff }
               sx={{
                 position: "relative",
                 flex: 1,
+                display: "flex",
+                flexDirection: "column",
                 p: { xs: 0.5, sm: 1, md: 1.25, lg: 1.5 },
                 overflowY: "auto",
                 overflowX: "hidden",

@@ -183,7 +183,6 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
     if (success) {
       closeDialog();
       fetchTaskTypeList();
-      toast.success(selectedId ? "Task Type updated successfully" : "Task Type created successfully");
     }
   };
 
@@ -197,7 +196,6 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
     if (success) {
       closeDialog();
       fetchTaskTypeList();
-      toast.success("Task Type deleted successfully");
     }
   };
 
@@ -217,10 +215,37 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
       if (project && project.Project_Name) {
         return project.Project_Name;
       }
+
+      const projectFromMaster = projectsList.find(
+        proj => proj.Project_Id !== null && Number(proj.Project_Id) === projectId
+      );
+      if (projectFromMaster && projectFromMaster.Project_Name) {
+        return projectFromMaster.Project_Name;
+      }
     }
     
     return "Not Assigned";
-  }, [projectOptions]);
+  }, [projectOptions, projectsList]);
+
+  /** Helper to check if project associated with task type is active */
+  const isProjectActive = useCallback((item: tasktypeData) => {
+    if (item.Project_Id != null) {
+      const proj = projectsList.find(p => numEq(p.Project_Id, item.Project_Id));
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    if ((item as any).Project_Status !== undefined && (item as any).Project_Status !== null) {
+      return Number((item as any).Project_Status) === 1;
+    }
+    if ((item as any).Project_IsActive !== undefined && (item as any).Project_IsActive !== null) {
+      return Number((item as any).Project_IsActive) === 1;
+    }
+    return true;
+  }, [projectsList]);
 
   /** Get status chip color */
   const getStatusChipColor = (status: number | null | undefined): "success" | "error" | "warning" => {
@@ -238,34 +263,41 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
 
   // Get filtered task types based on selected project for the dropdown
   const getFilteredTaskTypesForDropdown = useMemo(() => {
-    if (projectIdFilter === "ALL") {
-      return taskTypes;
+    let list = taskTypes.filter(item => isProjectActive(item));
+    if (projectIsActiveFilter === "ACTIVE" || filterStatus === "Active") {
+      list = list.filter(item => Number(item.Status ?? 1) === 1);
+    } else if (projectIsActiveFilter === "INACTIVE" || filterStatus === "Inactive") {
+      list = list.filter(item => Number(item.Status ?? 0) === 0);
     }
-    return taskTypes.filter(item => numEq(item.Project_Id, projectIdFilter));
-  }, [taskTypes, projectIdFilter]);
+    if (projectIdFilter === "ALL") {
+      return list;
+    }
+    return list.filter(item => numEq(item.Project_Id, projectIdFilter));
+  }, [taskTypes, projectIdFilter, projectIsActiveFilter, filterStatus, isProjectActive]);
 
   // Filter data based on search term & applied TopFilterBar options - Only three filters
   const filteredTaskTypes = useMemo(() => {
-    let filtered = taskTypes;
+    // 1. Hide task types associated with inactive projects (rows of inactive projects are completely hidden)
+    let filtered = taskTypes.filter(item => isProjectActive(item));
 
-    // 1. Status filter
+    // 2. Status filter for Task Type's own status
     if (projectIsActiveFilter === "INACTIVE" || filterStatus === "Inactive") {
       filtered = filtered.filter(item => Number(item.Status ?? 0) === 0);
     } else if (projectIsActiveFilter === "ACTIVE" || filterStatus === "Active") {
       filtered = filtered.filter(item => Number(item.Status ?? 1) === 1);
     }
 
-    // 2. Project filter
+    // 3. Project filter
     if (appliedProjectId !== "ALL") {
       filtered = filtered.filter(item => numEq(item.Project_Id, appliedProjectId));
     }
 
-    // 3. Task Type filter
+    // 4. Task Type filter
     if (appliedTaskTypeId !== "ALL") {
       filtered = filtered.filter(item => numEq(item.Task_Type_Id, appliedTaskTypeId));
     }
 
-    // 4. Search term filter
+    // 5. Search term filter
     if (!searchTerm.trim()) return filtered;
 
     const term = searchTerm.toLowerCase();
@@ -280,6 +312,7 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
     searchTerm, 
     taskTypes, 
     getProjectDisplayName,
+    isProjectActive,
     projectIsActiveFilter,
     filterStatus,
     appliedProjectId,

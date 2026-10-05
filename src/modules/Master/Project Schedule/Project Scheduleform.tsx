@@ -23,6 +23,7 @@ import {
 } from "@mui/material";
 
 import { MobileDatePicker } from "@mui/x-date-pickers/MobileDatePicker";
+import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { StaticDatePicker } from "@mui/x-date-pickers/StaticDatePicker";
@@ -829,8 +830,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
   };
 
   // ── Time change handlers ──────────────────────────────────────────────────
-  const handleStartTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = e.target.value;
+  const handleStartTimeValue = (newTime: string) => {
     handleUIChange("startTime", newTime);
     if (localUI.isTimerBased) {
       const computed = calcDurationHours(newTime, localUI.endTime);
@@ -840,8 +840,7 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
     }
   };
 
-  const handleEndTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = e.target.value;
+  const handleEndTimeValue = (newTime: string) => {
     handleUIChange("endTime", newTime);
     if (localUI.isTimerBased) {
       const computed = calcDurationHours(localUI.startTime, newTime);
@@ -1199,51 +1198,70 @@ export const ProjectScheduleDialog: React.FC<ProjectScheduleDialogProps> = ({
         )}
       </Box>
     ) : (
-      <Box sx={{ display: "flex", gap: 2, mt: 2, alignItems: "flex-start" }}>
-        <TextField
-          type="time" label="Start Time" size="small" fullWidth
-          value={localUI.startTime} onChange={handleStartTimeChange}
-          InputLabelProps={{ shrink: true }} disabled={isFormDisabled}
-          inputProps={{ step: 300 }}
-          sx={{ flex: 1 }}
-        />
-        <TextField
-          type="time" label="End Time" size="small" fullWidth
-          value={localUI.endTime} onChange={handleEndTimeChange}
-          InputLabelProps={{ shrink: true }} disabled={isFormDisabled}
-          inputProps={{ step: 300 }}
-          sx={{ flex: 1 }}
-        />
-        <Box
-          sx={{
-            minWidth: 90,
-            px: 1.5,
-            py: 0.75,
-            borderRadius: 1,
-            backgroundColor: localUI.isTimerBased ? "#fdf6ec" : "#f5f5f5",
-            border: "1px solid",
-            borderColor: localUI.isTimerBased ? "#f0c87a" : "#e0e0e0",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, lineHeight: 1.2 }}>
-            Duration
-          </Typography>
-          <Typography
-            variant="body2"
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <Box sx={{ display: "flex", gap: 2, mt: 2, alignItems: "flex-start" }}>
+          <MobileTimePicker
+            label="Start Time"
+            value={localUI.startTime ? dayjs(`2000-01-01 ${convertTo24H(localUI.startTime)}`, "YYYY-MM-DD HH:mm") : null}
+            onChange={(newValue: Dayjs | null) => {
+              if (newValue && newValue.isValid()) {
+                handleStartTimeValue(newValue.format("HH:mm"));
+              }
+            }}
+            disabled={isFormDisabled}
+            format="hh:mm A"
+            slotProps={{
+              textField: { size: "small", fullWidth: true },
+            }}
+            sx={{ flex: 1 }}
+          />
+          <MobileTimePicker
+            label="End Time"
+            value={localUI.endTime ? dayjs(`2000-01-01 ${convertTo24H(localUI.endTime)}`, "YYYY-MM-DD HH:mm") : null}
+            onChange={(newValue: Dayjs | null) => {
+              if (newValue && newValue.isValid()) {
+                handleEndTimeValue(newValue.format("HH:mm"));
+              }
+            }}
+            disabled={isFormDisabled}
+            format="hh:mm A"
+            slotProps={{
+              textField: { size: "small", fullWidth: true },
+            }}
+            sx={{ flex: 1 }}
+          />
+          <Box
             sx={{
-              fontWeight: 700,
-              color: localUI.isTimerBased ? "#7a5c1e" : "text.secondary",
-              fontSize: 14,
+              minWidth: 90,
+              px: 1.5,
+              py: 0.75,
+              borderRadius: 1,
+              backgroundColor: localUI.isTimerBased ? "#fdf6ec" : "#f5f5f5",
+              border: "1px solid",
+              borderColor: localUI.isTimerBased ? "#f0c87a" : "#e0e0e0",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 40,
             }}
           >
-            {formatDurationString(computedDurationHours)}
-          </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, lineHeight: 1.2 }}>
+              Duration
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                color: localUI.isTimerBased ? "#7a5c1e" : "text.secondary",
+                fontSize: 14,
+              }}
+            >
+              {formatDurationString(computedDurationHours)}
+            </Typography>
+          </Box>
         </Box>
-      </Box>
+      </LocalizationProvider>
     );
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -63,10 +63,25 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   const hasPlaceholder = Boolean(allOptionLabel);
   const EMPTY_VALUE = "___empty___";
+  const NONE_MARKER = "__NONE__";
+
+  const allOptionValues = React.useMemo(() => options.map(o => o.value), [options]);
+
+  const isExplicitlyNone = isMultiple && Array.isArray(value) && value.includes(NONE_MARKER);
+
+  const isAllSelected = isMultiple && !isExplicitlyNone && (
+    !Array.isArray(value) || 
+    value.length === 0 || 
+    (allOptionValues.length > 0 && Array.isArray(value) && value.length === allOptionValues.length)
+  );
 
   let internalValue: any;
   if (isMultiple) {
-    internalValue = Array.isArray(value) ? value : [];
+    if (isAllSelected) {
+      internalValue = allOptionValues;
+    } else {
+      internalValue = Array.isArray(value) ? value.filter((v: any) => v !== NONE_MARKER) : [];
+    }
   } else {
     const isCurrentlyEmpty = value === allOptionValue || value === "" || value == null;
     internalValue = (hasPlaceholder && isCurrentlyEmpty) ? EMPTY_VALUE : (value ?? "");
@@ -76,20 +91,27 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
     if (onChange) {
       if (isMultiple) {
         const valArr = Array.isArray(e.target.value) ? e.target.value : [e.target.value];
-        const lastSelected = valArr[valArr.length - 1];
-        if (lastSelected === EMPTY_VALUE) {
+        const childVal = (child as any)?.props?.value;
+
+        if (childVal === EMPTY_VALUE) {
+          const newValues = isAllSelected ? [NONE_MARKER] : [];
           onChange(
             {
               ...e,
               target: {
                 ...e.target,
-                value: []
+                value: newValues
               }
             } as any,
             child
           );
         } else {
-          const cleanVal = valArr.filter((v: any) => v !== EMPTY_VALUE);
+          let cleanVal = valArr.filter((v: any) => v !== EMPTY_VALUE && v !== NONE_MARKER);
+          if (cleanVal.length === 0) {
+            cleanVal = [NONE_MARKER];
+          } else if (allOptionValues.length > 0 && cleanVal.length === allOptionValues.length) {
+            cleanVal = [];
+          }
           onChange(
             {
               ...e,
@@ -135,8 +157,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }
 
         if (isMultiple) {
-          const arr = Array.isArray(selected) ? selected.filter((v: any) => v !== EMPTY_VALUE && v !== "") : [];
-          if (arr.length === 0) {
+          const arr = Array.isArray(selected) ? selected.filter((v: any) => v !== EMPTY_VALUE && v !== NONE_MARKER && v !== "") : [];
+          if (arr.length === 0 || (options.length > 0 && arr.length === options.length)) {
             return <span style={{ color: '#9ca3af' }}>{allOptionLabel || 'All'}</span>;
           }
           const labels = arr.map(val => {
@@ -206,7 +228,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         <MenuItem value={EMPTY_VALUE}>
           {isMultiple && (
             <Checkbox
-              checked={!Array.isArray(value) || value.length === 0}
+              checked={isAllSelected}
               size="small"
               sx={{ mr: 1, p: 0 }}
             />
@@ -216,7 +238,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       )}
       {filteredOptions.map((opt) => {
         const isSelected = isMultiple
-          ? (Array.isArray(value) && value.some((v: any) => String(v).trim() === String(opt.value).trim()))
+          ? (isAllSelected || (Array.isArray(value) && value.some((v: any) => String(v).trim() === String(opt.value).trim())))
           : String(value).trim() === String(opt.value).trim();
         return (
           <MenuItem key={opt.value} value={opt.value} disabled={opt.disabled}>

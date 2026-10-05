@@ -488,10 +488,18 @@ const getRowStats = (items: any[]) => {
     let totalWeight = 0;
     let earnedWeight = 0;
 
+    let deltaMin = 0;
+    const todayStr = getDateOnly(new Date());
+
     // Check if Process_Id 1 was saved for any item in this set
     const hasProcessId1 = items.some(it => Boolean(it.hasProcess1) || Boolean(it.rawActualCompletedDate));
 
+    const uniqueAssignDates = new Set<string>();
+
     items.forEach(it => {
+      if (it.date && it.date !== '-') {
+        uniqueAssignDates.add(it.date);
+      }
       if (!minDate || it.date < minDate) minDate = it.date;
       if (!maxDate || it.date > maxDate) maxDate = it.date;
 
@@ -502,12 +510,21 @@ const getRowStats = (items: any[]) => {
       assignMin += assMin;
       workingMin += execMin;
 
+      const statStr = String(it.executedStatus || '').toLowerCase();
+      const assignStatStr = String(it.assignedStatus || '').toLowerCase();
+      const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || hasProcessId1 || Boolean(it.hasProcess1);
+
+      const isPreviousDate = Boolean(it.date && it.date < todayStr);
+      if (execMin > 0) {
+        deltaMin += (assMin - execMin);
+      } else if (isCompleted || Boolean(it.rawActualCompletedDate)) {
+        deltaMin += 0;
+      } else if (isPreviousDate && assMin > 0) {
+        deltaMin -= assMin;
+      }
       const weight = assMin > 0 ? assMin : (execMin > 0 ? execMin : 60);
       totalWeight += weight;
 
-      const statStr = String(it.executedStatus || '').toLowerCase();
-      const assignStatStr = String(it.assignedStatus || '').toLowerCase();
-      const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || hasProcessId1;
       const isInProgress = statStr === 'in progress' || statStr === 'inprocess';
 
       if (isCompleted) {
@@ -546,12 +563,10 @@ const getRowStats = (items: any[]) => {
     }
 
     const totalWorkingMin = workingMin;
-    const assignHrsVal = parseFloat((assignMin / 60).toFixed(1));
-    const workingHrsVal = parseFloat((totalWorkingMin / 60).toFixed(1));
+    const workingDeltaVal = parseFloat((deltaMin / 60).toFixed(1));
 
     let workingDeltaStr = '';
-    const workingDeltaVal = parseFloat((assignHrsVal - workingHrsVal).toFixed(1));
-    if (totalWorkingMin === 0) {
+    if (totalWorkingMin === 0 && Math.abs(workingDeltaVal) < 0.05) {
       workingDeltaStr = 'Not Started';
     } else if (Math.abs(workingDeltaVal) < 0.05) {
       workingDeltaStr = '0.0h';
@@ -561,15 +576,21 @@ const getRowStats = (items: any[]) => {
       workingDeltaStr = '+' + workingDeltaVal.toFixed(1) + 'h';
     }
 
+    const assignHrsStr = (assignMin / 60).toFixed(1) + 'h';
+    const assignDaysCount = uniqueAssignDates.size;
+    const assignDaysStr = `${assignDaysCount} ${assignDaysCount === 1 ? 'day' : 'days'}`;
+    const assignHrsDisplay = `${assignHrsStr} (${assignDaysStr})`;
+
     return {
       startDate: minDate ? formatDateDisplay(minDate) : '-',
       endDate: maxDate ? formatDateDisplay(maxDate) : '-',
       actualCompletedDate: maxActualCompDate ? formatDateDisplay(maxActualCompDate) : '-',
-      assignHrs: (assignMin / 60).toFixed(1) + 'h',
+      assignHrs: assignHrsDisplay,
       completedHrs: (completedMin / 60).toFixed(1) + 'h',
       delayHrs: delayHrsStr,
       workingHrs: (totalWorkingMin / 60).toFixed(1) + 'h',
       workingDelta: workingDeltaStr,
+      workingDeltaVal: workingDeltaVal,
       progress: progress
     };
 };
@@ -1059,10 +1080,22 @@ export default function Projectprogress() {
 
     if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
     if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
-    if (project && project.length > 0) data = data.filter(d => d.project && project.includes(d.project));
-    if (taskType && taskType.length > 0) data = data.filter(d => d.taskType && taskType.includes(d.taskType));
-    if (task && task.length > 0) data = data.filter(d => d.taskName && task.includes(d.taskName));
-    if (employee && employee.length > 0) data = data.filter(d => d.employee && employee.includes(d.employee));
+    if (project && project.length > 0) {
+      const set = new Set(project.map(p => String(p).trim().toLowerCase()));
+      data = data.filter(d => d.project && set.has(String(d.project).trim().toLowerCase()));
+    }
+    if (taskType && taskType.length > 0) {
+      const set = new Set(taskType.map(tt => String(tt).trim().toLowerCase()));
+      data = data.filter(d => d.taskType && set.has(String(d.taskType).trim().toLowerCase()));
+    }
+    if (task && task.length > 0) {
+      const set = new Set(task.map(t => String(t).trim().toLowerCase()));
+      data = data.filter(d => d.taskName && set.has(String(d.taskName).trim().toLowerCase()));
+    }
+    if (employee && employee.length > 0) {
+      const set = new Set(employee.map(e => String(e).trim().toLowerCase()));
+      data = data.filter(d => d.employee && set.has(String(d.employee).trim().toLowerCase()));
+    }
 
     return data;
   }, [workData, appliedFilters, projStatusMap]);
@@ -1393,7 +1426,6 @@ export default function Projectprogress() {
         let sumCompleteHrs = 0;
         let sumDelayHrs = 0;
         let sumWorkingHrs = 0;
-        let sumAssignHrs = 0;
         
         const groupsByTask: Record<string, any[]> = {};
         items.forEach(item => {
@@ -1412,7 +1444,6 @@ export default function Projectprogress() {
             sumCompleteHrs += parseFloat(empStats.completedHrs) || 0;
             sumDelayHrs += parseFloat(empStats.delayHrs) || 0;
             sumWorkingHrs += parseFloat(empStats.workingHrs) || 0;
-            sumAssignHrs += parseFloat(empStats.assignHrs) || 0;
           });
         });
 
@@ -1421,16 +1452,7 @@ export default function Projectprogress() {
         stats.delayHrs = sumDelayHrs.toFixed(1) + 'h';
         stats.workingHrs = sumWorkingHrs.toFixed(1) + 'h';
         
-        const deltaSum = parseFloat((sumAssignHrs - sumWorkingHrs).toFixed(1));
-        if (sumWorkingHrs === 0) {
-          stats.workingDelta = 'Not Started';
-        } else if (Math.abs(deltaSum) < 0.05) {
-          stats.workingDelta = '0.0h';
-        } else if (deltaSum < 0) {
-          stats.workingDelta = deltaSum.toFixed(1) + 'h';
-        } else {
-          stats.workingDelta = '+' + deltaSum.toFixed(1) + 'h';
-        }
+
 
         const projCompletedDateDisplay = stats.actualCompletedDate;
 
@@ -1502,7 +1524,7 @@ export default function Projectprogress() {
           isVisible: 1,
           align: "center",
           isCustomCell: true,
-          Cell: ({ row }) => <div style={{ minWidth: '60px' }}>{row.assignHrs as string}</div>,
+          Cell: ({ row }) => <div style={{ minWidth: '110px' }}>{row.assignHrs as string}</div>,
         },
         {
           Field_Name: "workingHrs",
@@ -1604,6 +1626,7 @@ export default function Projectprogress() {
                     onCloseDialog={closeFilterDialog}
                     onSearch={applyFilters}
                     onReset={resetFilters}
+                    closeOnSearch={false}
                   >
                     {renderFilterDialogContent()}
                   </TopFilterBar>
@@ -1653,29 +1676,18 @@ export default function Projectprogress() {
         let sumCompleteHrs = 0;
         let sumDelayHrs = 0;
         let sumWorkingHrs = 0;
-        let sumAssignHrs = 0;
         Object.values(empGroups).forEach(empItems => {
           const empStats = getRowStats(empItems);
           sumCompleteHrs += parseFloat(empStats.completedHrs) || 0;
           sumDelayHrs += parseFloat(empStats.delayHrs) || 0;
           sumWorkingHrs += parseFloat(empStats.workingHrs) || 0;
-          sumAssignHrs += parseFloat(empStats.assignHrs) || 0;
         });
 
         stats.completedHrs = sumCompleteHrs.toFixed(1) + 'h';
         stats.delayHrs = sumDelayHrs.toFixed(1) + 'h';
         stats.workingHrs = sumWorkingHrs.toFixed(1) + 'h';
         
-        const deltaSum = parseFloat((sumAssignHrs - sumWorkingHrs).toFixed(1));
-        if (sumWorkingHrs === 0) {
-          stats.workingDelta = 'Not Started';
-        } else if (Math.abs(deltaSum) < 0.05) {
-          stats.workingDelta = '0.0h';
-        } else if (deltaSum < 0) {
-          stats.workingDelta = deltaSum.toFixed(1) + 'h';
-        } else {
-          stats.workingDelta = '+' + deltaSum.toFixed(1) + 'h';
-        }
+
 
         const taskCompletedDateDisplay = stats.actualCompletedDate;
 
@@ -1734,7 +1746,7 @@ export default function Projectprogress() {
           isVisible: 1,
           align: "center",
           isCustomCell: true,
-          Cell: ({ row }) => <div style={{ minWidth: '60px' }}>{row.assignHrs as string}</div>,
+          Cell: ({ row }) => <div style={{ minWidth: '110px' }}>{row.assignHrs as string}</div>,
         },
         {
           Field_Name: "workingHrs",
@@ -1885,6 +1897,7 @@ export default function Projectprogress() {
                     onCloseDialog={closeFilterDialog}
                     onSearch={applyFilters}
                     onReset={resetFilters}
+                    closeOnSearch={false}
                   >
                     {renderFilterDialogContent()}
                   </TopFilterBar>

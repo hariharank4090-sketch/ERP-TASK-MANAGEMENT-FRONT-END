@@ -67,6 +67,8 @@ import {
   getAllTaskGroups,
   getTaskParameterDetailsByTaskId,
 } from "./Task.api";
+import { getProjectMaster } from "../Projects/Projects.api";
+import type { projectData } from "../Projects/Projects.variables";
 import {
   getprojectschedule,
   createprojectschedule,
@@ -1108,6 +1110,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const [correctionData, setCorrectionData] = useState<any>(null);
 
   const [scheduleProjects, setScheduleProjects] = useState<ScheduleProjectDropdown[]>([]);
+  const [projectsList, setProjectsList] = useState<projectData[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<taskDropdown[]>([]);
   const [parameterOptions, setParameterOptions] = useState<ParameterDropdown[]>([]);
   const [schedulePlans, setSchedulePlans] = useState<schedulePlanDropdown[]>([]);
@@ -1144,17 +1147,19 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     try {
       if (isMounted.current) { setLoading(true); setError(null); }
 
-      const [tasksData, groupsData, schedulesResult, projectsData] = await Promise.all([
+      const [tasksData, groupsData, schedulesResult, projectsData, masterProjectsData] = await Promise.all([
         getTask().catch(() => []),
         getAllTaskGroups().catch(() => []),
         getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
         getTaskProjects().catch(() => []),
+        getProjectMaster().catch(() => []),
       ]);
 
       if (!isMounted.current) return;
 
       setTaskGroups(groupsData);
       setTaskProjects(projectsData);
+      setProjectsList(masterProjectsData || []);
       setAllProjectSchedules(schedulesResult?.data || []);
 
       const taskGroupMap = new Map(
@@ -1237,6 +1242,26 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
 
 
 
+  /** Helper to check if project associated with task is active */
+  const isProjectActive = useCallback((item: TaskDisplay) => {
+    if (item.Project_Id != null) {
+      const proj = projectsList.find(p => numEq(p.Project_Id, item.Project_Id));
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    if ((item as any).Project_Status !== undefined && (item as any).Project_Status !== null) {
+      return Number((item as any).Project_Status) === 1;
+    }
+    if ((item as any).Project_IsActive !== undefined && (item as any).Project_IsActive !== null) {
+      return Number((item as any).Project_IsActive) === 1;
+    }
+    return true;
+  }, [projectsList]);
+
   // Get filtered projects based on selected task type and task
   const getFilteredProjectsForDropdown = useMemo(() => {
     if (taskTypeIdFilter === "ALL" && taskIdFilter === "ALL") return taskProjects;
@@ -1244,6 +1269,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     const validProjectIds = new Set(
       tasks
         .filter(item => 
+          isProjectActive(item) &&
           (taskTypeIdFilter === "ALL" || numEq(item.Task_Type_Id, taskTypeIdFilter)) &&
           (taskIdFilter === "ALL" || numEq(item.Task_Id, taskIdFilter))
         )
@@ -1251,7 +1277,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
         .filter(id => id !== null)
     );
     return taskProjects.filter(p => validProjectIds.has(p.Project_Id));
-  }, [taskProjects, tasks, taskTypeIdFilter, taskIdFilter]);
+  }, [taskProjects, tasks, taskTypeIdFilter, taskIdFilter, isProjectActive]);
 
   // Get filtered task types based on selected project and task
   const getFilteredTaskTypesForDropdown = useMemo(() => {
@@ -1260,6 +1286,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     const validTaskTypeIds = new Set(
       tasks
         .filter(item => 
+          isProjectActive(item) &&
           (projectIdFilter === "ALL" || numEq(item.Project_Id, projectIdFilter)) &&
           (taskIdFilter === "ALL" || numEq(item.Task_Id, taskIdFilter))
         )
@@ -1267,7 +1294,7 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
         .filter(id => id !== null)
     );
     return taskGroups.filter(tg => validTaskTypeIds.has(tg.Task_Type_Id));
-  }, [taskGroups, tasks, projectIdFilter, taskIdFilter]);
+  }, [taskGroups, tasks, projectIdFilter, taskIdFilter, isProjectActive]);
 
   // Get filtered tasks based on selected project and task type
   const getFilteredTasksForDropdown = useMemo(() => {
@@ -1305,11 +1332,11 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
   const filteredTasksList = useMemo(() => {
     let filtered = tasks;
 
-    // 1. Status filter
+    // 1. Status filter based on project active/inactive status
     if (projectIsActiveFilter === "INACTIVE" || filterStatus === "Inactive") {
-      filtered = filtered.filter(item => Number(item.Status ?? 0) === 0);
+      filtered = filtered.filter(item => !isProjectActive(item));
     } else if (projectIsActiveFilter === "ACTIVE" || filterStatus === "Active") {
-      filtered = filtered.filter(item => Number(item.Status ?? 1) === 1);
+      filtered = filtered.filter(item => isProjectActive(item));
     }
 
     // 2. Project filter
@@ -1344,7 +1371,8 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
     filterStatus,
     appliedProjectId,
     appliedTaskTypeId,
-    appliedTaskId
+    appliedTaskId,
+    isProjectActive
   ]);
 
   const closeAllDialogs = useCallback(() => {

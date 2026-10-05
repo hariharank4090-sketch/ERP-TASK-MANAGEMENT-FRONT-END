@@ -24,9 +24,9 @@ const projectAPI = "masters/project";
 const workStatisticsAPI = "masters/workMaster/statistics";
 
 // Cache for master data — keyed by companyId so switching companies never serves stale data
-const tasksCache   = new Map<string, TaskDropdown[]>();
+const tasksCache = new Map<string, TaskDropdown[]>();
 const employeesCache = new Map<string, EmployeeDropdown[]>();
-const projectsCache  = new Map<string, ProjectDropdown[]>();
+const projectsCache = new Map<string, ProjectDropdown[]>();
 
 // Promise caches to avoid duplicate/overlapping API requests
 const tasksPromises = new Map<string, Promise<TaskDropdown[]>>();
@@ -94,39 +94,56 @@ export const extractTimeFromISO = (isoString: string): string => {
 // Process Work Master data
 const processWorkMasterResponse = (items: any[]): WorkMasterData[] => {
     if (!items || !Array.isArray(items)) return [];
-    return items.map(item => ({
-        SNo: String(item.SNo || ''),
-        Work_Id: String(item.Work_Id || ''),
-        Sch_Id: String(item.Sch_Id || ''),
-        Task_Id: String(item.Task_Id || ''),
-        Emp_Id: Number(item.Emp_Id) || 0,
-        Work_Dt: item.Work_Dt || '',
-        Work_Done: item.Work_Done || null,
-        Start_Time: item.Start_Time || '',
-        End_Time: item.End_Time || '',
-        Tot_Minutes: Number(item.Tot_Minutes) || 0,
-        Work_Status: item.Work_Status || 'Pending',
-        Entry_By: item.Entry_By || null,
-        Entry_Date: item.Entry_Date || '',
-        Update_By: item.Update_By || null,
-        Update_Date: item.Update_Date || null,
-        Process_Id: item.Process_Id || null,
-        parameters: item.parameters || [],
-        Sch_No: item.Sch_No || null,
-        Sch_Date: item.Sch_Date || null,
-        Sch_Start_Date: item.Sch_Start_Date || null,
-        Sch_End_Date: item.Sch_End_Date || null,
-        Task_Type_Id: item.Task_Type_Id || null,
-        Sch_Plan_Id: item.Sch_Plan_Id || null,
-        Task_Sch_Timer_Based: item.Task_Sch_Timer_Based || null,
-        Sch_Est_Start_Time: item.Sch_Est_Start_Time || null,
-        Sch_Est_End_Time: item.Sch_Est_End_Time || null,
-        Task_Sch_Duaration: item.Task_Sch_Duaration || null,
-        Sch_Status: item.Sch_Status || null,
-        Task_Name: item.Task_Name || null,
-        Project_Id: item.Project_Id ? String(item.Project_Id) : null,
-        Project_Name: item.Project_Name || null
-    }));
+    return items.map(item => {
+        const projId = item.Project_Id
+            ?? item.project_id
+            ?? item.Project_ID
+            ?? item.Sch_Project_Id
+            ?? item.sch_project_id
+            ?? item.taskDetails?.Project_Id
+            ?? item.projectDetails?.Project_Id;
+        const projName = item.Project_Name
+            ?? item.project_name
+            ?? item.Project_NAME
+            ?? item.Sch_Project_Name
+            ?? item.sch_project_name
+            ?? item.taskDetails?.Project_Name
+            ?? item.projectDetails?.Project_Name;
+        return {
+            ...item,
+            SNo: String(item.SNo || ''),
+            Work_Id: String(item.Work_Id || ''),
+            Sch_Id: String(item.Sch_Id || ''),
+            Task_Id: String(item.Task_Id || ''),
+            Emp_Id: Number(item.Emp_Id) || 0,
+            Work_Dt: item.Work_Dt || '',
+            Work_Done: item.Work_Done || null,
+            Start_Time: item.Start_Time || '',
+            End_Time: item.End_Time || '',
+            Tot_Minutes: Number(item.Tot_Minutes) || 0,
+            Work_Status: item.Work_Status || 'Pending',
+            Entry_By: item.Entry_By || null,
+            Entry_Date: item.Entry_Date || '',
+            Update_By: item.Update_By || null,
+            Update_Date: item.Update_Date || null,
+            Process_Id: item.Process_Id || null,
+            parameters: item.parameters || [],
+            Sch_No: item.Sch_No || null,
+            Sch_Date: item.Sch_Date || null,
+            Sch_Start_Date: item.Sch_Start_Date || null,
+            Sch_End_Date: item.Sch_End_Date || null,
+            Task_Type_Id: item.Task_Type_Id || null,
+            Sch_Plan_Id: item.Sch_Plan_Id || null,
+            Task_Sch_Timer_Based: item.Task_Sch_Timer_Based || null,
+            Sch_Est_Start_Time: item.Sch_Est_Start_Time || null,
+            Sch_Est_End_Time: item.Sch_Est_End_Time || null,
+            Task_Sch_Duaration: item.Task_Sch_Duaration || null,
+            Sch_Status: item.Sch_Status || null,
+            Task_Name: item.Task_Name || item.taskDetails?.Task_Name || null,
+            Project_Id: projId != null && projId !== "" ? String(projId) : null,
+            Project_Name: projName != null ? String(projName) : null
+        };
+    });
 };
 
 // ✅ FIX: Accept companyId as cache key; always bypass cache on company switch
@@ -254,6 +271,148 @@ export const getProjectDropdown = async (
     return promise;
 };
 
+// Date helper
+export const getDateOnly = (dateInput: string | Date): string => {
+    if (!dateInput) return "";
+    if (typeof dateInput === "string") {
+        const s = dateInput.trim();
+        if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    }
+    try {
+        const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+        if (isNaN(date.getTime())) return "";
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+        const day = String(date.getUTCDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    } catch {
+        return "";
+    }
+};
+
+// Fetch Project Schedule Master list (http://localhost:5001/api/masters/projectSchedule/)
+export const getProjectScheduleMaster = async (
+    loadingOn?: () => void,
+    loadingOff?: () => void
+): Promise<any[]> => {
+    try {
+        const res = await fetchLink<BasicApiResponse>({
+            address: "masters/projectSchedule/",
+            method: "GET",
+            loadingOn,
+            loadingOff
+        });
+        if (res && res.success) {
+            let items: any[] = [];
+            if (res.data && Array.isArray(res.data)) {
+                items = res.data;
+            } else if (res.data && (res.data as any).data && Array.isArray((res.data as any).data)) {
+                items = (res.data as any).data;
+            } else if (res.data && (res.data as any).items && Array.isArray((res.data as any).items)) {
+                items = (res.data as any).items;
+            } else if (Array.isArray(res)) {
+                items = res as any[];
+            }
+            return items;
+        }
+        return [];
+    } catch (e: unknown) {
+        console.error("getProjectScheduleMaster Error:", e);
+        return [];
+    }
+};
+
+/**
+ * Checks whether a task schedule card should be HIDDEN on future dates
+ * after the schedule has been completed.
+ */
+export const isScheduleCompletedForNextDate = (
+    plan: any,
+    projectSchedules: any[],
+    workItems: any[]
+): boolean => {
+    if (!plan) return false;
+    const schId = plan.Sch_Id != null && plan.Sch_Id !== "" && plan.Sch_Id !== "0" && plan.Sch_Id !== "null" && plan.Sch_Id !== "undefined"
+        ? String(plan.Sch_Id).trim()
+        : "";
+
+    const assignDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+    if (!assignDate) return false;
+
+    // 1. Find matching master schedule from http://localhost:5001/api/masters/projectSchedule/
+    const masterSch = schId
+        ? projectSchedules.find((s: any) => String(s.schId ?? s.Sch_Id ?? s.id ?? '').trim() === schId)
+        : null;
+
+    // Check if master schedule status or plan status indicates completion
+    const isMasterCompleted = masterSch
+        ? (Number(masterSch.schStatus ?? masterSch.Sch_Status ?? masterSch.status) === 3 ||
+            String(masterSch.schStatus ?? masterSch.Sch_Status ?? masterSch.status).toLowerCase() === "completed")
+        : (Number(plan.Schedule_Sch_Status) === 3 || String(plan.Schedule_Sch_Status).toLowerCase() === "completed");
+
+    // 2. Check if there are completed work entries for this schedule (or Task_Id & Emp_Id)
+    const completedWorkEntries = (workItems || []).filter((w: any) => {
+        const sameSch = schId && w.Sch_Id && String(w.Sch_Id).trim() === schId;
+        const sameTaskEmp = String(w.Task_Id).trim() === String(plan.Task_Id).trim() &&
+            String(w.Emp_Id).trim() === String(plan.Emp_Id).trim();
+        const isDone = w.Work_Status === "Completed" || String(w.Work_Status) === "3";
+        return (sameSch || sameTaskEmp) && isDone;
+    });
+
+    const isWorkCompleted = completedWorkEntries.length > 0;
+
+    if (!isMasterCompleted && !isWorkCompleted) {
+        return false;
+    }
+
+    // 3. Collect completion dates
+    const completionDates: string[] = [];
+
+    if (masterSch) {
+        const compDt = masterSch.schCompDate || masterSch.Sch_Comp_Date || masterSch.updateDate || masterSch.update_date;
+        if (compDt) {
+            const formatted = getDateOnly(compDt);
+            if (formatted) completionDates.push(formatted);
+        }
+    }
+
+    completedWorkEntries.forEach((w: any) => {
+        if (w.Work_Dt) {
+            const formatted = getDateOnly(w.Work_Dt);
+            if (formatted) completionDates.push(formatted);
+        }
+    });
+
+    // Fallback: If marked completed but no explicit completion date found, check schDate / schStartDate
+    if (completionDates.length === 0 && masterSch) {
+        const fallbackDt = masterSch.schDate || masterSch.schStartDate || masterSch.Sch_Date || masterSch.Sch_Start_Date;
+        if (fallbackDt) {
+            const formatted = getDateOnly(fallbackDt);
+            if (formatted) completionDates.push(formatted);
+        }
+    }
+
+    if (completionDates.length > 0) {
+        // Sort completion dates ascending to find earliest completion date
+        completionDates.sort();
+        const earliestCompDate = completionDates[0];
+
+        // If the assignment date is strictly AFTER the completion date (e.g., 30-9-2026 > 29-9-2026), HIDE IT!
+        if (assignDate > earliestCompDate) {
+            return true;
+        }
+    } else if (isMasterCompleted) {
+        // Fallback if master schedule is completed and assignDate is after start date
+        const startDate = masterSch ? getDateOnly(masterSch.schStartDate || masterSch.schDate || masterSch.Sch_Start_Date) : "";
+        if (startDate && assignDate > startDate) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
+
 // Get work statistics
 export const getWorkStatistics = async (
     empId?: number,
@@ -347,12 +506,23 @@ export const getEnrichedWorkMaster = async (
         if (response.data.length === 0) return response;
 
         // ✅ FIX: pass null so it uses the current company key already set in cache
-        const employees = await getEmployeeDropdown(null);
+        const [employees, projects] = await Promise.all([
+            getEmployeeDropdown(null),
+            getProjectDropdown(null).catch(() => [])
+        ]);
         const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
-        const enrichedData = response.data.map(item => ({
-            ...item,
-            Emp_Name: employeeMap.get(String(item.Emp_Id)) || `Employee ${item.Emp_Id}`
-        }));
+        const projectMap = new Map(projects.map(p => [String(p.Project_Id), p.Project_Name]));
+
+        const enrichedData = response.data.map(item => {
+            const pId = item.Project_Id || (item as any).project_id || (item as any).Sch_Project_Id;
+            const pName = item.Project_Name || (pId ? projectMap.get(String(pId)) : undefined);
+            return {
+                ...item,
+                Emp_Name: employeeMap.get(String(item.Emp_Id)) || `Employee ${item.Emp_Id}`,
+                Project_Id: pId ? String(pId) : item.Project_Id,
+                Project_Name: pName || item.Project_Name
+            };
+        });
         return { ...response, data: enrichedData };
     } catch (e: unknown) {
         console.error("getEnrichedWorkMaster Error:", e);
@@ -435,7 +605,7 @@ export const getEnrichedTodayPlan = async (
             ]);
 
             const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
-            const projectMap  = new Map(projects.map(p => [String(p.Project_Id), p.Project_Name]));
+            const projectMap = new Map(projects.map(p => [String(p.Project_Id), p.Project_Name]));
 
             const enrichedData = processedData.map((item: todayplanData) => ({
                 ...item,

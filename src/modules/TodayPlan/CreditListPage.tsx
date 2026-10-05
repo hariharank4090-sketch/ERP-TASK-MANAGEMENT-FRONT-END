@@ -31,6 +31,8 @@ import {
   getEmployeeDropdown,
   getEnrichedWorkMaster,
   getWorkMaster,
+  getProjectScheduleMaster,
+  isScheduleCompletedForNextDate,
 } from "../TodayPlan/todayplan.api";
 import type {
   todayplanData,
@@ -38,6 +40,8 @@ import type {
 } from "../TodayPlan/todayplan.variable";
 
 import TodayTaskDialog from "../work master/TodayTaskDialog";
+import { getProjectMaster } from "../Master/Projects/Projects.api";
+import type { projectData } from "../Master/Projects/Projects.variables";
 import { useAuth } from "../../auth/authContext";
 
 /* ================================================================
@@ -129,6 +133,7 @@ const removeDuplicates = <T extends {
   Emp_Id?: number;
   Task_Assign_dt?: string;
   Work_Dt?: string;
+  Sch_Time?: string;
 }>(
   items: T[],
   type: "assigned" | "executed"
@@ -138,11 +143,29 @@ const removeDuplicates = <T extends {
     let key = "";
     if (type === "assigned") {
       const assignDate = item.Task_Assign_dt ? getDateOnly(item.Task_Assign_dt) : "";
-      key = (item as any).Id || `${item.Task_Id}_${item.Emp_Id}_${assignDate}`;
+      const schId = item.Sch_Id != null ? String(item.Sch_Id).trim() : "";
+      const taskId = item.Task_Id != null ? String(item.Task_Id).trim() : "";
+      const empId = item.Emp_Id != null ? String(item.Emp_Id).trim() : "";
+      const schTime = (item as any).Sch_Time != null ? String((item as any).Sch_Time).trim() : "";
+
+      if (schId && schId !== "0" && schId !== "null" && schId !== "undefined") {
+        key = `${schId}_${empId}_${assignDate}`;
+      } else {
+        key = `${taskId}_${empId}_${assignDate}_${schTime}`;
+      }
     } else {
-      key = (item as any).Work_Id?.toString() || `${item.Task_Id}_${item.Emp_Id}_${(item as any).Work_Dt || ""}`;
+      const workId = (item as any).Work_Id != null ? String((item as any).Work_Id).trim() : "";
+      const taskId = item.Task_Id != null ? String(item.Task_Id).trim() : "";
+      const empId = item.Emp_Id != null ? String(item.Emp_Id).trim() : "";
+      const workDt = (item as any).Work_Dt ? getDateOnly((item as any).Work_Dt) : "";
+
+      if (workId && workId !== "0" && workId !== "null") {
+        key = workId;
+      } else {
+        key = `${taskId}_${empId}_${workDt}`;
+      }
     }
-    if (!seen.has(key)) seen.set(key, item);
+    if (key && !seen.has(key)) seen.set(key, item);
   }
   return Array.from(seen.values());
 };
@@ -192,8 +215,14 @@ const fetchWorkStatuses = async (
   }
 };
 
-const getAssignedTaskKey = (task: todayplanData): string =>
-  task.Id || `${task.Task_Id}_${task.Emp_Id}_${getDateOnly(task.Task_Assign_dt)}`;
+const getAssignedTaskKey = (task: todayplanData): string => {
+  const assignDate = task.Task_Assign_dt ? getDateOnly(task.Task_Assign_dt) : "";
+  const schId = task.Sch_Id != null ? String(task.Sch_Id).trim() : "";
+  if (schId && schId !== "0" && schId !== "null" && schId !== "undefined") {
+    return `${schId}_${task.Emp_Id}_${assignDate}`;
+  }
+  return `${task.Task_Id}_${task.Emp_Id}_${assignDate}_${task.Sch_Time || ""}`;
+};
 
 const getWorkExistenceKey = (plan: todayplanData): string => {
   const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
@@ -307,12 +336,14 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
   const [, setAllAssigned] = useState<AssignedTask[]>([]);
   const [, setAllExecuted] = useState<any[]>([]);
   const [scopedAssigned, setScopedAssigned] = useState<AssignedTask[]>([]);
-  const [, setScopedExecuted] = useState<any[]>([]);
+  const [scopedExecuted, setScopedExecuted] = useState<any[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<AssignedTask[]>([]);
+  const [projectSchedules, setProjectSchedules] = useState<any[]>([]);
 
   const [hasWorkKeys, setHasWorkKeys] = useState<Set<string>>(new Set());
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [projectsList, setProjectsList] = useState<projectData[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -339,13 +370,18 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
         if (isMounted.current) setError(null);
 
         const todayStr = getCurrentDateFormatted();
-        const [empRes, todayRes, workRes] = await Promise.all([
+        const [empRes, todayRes, workRes, projectsRes, schedulesRes] = await Promise.all([
           getEmployeeDropdown(companyId ?? undefined),
           getEnrichedTodayPlan({ from_Task_Assign_dt: todayStr, to_Task_Assign_dt: todayStr }, companyId),
           getEnrichedWorkMaster({ fromDate: todayStr, toDate: todayStr }),
+          getProjectMaster().catch(() => []),
+          getProjectScheduleMaster().catch(() => []),
         ]);
 
         if (!isMounted.current) return;
+
+        setProjectsList(projectsRes || []);
+        setProjectSchedules(schedulesRes || []);
 
         let empList: Employee[] = [];
         if (Array.isArray(empRes)) empList = empRes as Employee[];
@@ -421,9 +457,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
           setScopedExecuted(scopedE);
         }
 
-        if (isRefresh && scopedA.length > 0) {
-          toast.success(`Refreshed: ${scopedA.length} tasks loaded`);
-        }
+
       } catch (e) {
         console.error("Error loading data:", e);
         if (isMounted.current) {
@@ -473,14 +507,64 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
     };
   }, [currentCompany?.companyId, token, isSwitchingCompany, loadData]);
 
-  // Filter effect based on selected employee
+  /** Helper to check if project associated with task is active */
+  const isProjectActive = useCallback((item: any) => {
+    const projId = item?.Project_Id 
+      ?? item?.project_id 
+      ?? item?.Project_ID 
+      ?? item?.Sch_Project_Id 
+      ?? item?.sch_project_id 
+      ?? item?.taskDetails?.Project_Id 
+      ?? item?.projectDetails?.Project_Id;
+    if (projId != null && projId !== 0 && projId !== "" && projId !== "0") {
+      const proj = projectsList.find(p => Number(p.Project_Id) === Number(projId));
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    const projName = item?.Project_Name 
+      ?? item?.project_name 
+      ?? item?.Project_NAME 
+      ?? item?.Sch_Project_Name 
+      ?? item?.sch_project_name 
+      ?? item?.taskDetails?.Project_Name 
+      ?? item?.projectDetails?.Project_Name;
+    if (projName) {
+      const cleanName = String(projName).trim().toLowerCase();
+      const proj = projectsList.find(p => p.Project_Name && p.Project_Name.trim().toLowerCase() === cleanName);
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    if (item?.Project_Status !== undefined && item?.Project_Status !== null) {
+      return Number(item.Project_Status) === 1;
+    }
+    if (item?.Project_IsActive !== undefined && item?.Project_IsActive !== null) {
+      return Number(item.Project_IsActive) === 1;
+    }
+    if (item?.IsActive !== undefined && item?.IsActive !== null) {
+      return Number(item.IsActive) === 1;
+    }
+    return true;
+  }, [projectsList]);
+
+  // Filter effect based on selected employee, active project status, and completed project schedule date hiding
   useEffect(() => {
-    let filtered = [...scopedAssigned];
+    let filtered = scopedAssigned.filter((plan) => isProjectActive(plan));
     if (selectedEmployee) {
       filtered = filtered.filter((plan) => plan.Emp_Id === Number(selectedEmployee));
     }
+    filtered = filtered.filter(
+      (plan) => !isScheduleCompletedForNextDate(plan, projectSchedules, scopedExecuted)
+    );
     setFilteredPlans(filtered);
-  }, [selectedEmployee, scopedAssigned]);
+  }, [selectedEmployee, scopedAssigned, isProjectActive, projectSchedules, scopedExecuted]);
 
   // Listen for work-created events
   useEffect(() => {
@@ -690,9 +774,9 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
                   </TableHead>
                   <TableBody>
                     {filteredPlans.map((plan) => {
-                      const uniqueKey = plan.Id || `${plan.Task_Id}_${plan.Emp_Id}_${getDateOnly(plan.Task_Assign_dt)}`;
                       const todayplanDataObj = convertToTodayplanData(plan);
                       const planRowKey = getAssignedTaskKey(todayplanDataObj);
+                      const uniqueKey = planRowKey;
 
                       // ✅ Color computed inline from state — no refresh needed
                       const bgColor = getTaskBgColor(todayplanDataObj, planRowKey, timerRunningKeys, hasWorkKeys);
