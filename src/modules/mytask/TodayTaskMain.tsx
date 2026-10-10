@@ -45,7 +45,7 @@ import {
 import { getProjectMaster } from "../Master/Projects/Projects.api";
 import type { projectData } from "../Master/Projects/Projects.variables";
 
-import TodayTaskDialog from "../work master/TodayTaskDialog";
+import TodayTaskDialog from "../workMaster/TodayTaskDialog";
 import { useAuth } from "../../auth/authContext";
 import SearchableSelect from "../../Components/SearchableSelect";
 
@@ -1193,7 +1193,7 @@ const CreditListPage = () => {
               <SearchableSelect
                 value={selectedEmployee}
                 displayEmpty
-                onChange={(e) => setSelectedEmployee(e.target.value)}
+                onChange={(e) => setSelectedEmployee(String(e.target.value ?? ""))}
                 sx={isMobile ? { fontSize: "0.65rem", "& .MuiSelect-select": { py: 0.3, px: 1 } } : {}}
                 searchPlaceholder="Search employee..."
                 allOptionLabel="All Employees"

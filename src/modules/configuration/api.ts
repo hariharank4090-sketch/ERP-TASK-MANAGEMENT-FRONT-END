@@ -17,6 +17,29 @@ function slugFromTUrl(tUrl: string | null | undefined, name: string): string {
 
 // ─── Convert backend node to MenuRow ─────────────────────────────────────────
 
+function normalizeTUrl(tUrl: string | null | undefined): string | null {
+    if (!tUrl) return null;
+    let url = tUrl.trim();
+    const reportMappings: Record<string, string> = {
+        "/reports/Execution Reports": "/reports/execution-reports",
+        "/reports/Comparison Reports": "/reports/comparison-reports",
+        "/reports/cost category report": "/reports/cost-category",
+        "/reports/Staff based reports": "/reports/staff-reports",
+        "/reports/Project Progress": "/reports/project-progress",
+        "/reports/Project Plan": "/reports/project-plan",
+        "/reports/User Rights": "/reports/user-rights",
+        "reports/Execution Reports": "/reports/execution-reports",
+        "reports/Comparison Reports": "/reports/comparison-reports",
+        "reports/cost category report": "/reports/cost-category",
+        "reports/Staff based reports": "/reports/staff-reports",
+        "reports/Project Progress": "/reports/project-progress",
+        "reports/Project Plan": "/reports/project-plan",
+        "reports/User Rights": "/reports/user-rights",
+    };
+    if (reportMappings[url]) return reportMappings[url];
+    return url;
+}
+
 function toMenuRow(node: BackendSubRoute): MenuRow {
     return {
         menuId:       node.id,
@@ -30,8 +53,8 @@ function toMenuRow(node: BackendSubRoute): MenuRow {
         isVisible:    true,
         sortOrder:    node.display_order,
         componentKey: null,
-        // Store tUrl exactly as-is — path resolution uses this directly
-        tUrl:         node.tUrl ?? null,
+        // Store normalized tUrl — path resolution uses this directly
+        tUrl:         normalizeTUrl(node.tUrl ?? null),
         rUrl:         node.rUrl ?? null,
         readRights:   node.Read_Rights   ?? 0,
         addRights:    node.Add_Rights    ?? 0,

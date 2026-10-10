@@ -23,7 +23,6 @@ import {
 } from "@mui/material";
 import { Edit, Delete, Person, History, Refresh } from "@mui/icons-material";
 import { toast } from "react-toastify";
-import { fetchLink } from "../../../Components/customFetch";
 import { getProjectMaster } from "../Projects/Projects.api";
 import type { projectData } from "../Projects/Projects.variables";
 
@@ -538,42 +537,6 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
       // Fetch 100000 rows so the frontend DataTable can properly paginate all your data client-side
       const result = await getprojectschedule(1, 100000, "Sch_Id", "DESC", undefined, loadingOn, loadingOff);
       const schedulesData = result.data as ProjectScheduleDisplay[];
-
-      try {
-        // empCount is now natively returned by the getprojectschedule API, so we don't need to fetch the massive projectScheduleEmp/list payload!
-      } catch (e) {
-        console.error("Failed to process emp counts", e);
-      }
-
-      try {
-        
-        const taskTypesRes = await fetchLink<any>({ address: "masters/taskType/dropdown/", method: "GET" });
-        if (taskTypesRes?.success) {
-          let data = taskTypesRes.data;
-         
-          if (data && (data as any).data) data = (data as any).data;
-          
-          else if (data && (data as any).items) data = (data as any).items;
-          
-          if (Array.isArray(data)) {
-            const typeMap: Record<number, string> = {};
-           
-            data.forEach((item: any) => {
-              const id = Number(item.Task_Type_Id || item.Type_Id || item.value || item.Id || item.id);
-              const name = item.Task_Type || item.Type_Name || item.label || item.Name || item.name || item.TaskType;
-              if (id && name) typeMap[id] = name;
-            });
-            schedulesData.forEach(s => {
-              if (s.taskTypeId && typeMap[s.taskTypeId]) {
-                s.taskType = typeMap[s.taskTypeId];
-              }
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch task types", e);
-      }
-
       setSchedules(schedulesData);
       setError(null);
     } catch {
@@ -584,7 +547,20 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
     }
   };
 
-  useEffect(() => { fetchSchedulesList(); fetchDropdownData(); }, []);
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (loadingOn) loadingOn();
+      try {
+        await Promise.all([
+          fetchSchedulesList(),
+          fetchDropdownData()
+        ]);
+      } finally {
+        if (loadingOff) loadingOff();
+      }
+    };
+    loadInitialData();
+  }, []);
 
   const closeAllDialogs = () => {
     setDialogType(null); setSelectedId(null);
@@ -793,7 +769,6 @@ const ProjectSchedulesMainPage: React.FC<ProjectSchedulesMainPageProps> = ({ loa
 
   const deleteScheduleConfirm = async () => {
     if (!selectedId) return;
-    if (!window.confirm("Are you sure you want to delete this project schedule?")) return;
     if (await deleteprojectschedule(selectedId)) { closeAllDialogs(); fetchSchedulesList(); }
   };
 

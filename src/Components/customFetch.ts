@@ -76,11 +76,21 @@ export const fetchLink = async <T = any>({
         const response = await fetch(baseURL + address.replace(/\s+/g, ""), options);
 
         if (response.status === 401 || response.status === 403) {
-            localStorage.clear();
-            sessionStorage.clear();
-            window.location.href = '/';
-           
-            return null as any;
+            window.dispatchEvent(new CustomEvent('auth:expired'));
+            return {
+                success: false,
+                message: 'Unauthorized',
+                data: [],
+                errors: true,
+                pagination: null,
+                currentPage: 1,
+                totalRecords: 0,
+                pageSize: 10,
+                totalPages: 0,
+                limit: 10,
+                page: 1,
+                total: 0
+            } as ApiResponse<T>;
         }
 
         if ((finalHeaders["Content-Type"] || "").includes("application/json")) {
@@ -96,10 +106,21 @@ export const fetchLink = async <T = any>({
                  json.message.toLowerCase().includes("unauthorized") ||
                  json.message.toLowerCase().includes("session expired"))
             ) {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.href = '/';
-                return null as any;
+                window.dispatchEvent(new CustomEvent('auth:expired'));
+                return {
+                    success: false,
+                    message: json.message || 'Unauthorized',
+                    data: [],
+                    errors: true,
+                    pagination: null,
+                    currentPage: 1,
+                    totalRecords: 0,
+                    pageSize: 10,
+                    totalPages: 0,
+                    limit: 10,
+                    page: 1,
+                    total: 0
+                } as ApiResponse<T>;
             }
             
             if (json && !json.data) {

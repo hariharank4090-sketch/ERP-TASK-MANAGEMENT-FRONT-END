@@ -50,6 +50,22 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
   selectedId = null,
   isLoading = false,
 }) => {
+  const [submitted, setSubmitted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setSubmitted(false);
+    }
+  }, [open]);
+
+  const handleSubmit = () => {
+    setSubmitted(true);
+    if (!currentProjectObj.Project_Name?.trim()) {
+      return;
+    }
+    onSubmit();
+  };
+
   const currentProjectObj: projectCreateInput = projectObj || {
     Project_Name: "",
     Project_Desc: null,
@@ -148,7 +164,9 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
   /* ---------------- DATE HANDLING ---------------- */
 
   const parseDate = (dateString: string | null): Dayjs | null => {
-    return dateString ? dayjs(dateString) : null;
+    if (!dateString || dateString === "Invalid date") return null;
+    const d = dayjs(dateString);
+    return d.isValid() ? d : null;
   };
 
   const handleDateChange = (
@@ -159,7 +177,7 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
 
     setProjectObj({
       ...currentProjectObj,
-      [field]: date ? date.format("YYYY-MM-DD") : null,
+      [field]: date && date.isValid() ? date.format("YYYY-MM-DD") : null,
     });
   };
 
@@ -170,7 +188,7 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
       <AppDialog
         open={open}
         onClose={onClose}
-        onSubmit={onSubmit}
+        onSubmit={handleSubmit}
         title={selectedId ? "Edit Project" : "Create Project"}
         submitText={selectedId ? "Update" : "Save"}
         maxWidth="sm"
@@ -221,8 +239,8 @@ export const ProjectDialog: React.FC<ProjectDialogProps> = ({
                   handleInputChange("Project_Name", e.target.value)
                 }
                 required
-                error={!currentProjectObj.Project_Name.trim()}
-                helperText={!currentProjectObj.Project_Name.trim() ? "Project name is required" : ""}
+                error={submitted && !currentProjectObj.Project_Name.trim()}
+                helperText={submitted && !currentProjectObj.Project_Name.trim() ? "Project name is required" : ""}
               />
 
               <TextField

@@ -39,7 +39,7 @@ import type {
   CreditListPageProps,
 } from "../TodayPlan/todayplan.variable";
 
-import TodayTaskDialog from "../work master/TodayTaskDialog";
+import TodayTaskDialog from "../workMaster/TodayTaskDialog";
 import { getProjectMaster } from "../Master/Projects/Projects.api";
 import type { projectData } from "../Master/Projects/Projects.variables";
 import { useAuth } from "../../auth/authContext";

@@ -12,11 +12,11 @@ import UserBasedTreeView from "../modules/Reports/user rights/user rights";
 
 export const reportsRoutePath: componentRoute[] = [
     { path: '', component: MenuGroupPage },
-    { path: 'Execution Reports', component: ProjectMasterPage },
-    { path: 'Comparison Reports', component: ProjectTaskComparison },
-    { path: 'cost category report', component: CostBasedReports },
-    { path: 'Staff based reports', component: StaffBasedReports },
-    { path: 'Project Progress', component: Projectprogress },
-    { path: 'Project Plan', component: ProjectPlan },
-    { path: 'User Rights', component: UserBasedTreeView }
+    { path: 'ExecutionReports', component: ProjectMasterPage },
+    { path: 'comparisonreports', component: ProjectTaskComparison },
+    { path: 'costcategoryreport', component: CostBasedReports },
+    { path: 'Staffbasedreports', component: StaffBasedReports },
+    { path: 'projectprogress', component: Projectprogress },
+    { path: 'projectplan', component: ProjectPlan },
+    { path: 'userrights', component: UserBasedTreeView }
 ];

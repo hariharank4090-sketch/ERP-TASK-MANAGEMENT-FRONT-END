@@ -36,6 +36,7 @@ interface TaskDialogProps {
   parameterOptions?: ParameterDropdown[];
   selectedId?: number | null;
   isLoading?: boolean;
+  disableSubmit?: boolean;
   disableProjectSelect?: boolean;
   disableTaskTypeSelect?: boolean;
 }
@@ -78,6 +79,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
   parameterOptions = [],
   selectedId = null,
   isLoading = false,
+  disableSubmit = false,
   disableProjectSelect = false,
   disableTaskTypeSelect = false,
 }) => {
@@ -227,6 +229,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
       open={open}
       onClose={onClose}
       onSubmit={handleSubmit}
+      disableSubmit={disableSubmit}
       title={type === "edit" ? "Edit Task" : "Create Task"}
       submitText={type === "edit" ? "Update" : "Save"}
       maxWidth="sm"
@@ -295,6 +298,7 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
             labelId="parameters-label"
             label="Parameters"
             multiple
+            selectAllByDefault={false}
             value={parameterValues}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             onChange={handleParameterChange as any}

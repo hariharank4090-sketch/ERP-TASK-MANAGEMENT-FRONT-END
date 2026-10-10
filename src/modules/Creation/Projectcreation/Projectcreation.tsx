@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, CircularProgress, Alert, Snackbar } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 // Import your actual API functions when available
 import { createProjectMaster, getCompanyDropdown, getProjectHeadDropdown } from "../../Master/Projects/Projects.api";
@@ -115,61 +116,79 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
 
       // Validation
       if (!projectObj.Project_Name.trim()) {
-        setError("Project name is required");
+        const msg = "Project name is required";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!projectObj.Company_Id) {
-        setError("Please select a company");
+        const msg = "Please select a company";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!projectObj.Project_Head) {
-        setError("Please select a project head");
+        const msg = "Please select a project head";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
+      // Normalize dates
+      const startDt = projectObj.Est_Start_Dt && projectObj.Est_Start_Dt !== "Invalid date" ? projectObj.Est_Start_Dt : null;
+      const endDt = projectObj.Est_End_Dt && projectObj.Est_End_Dt !== "Invalid date" ? projectObj.Est_End_Dt : null;
+
       // Validate start date if provided
-      if (projectObj.Est_Start_Dt) {
-        const startDate = new Date(projectObj.Est_Start_Dt);
+      if (startDt) {
+        const startDate = new Date(startDt);
         if (isNaN(startDate.getTime())) {
-          setError("Invalid estimated start date");
+          const msg = "Invalid estimated start date";
+          setError(msg);
           setShowErrorAlert(true);
+          toast.error(msg);
           return;
         }
       }
 
       // Validate end date if provided
-      if (projectObj.Est_End_Dt) {
-        const endDate = new Date(projectObj.Est_End_Dt);
+      if (endDt) {
+        const endDate = new Date(endDt);
         if (isNaN(endDate.getTime())) {
-          setError("Invalid estimated end date");
+          const msg = "Invalid estimated end date";
+          setError(msg);
           setShowErrorAlert(true);
+          toast.error(msg);
           return;
         }
       }
 
       // Validate date range if both dates are provided
-      if (projectObj.Est_Start_Dt && projectObj.Est_End_Dt) {
-        const startDate = new Date(projectObj.Est_Start_Dt);
-        const endDate = new Date(projectObj.Est_End_Dt);
+      if (startDt && endDt) {
+        const startDate = new Date(startDt);
+        const endDate = new Date(endDt);
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(0, 0, 0, 0);
         
         if (endDate < startDate) {
-          setError("End date must be on or after start date");
+          const msg = "End date must be on or after start date";
+          setError(msg);
           setShowErrorAlert(true);
+          toast.error(msg);
           return;
         }
       }
 
       // Validate status
       if (projectObj.Project_Status === undefined || projectObj.Project_Status === null || isNaN(Number(projectObj.Project_Status))) {
-        setError("Please select a valid status");
+        const msg = "Please select a valid status";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
@@ -181,8 +200,8 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
         Project_Desc: projectObj.Project_Desc || null,
         Company_Id: projectObj.Company_Id,
         Project_Head: projectObj.Project_Head,
-        Est_Start_Dt: projectObj.Est_Start_Dt,
-        Est_End_Dt: projectObj.Est_End_Dt,
+        Est_Start_Dt: startDt,
+        Est_End_Dt: endDt,
         Project_Status: Number(projectObj.Project_Status),
         IsActive: projectObj.IsActive ?? (Number(projectObj.Project_Status) === 0 ? 0 : 1)
       };
@@ -190,24 +209,23 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
       const success = await createProjectMaster(projectData);
 
       if (success) {
-        setSuccessMessage(`Project "${projectObj.Project_Name}" created successfully!`);
-        setShowSuccessAlert(true);
-        
-        // Reset form after successful submission
-        resetForm();
-        
-        // Close dialog after 2 seconds
-        setTimeout(() => {
-          handleCloseDialog();
-        }, 2000);
+        handleCloseDialog();
       } else {
-        setError("Failed to create project. Please try again.");
+        const hasDates = Boolean(startDt || endDt);
+        const msg = hasDates
+          ? "Failed to create project. Please try again."
+          : "Failed to create project without dates. Please try again.";
+        setError(msg);
         setShowErrorAlert(true);
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error("Error creating project:", err);
-      const errorMessage = err?.response?.data?.message || "Failed to create project";
+      const hasDates = Boolean(projectObj.Est_Start_Dt || projectObj.Est_End_Dt);
+      const baseErr = err?.response?.data?.message || "Failed to create project";
+      const errorMessage = hasDates
+        ? baseErr
+        : (baseErr.toLowerCase().includes("without date") ? baseErr : `${baseErr} without dates. Please try again.`);
       setError(errorMessage);
       setShowErrorAlert(true);
     } finally {

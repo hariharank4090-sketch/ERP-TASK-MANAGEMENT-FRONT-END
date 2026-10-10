@@ -10,16 +10,61 @@ import type { MenuTreeNode } from "../utils/menuManagement";
 import baseURL from "../config/baseURL";
 import { clearAllCaches } from "../modules/TodayPlan/todayplan.api";
 import { clearDashboardCaches } from "../modules/Dashboard/All.api";
-import { clearTodayActivityCaches } from "../modules/today activitty/todayactivity.api";
+import { clearTodayActivityCaches } from "../modules/todayActivity/todayactivity.api";
 
 // ─────────────────────────────────────────────
 // Storage helpers (module-level, not inside component)
 // ─────────────────────────────────────────────
+function encodeStorage(value: unknown): string {
+    try {
+        const jsonStr = typeof value === "string" ? value : JSON.stringify(value);
+        return btoa(unescape(encodeURIComponent(jsonStr)));
+    } catch {
+        return typeof value === "string" ? value : JSON.stringify(value);
+    }
+}
+
+function decodeStorage<T>(raw: string | null, fallback: T): T {
+    if (!raw) return fallback;
+    try {
+        let jsonStr = raw;
+        try {
+            jsonStr = decodeURIComponent(escape(atob(raw)));
+        } catch {
+            // raw was unencoded plain text/JSON
+        }
+        return JSON.parse(jsonStr) as T;
+    } catch {
+        return fallback;
+    }
+}
+
+if (typeof window !== "undefined" && window.Storage) {
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key: string): string | null {
+        const raw = originalGetItem.call(this, key);
+        if (!raw) return raw;
+        if (
+            key === "user" ||
+            key === "availableCompanies" ||
+            key === "currentCompany" ||
+            key === "fullLoginData" ||
+            key === "loginResponse"
+        ) {
+            try {
+                return decodeURIComponent(escape(atob(raw)));
+            } catch {
+                return raw;
+            }
+        }
+        return raw;
+    };
+}
+
 function readStorage<T>(key: string, fallback: T): T {
     try {
         const raw = localStorage.getItem(key);
-        if (!raw) return fallback;
-        return JSON.parse(raw) as T;
+        return decodeStorage<T>(raw, fallback);
     } catch {
         return fallback;
     }
@@ -27,7 +72,8 @@ function readStorage<T>(key: string, fallback: T): T {
 
 function writeStorage(key: string, value: unknown): void {
     try {
-        localStorage.setItem(key, JSON.stringify(value));
+        const encoded = encodeStorage(value);
+        localStorage.setItem(key, encoded);
     } catch (e) {
         console.error(`localStorage write failed for key "${key}":`, e);
     }
@@ -71,7 +117,7 @@ export type AuthContextType = {
     user: User | null;
     token: string | null;
     localUserId: number | null;
-    login: (token: string, user: User, companies?: CompanyInfo[]) => void;
+    login: (token: string, user: User, companies?: CompanyInfo[], fullLoginData?: unknown) => void;
     logout: () => void;
     navDetails: MenuTreeNode[];
     setNavDetails: React.Dispatch<React.SetStateAction<MenuTreeNode[]>>;
@@ -120,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // ─── login ───────────────────────────────
     const login = useCallback(
-        (newToken: string, newUser: User, companies?: CompanyInfo[]) => {
+        (newToken: string, newUser: User, companies?: CompanyInfo[], fullLoginData?: unknown) => {
             clearAllCaches();
             clearDashboardCaches();
             clearTodayActivityCaches();
@@ -137,6 +183,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(enhancedUser);
             localStorage.setItem("token", newToken);
             writeStorage("user", enhancedUser);
+            if (fullLoginData !== undefined) {
+                writeStorage("fullLoginData", fullLoginData);
+                writeStorage("loginResponse", fullLoginData);
+            }
             if (newUser.Company_Id) {
                 localStorage.setItem("companyId", String(newUser.Company_Id));
             }
@@ -291,7 +341,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentPage(null);
         setAvailableCompanies([]);
         setCurrentCompany(null);
-        removeStorage("token", "user", "availableCompanies", "currentCompany", "companyId");
+        removeStorage("token", "user", "availableCompanies", "currentCompany", "companyId", "fullLoginData", "loginResponse");
     }, []);
 
     // ─── updateUser ───────────────────────────
@@ -303,6 +353,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return updated;
         });
     }, []);
+
+    // ─── Listen for auth expiration events ───
+    useEffect(() => {
+        const handleAuthExpired = () => {
+            logout();
+        };
+        window.addEventListener("auth:expired", handleAuthExpired);
+        return () => window.removeEventListener("auth:expired", handleAuthExpired);
+    }, [logout]);
 
     // ─── Cross-tab sync ───────────────────────
     useEffect(() => {

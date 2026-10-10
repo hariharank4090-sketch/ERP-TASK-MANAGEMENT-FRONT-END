@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, CircularProgress, Alert, Snackbar } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 import {
   createTaskType,
@@ -93,14 +94,18 @@ const TaskType: React.FC<TaskTypeProps> = ({ onClose, open = true }) => {
 
       // Validation
       if (!taskTypeObj.Task_Type.trim()) {
-        setError("Task Type name is required");
+        const msg = "Task Type name is required";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!taskTypeObj.Project_Id || taskTypeObj.Project_Id === null) {
-        setError("Please select a project");
+        const msg = "Please select a project";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
@@ -136,19 +141,15 @@ const TaskType: React.FC<TaskTypeProps> = ({ onClose, open = true }) => {
       const success = await createTaskType(taskTypeData);
 
       if (success) {
-        setSuccessMessage(`Task Type "${taskTypeObj.Task_Type}" created successfully!`);
-        setShowSuccessAlert(true);
-        
-        // Reset form after successful submission
-        resetForm();
-        
-        // Close dialog after 2 seconds
-        setTimeout(() => {
-          handleCloseDialog();
-        }, 2000);
+        toast.dismiss();
+        toast.success(`Task Type "${taskTypeObj.Task_Type}" created successfully!`);
+        handleCloseDialog();
       } else {
-        setError("Failed to create task type. Please try again.");
+        const msg = "Failed to create task type. Please try again.";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.dismiss();
+        toast.error(msg);
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
@@ -156,6 +157,8 @@ const TaskType: React.FC<TaskTypeProps> = ({ onClose, open = true }) => {
       const errorMessage = err?.response?.data?.message || "Failed to create task type";
       setError(errorMessage);
       setShowErrorAlert(true);
+      toast.dismiss();
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

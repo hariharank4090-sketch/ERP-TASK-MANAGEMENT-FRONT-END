@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, CircularProgress, Alert, Snackbar, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 // Import API functions and types
 import { 
@@ -26,7 +27,8 @@ interface TaskProps {
 const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const currentUserId = Number(user?.Global_User_ID || user?.id || user?.Local_User_ID || 1);
+  const rawUserId = user?.Global_User_ID || user?.id || user?.Local_User_ID;
+  const currentUserId = rawUserId ? Number(rawUserId) : 0;
 
   // State for dropdown options
   const [projects, setProjects] = useState<ProjectDropdown[]>([]);
@@ -56,9 +58,12 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
     Created_By: currentUserId
   });
 
-  // Keep Created_By updated if user context loads asynchronously
+  // Keep Created_By updated if user context loads asynchronously, or show error if missing
   useEffect(() => {
-    if (currentUserId) {
+    if (!currentUserId) {
+      setError("Session invalid. Please re-login.");
+      setShowErrorAlert(true);
+    } else {
       setTaskObj((prev) => ({ ...prev, Created_By: currentUserId }));
     }
   }, [currentUserId]);
@@ -132,16 +137,28 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
 
   // Validate form data
   const validateForm = (): boolean => {
+    if (!currentUserId) {
+      const msg = "Session invalid. Please re-login.";
+      setError(msg);
+      setShowErrorAlert(true);
+      toast.error(msg);
+      return false;
+    }
+
     // Check required fields
     if (!taskObj.Task_Name?.trim()) {
-      setError("Task name is required");
+      const msg = "Task name is required";
+      setError(msg);
       setShowErrorAlert(true);
+      toast.error(msg);
       return false;
     }
 
     if (!taskObj.Task_Type_Id) {
-      setError("Please select a Task Type");
+      const msg = "Please select a Task Type";
+      setError(msg);
       setShowErrorAlert(true);
+      toast.error(msg);
       return false;
     }
 
@@ -179,19 +196,15 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
 
       // Check if response is successful
       if (success) {
-        setSuccessMessage(`Task "${taskObj.Task_Name}" created successfully!`);
-        setShowSuccessAlert(true);
-        
-        // Reset form after successful submission
-        resetForm();
-        
-        // Close dialog after 3 seconds to match alert banner duration
-        setTimeout(() => {
-          handleCloseDialog();
-        }, 3000);
+        toast.dismiss();
+        toast.success(`Task "${taskObj.Task_Name}" created successfully!`);
+        handleCloseDialog();
       } else {
-        setError("Failed to create task");
+        const msg = "Failed to create task";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.dismiss();
+        toast.error(msg);
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
@@ -201,6 +214,8 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
         || "Failed to create task. Please try again.";
       setError(errorMessage);
       setShowErrorAlert(true);
+      toast.dismiss();
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -281,6 +296,7 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
         taskGroupOptions={taskGroups}
         parameterOptions={parameters}
         isLoading={isLoadingDropdowns || loading}
+        disableSubmit={!currentUserId}
       />
 
       {/* Global Loading Overlay */}

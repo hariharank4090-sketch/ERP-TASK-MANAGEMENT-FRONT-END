@@ -98,6 +98,7 @@ export const getprojectschedule = async (
   loadingOff?: () => void
 ): Promise<{ data: projectscheduleData[]; totalPages: number }> => {
   try {
+    if (typeof loadingOn === 'function') loadingOn();
     let url = `${ProjectScheduleAPI}?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`;
 
     if (filters) {
@@ -109,13 +110,14 @@ export const getprojectschedule = async (
       if (filters.dateTo) url += `&dateTo=${filters.dateTo}`;
     }
 
-    // Fire the main request
-    const res = await fetchLink<BasicApiResponse>({
-      address: url,
-      method: "GET",
-      loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
-      loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
-    });
+    // Fire the main schedule request and task type mapping in PARALLEL
+    const [res, taskTypeMap] = await Promise.all([
+      fetchLink<BasicApiResponse>({
+        address: url,
+        method: "GET"
+      }),
+      getTaskTypeMap()
+    ]);
 
     if (res && res.success) {
 
@@ -132,12 +134,6 @@ export const getprojectschedule = async (
           totalPages = (res as any).totalPages || 1;
         }
       }
-
-      // The empCount is now natively returned by the backend in the projectSchedule query.
-      // We no longer need to calculate it client-side.
-
-      // Get task type mapping
-      const taskTypeMap = await getTaskTypeMap();
 
       // Properly map all fields including taskTypeId and taskType
       const transformedData = responseData.map(item => {
@@ -229,6 +225,8 @@ export const getprojectschedule = async (
     console.error("getprojectschedule Error:", e);
     toast.error("Network error loading project schedules");
     return { data: [], totalPages: 1 };
+  } finally {
+    if (typeof loadingOff === 'function') loadingOff();
   }
 };
 

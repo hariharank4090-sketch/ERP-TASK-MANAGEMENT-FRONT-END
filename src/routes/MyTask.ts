@@ -1,7 +1,7 @@
 
 
 
-import CreditListPage from "../modules/mytask/today task.main";
+import CreditListPage from "../modules/mytask/TodayTaskMain";
 import type { componentRoute } from "./indexRouter";
 
 export const MytaskRoutePath: componentRoute[] = [

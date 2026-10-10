@@ -357,7 +357,7 @@ const Login: React.FC<LoginProps> = ({
 
                 localStorage.setItem("companyId", String(companyId));
                 navigate("/", { replace: true });
-                login(finalToken, userWithCompany, companiesData);
+                login(finalToken, userWithCompany, companiesData, responseData);
 
                 toast.success(
                     `Welcome ${responseData.user.Name}! Logged in to ${selectedCompanyData.companyName}`
@@ -403,6 +403,7 @@ const Login: React.FC<LoginProps> = ({
                     }
                 });
                 setFieldErrors(errs);
+                toast.error("Please fill in required fields.");
                 loadingOff();
                 return;
             }

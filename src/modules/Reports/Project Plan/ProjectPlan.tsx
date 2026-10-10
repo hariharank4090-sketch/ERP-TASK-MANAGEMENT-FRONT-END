@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Box, FormControl, TextField } from "@mui/material";
+import { Box, FormControl, TextField, CircularProgress } from "@mui/material";
 import { useAuth } from "../../../auth/authContext";
 import {
   getEnrichedTodayPlan,
@@ -570,6 +570,7 @@ const { startDate: defaultStartDate, endDate: defaultEndDate } = getCurrentMonth
 const ProjectPlan: React.FC = () => {
   const { currentCompany } = useAuth();
   const [workData, setWorkData] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const [currentProject, setCurrentProject] = useState<string | null>(null);
   const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({});
@@ -626,6 +627,7 @@ const ProjectPlan: React.FC = () => {
   // Fetch fresh API data when component mounts
   const loadApiData = useCallback(async () => {
     const companyId = currentCompany?.companyId || undefined;
+    setLoading(true);
     try {
       const todayResPromise = getEnrichedTodayPlan({}, companyId);
       const workResPromise = getEnrichedWorkMaster({});
@@ -1075,6 +1077,8 @@ const ProjectPlan: React.FC = () => {
     } catch (e) {
       console.error("API fetch error in ProjectPlan", e);
       setWorkData([]);
+    } finally {
+      setLoading(false);
     }
   }, [currentCompany?.companyId]);
 
@@ -1154,8 +1158,17 @@ const ProjectPlan: React.FC = () => {
       });
     }
 
-    if (from) data = data.filter(d => !d.date || d.date === '-' || d.date >= from);
-    if (to) data = data.filter(d => !d.date || d.date === '-' || d.date <= to);
+    if (from || to) {
+      data = data.filter(d => {
+        if (!d.date || d.date === '-') return true;
+        const itemStart = (d.startDate && d.startDate !== '-') ? d.startDate : d.date;
+        const itemEnd = (d.endDate && d.endDate !== '-') ? d.endDate : itemStart;
+
+        if (from && itemEnd < from) return false;
+        if (to && itemStart > to) return false;
+        return true;
+      });
+    }
     if (project && project.length > 0) {
       const set = new Set(project.map(p => String(p).trim().toLowerCase()));
       data = data.filter(d => d.project && set.has(String(d.project).trim().toLowerCase()));
@@ -1494,6 +1507,7 @@ const ProjectPlan: React.FC = () => {
 
     const { projectStatus, project, taskType, task, employee } = appliedFilters;
     const isTaskOrEmpFilterActive = (taskType && taskType.length > 0) || (task && task.length > 0) || (employee && employee.length > 0);
+    const projSet = project && project.length > 0 ? new Set(project.map(p => String(p).trim().toLowerCase())) : null;
 
     backendProjects.forEach((p: any) => {
       const rawName = p.Project_Name || p.project_name || p.Name;
@@ -1504,7 +1518,7 @@ const ProjectPlan: React.FC = () => {
       const pActive = isProjectActiveObj(p);
       if (projectStatus === "ACTIVE" && !pActive) return;
       if (projectStatus === "INACTIVE" && pActive) return;
-      if (project && project.length > 0 && !project.includes(pName)) return;
+      if (projSet && !projSet.has(pName.toLowerCase())) return;
 
       if (!isTaskOrEmpFilterActive) {
         if (!groups[pName]) groups[pName] = [];
@@ -1523,9 +1537,8 @@ const ProjectPlan: React.FC = () => {
 
         if (!groups[item.project]) {
           if (
-            !project ||
-            project.length === 0 ||
-            project.includes(item.project)
+            !projSet ||
+            projSet.has(String(item.project).trim().toLowerCase())
           ) {
             groups[item.project] = [];
           }
@@ -1822,7 +1835,28 @@ const ProjectPlan: React.FC = () => {
       <style>{STYLES}</style>
       <div className="dashboard-container">
         <div className="card-panel" id="dashboardPanel">
-          {!currentProject ? (
+          {loading ? (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+                minHeight: 400,
+                gap: 2,
+                backgroundColor: "#ffffff",
+                borderRadius: "12px",
+                p: 4,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                my: 2,
+              }}
+            >
+              <CircularProgress sx={{ color: "#cda363" }} size={48} />
+              <span style={{ fontSize: "14px", fontWeight: 600, color: "#1c2d45" }}>
+                Loading Project Plan Data...
+              </span>
+            </Box>
+          ) : !currentProject ? (
             // MAIN PROJECTS LIST VIEW
             <FilterableTable
               key="project-plan-main-table"

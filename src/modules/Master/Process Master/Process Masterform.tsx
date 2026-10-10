@@ -26,13 +26,29 @@ export const ProcessMasterDialog: React.FC<ProcessMasterDialogProps> = ({
   setProcessObj,
   process
 }) => {
+  const [submitted, setSubmitted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setSubmitted(false);
+    }
+  }, [open]);
+
+  const handleSubmit = () => {
+    setSubmitted(true);
+    if (!processObj?.Process_Name?.trim()) {
+      return;
+    }
+    onSubmit();
+  };
+
   // Create/Edit Dialog Content
   if (type === "create" || type === "edit") {
     return (
       <AppDialog
         open={open}
         onClose={onClose}
-        onSubmit={onSubmit}
+        onSubmit={handleSubmit}
         title={type === "edit" ? "Edit Process" : "Create Process"}
         submitText={type === "edit" ? "Update" : "Create"}
         maxWidth="sm"
@@ -53,8 +69,8 @@ export const ProcessMasterDialog: React.FC<ProcessMasterDialogProps> = ({
           placeholder="Enter process name"
           sx={{ mb: 2 }}
           required
-          error={!processObj?.Process_Name?.trim()}
-          helperText={!processObj?.Process_Name?.trim() ? "Process name is required" : ""}
+          error={submitted && !processObj?.Process_Name?.trim()}
+          helperText={submitted && !processObj?.Process_Name?.trim() ? "Process name is required" : ""}
         />
       </AppDialog>
     );

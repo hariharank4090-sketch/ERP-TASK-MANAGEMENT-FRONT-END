@@ -43,11 +43,7 @@ const numEq = (a: any, b: any) => {
   return Number(a) === Number(b);
 };
 
-const noop = () => {};
-
-const TaskTypeMainPage: React.FC<PageProps> = () => {
-  const loadingOn = noop;
-  const loadingOff = noop;
+const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [taskTypes, setTaskTypes] = useState<tasktypeData[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectDropdown[]>([]);
   const [projectsList, setProjectsList] = useState<any[]>([]);
@@ -189,7 +185,6 @@ const TaskTypeMainPage: React.FC<PageProps> = () => {
   /** Delete Confirm */
   const deleteTaskTypeConfirm = async () => {
     if (!selectedId) return;
-    if (!window.confirm("Are you sure you want to delete this task type?")) return;
 
     const success = await deleteTaskType(selectedId, loadingOn, loadingOff);
 

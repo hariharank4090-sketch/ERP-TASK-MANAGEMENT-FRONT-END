@@ -156,7 +156,7 @@ export const getSalesTeamAttendance = async (
 };
 
 export const getSalesPersonDropdown = async (
-  _companyId: number,
+  _companyId?: number,
   loadingOn?: () => void,
   loadingOff?: () => void
 ): Promise<SalesPersonDropdown[]> => {

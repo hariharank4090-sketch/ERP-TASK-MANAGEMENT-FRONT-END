@@ -6,7 +6,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   styled,
-  type Theme,
   FormControl,
   Card,
   CardContent,
@@ -29,9 +28,7 @@ import { fetchStaffBasedReport } from './staffReports.api';
 import { getEmployeeDropdown } from '../../TodayPlan/todayplan.api';
 import type { StaffBasedReportData } from './variables';
 
-// Styled toggle button matching the image provided
-// eslint-disable-next-line no-empty-pattern
-const StyledToggleButtonGroup = styled(ToggleButtonGroup)(({ }: { theme: Theme }) => ({
+const StyledToggleButtonGroup = styled(ToggleButtonGroup)(() => ({
   backgroundColor: '#f5f5f5',
   borderRadius: '20px',
   padding: '2px',

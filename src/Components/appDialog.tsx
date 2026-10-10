@@ -24,6 +24,7 @@ interface AppDialogProps {
   extraActions?: React.ReactNode;
   disableBackdropClick?: boolean;
   disableEnforceFocus?: boolean;
+  disableSubmit?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   PaperPropsSx?: any;
 }
@@ -42,6 +43,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
   extraActions,
   disableBackdropClick = false,
   disableEnforceFocus = false,
+  disableSubmit = false,
   PaperPropsSx,
 }) => {
   const handleDialogClose = (_event: object, reason: string) => {
@@ -163,6 +165,7 @@ const AppDialog: React.FC<AppDialogProps> = ({
           <Button
             variant="contained"
             onClick={onSubmit}
+            disabled={disableSubmit}
             type={isSubmit ? "submit" : "button"}
             sx={{
               backgroundColor: "#d2a56d",

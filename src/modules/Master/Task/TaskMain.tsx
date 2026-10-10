@@ -1467,7 +1467,6 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
 
   const deleteTaskConfirm = useCallback(async () => {
     if (!selectedTask) return;
-    if (!window.confirm("Are you sure you want to delete this task?")) return;
     try {
       const success = await deleteTask(selectedTask.Task_Id, loadingOn, loadingOff);
       if (success && isMounted.current) { closeAllDialogs(); dataFetched.current = false; await fetchAllData(true); }
@@ -1752,7 +1751,6 @@ const ProjectSchedulesMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }
 
   const deleteScheduleConfirm = useCallback(async () => {
     if (!selectedScheduleId) return;
-    if (!window.confirm("Are you sure you want to delete this schedule?")) return;
     const success = await deleteprojectschedule(selectedScheduleId);
     if (success && isMounted.current) {
       toast.success("Schedule deleted successfully");

@@ -527,8 +527,8 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     setSelectedUserId(null);
     setSelectedWorkStatus("");
     setSearchTerm("");
-    setHasSearched(false);
-    toast.info("Data refreshed");
+    setHasSearched(true);
+    toast.info("Page filters reset and refreshed");
   };
 
   // ─── Handle search input change ─────────────────────────────────────────────
@@ -1282,16 +1282,18 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
           <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
             {!isMobile && (
               <Tooltip title="Export to Excel">
-                <Button
-                  variant="outlined"
-                  onClick={handleExportToExcel}
-                  disabled={isLoading || isExporting || filteredTasks.length === 0}
-                  size="medium"
-                  sx={{ textTransform: "uppercase" }}
-                >
-                  <DownloadIcon sx={{ mr: 1 }} />
-                  {isExporting ? "Exporting..." : "Download"}
-                </Button>
+                <span>
+                  <Button
+                    variant="outlined"
+                    onClick={handleExportToExcel}
+                    disabled={isLoading || isExporting || filteredTasks.length === 0}
+                    size="medium"
+                    sx={{ textTransform: "uppercase" }}
+                  >
+                    <DownloadIcon sx={{ mr: 1 }} />
+                    {isExporting ? "Exporting..." : "Download"}
+                  </Button>
+                </span>
               </Tooltip>
             )}
             <TopFilterBar
@@ -1568,28 +1570,27 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
               </Box>
             </TopFilterBar>
             <Tooltip title="Reset Filters & Refresh">
-              <IconButton
-                onClick={() => {
-                  handleRefresh();
-                  toast.info("Page filters reset and refreshed");
-                }}
-                disabled={isLoading}
-                sx={{
-                  backgroundColor: "#ffffff",
-                  border: "1.5px solid #000000",
-                  borderRadius: "50%",
-                  width: 36,
-                  height: 36,
-                  padding: 0,
-                  "&:hover": {
-                    backgroundColor: "#f5f5f5",
+              <span>
+                <IconButton
+                  onClick={handleRefresh}
+                  disabled={isLoading}
+                  sx={{
+                    backgroundColor: "#ffffff",
                     border: "1.5px solid #000000",
-                  },
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-                }}
-              >
-                <Refresh sx={{ fontSize: 20, color: "#000000" }} />
-              </IconButton>
+                    borderRadius: "50%",
+                    width: 36,
+                    height: 36,
+                    padding: 0,
+                    "&:hover": {
+                      backgroundColor: "#f5f5f5",
+                      border: "1.5px solid #000000",
+                    },
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  <Refresh sx={{ fontSize: 20, color: "#000000" }} />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
         </Box>

@@ -23,13 +23,29 @@ export const LeaveTypeDialog: React.FC<LeaveTypeDialogProps> = ({
   setLeaveTypeObj,
   leaveType
 }) => {
+  const [submitted, setSubmitted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setSubmitted(false);
+    }
+  }, [open]);
+
+  const handleSubmit = () => {
+    setSubmitted(true);
+    if (!leaveTypeObj?.LeaveType?.trim()) {
+      return;
+    }
+    onSubmit();
+  };
+
   // Create/Edit Dialog Content
   if (type === "create" || type === "edit") {
     return (
       <AppDialog
         open={open}
         onClose={onClose}
-        onSubmit={onSubmit}
+        onSubmit={handleSubmit}
         title={type === "edit" ? "Edit Leave Type" : "Create Leave Type"}
         submitText={type === "edit" ? "Update" : "Create"}
         maxWidth="sm"
@@ -50,8 +66,8 @@ export const LeaveTypeDialog: React.FC<LeaveTypeDialogProps> = ({
           placeholder="Enter leave type name"
           sx={{ mb: 2 }}
           required
-          error={!leaveTypeObj?.LeaveType?.trim()}
-          helperText={!leaveTypeObj?.LeaveType?.trim() ? "Leave type name is required" : ""}
+          error={submitted && !leaveTypeObj?.LeaveType?.trim()}
+          helperText={submitted && !leaveTypeObj?.LeaveType?.trim() ? "Leave type name is required" : ""}
         />
       </AppDialog>
     );

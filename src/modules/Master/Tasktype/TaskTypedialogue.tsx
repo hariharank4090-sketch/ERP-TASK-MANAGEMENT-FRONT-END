@@ -44,6 +44,14 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
   isLoading = false,
   disableProjectSelect = false,
 }) => {
+  const [submitted, setSubmitted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setSubmitted(false);
+    }
+  }, [open]);
+
   // Handle Project_Id change
   const handleProjectChange = (e: SelectChangeEvent<string>) => {
     const value = e.target.value === "" ? null : Number(e.target.value);
@@ -90,6 +98,7 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
 
   // Handle submit with validation
   const handleSubmit = () => {
+    setSubmitted(true);
     const error = validateForm();
     if (error) {
       console.error("Validation error:", error);
@@ -124,7 +133,7 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
             value={selectProjectValue}
             onChange={handleProjectChange}
             required
-            error={!taskTypeObj.Project_Id}
+            error={submitted && !taskTypeObj.Project_Id}
             searchPlaceholder="Search project..."
             allOptionLabel="Select Project"
             allOptionValue=""
@@ -151,8 +160,8 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
           sx={{ mb: 2, mt: 2 }}
           disabled={isLoading}
           required
-          error={!taskTypeObj.Task_Type?.trim()}
-          helperText={!taskTypeObj.Task_Type?.trim() ? "Task type name is required" : ""}
+          error={submitted && !taskTypeObj.Task_Type?.trim()}
+          helperText={submitted && !taskTypeObj.Task_Type?.trim() ? "Task type name is required" : ""}
         />
 
         <FormControl fullWidth margin="dense" disabled={isLoading}>

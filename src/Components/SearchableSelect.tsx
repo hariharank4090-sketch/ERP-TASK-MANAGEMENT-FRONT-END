@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
   Select,
@@ -21,17 +20,20 @@ export interface SearchableSelectOption {
   disabled?: boolean;
 }
 
-interface SearchableSelectProps extends Omit<SelectProps, 'onChange' | 'value'> {
+export interface SearchableSelectProps<T extends string | number = string | number>
+  extends Omit<SelectProps, 'onChange' | 'value'> {
   options: SearchableSelectOption[];
-  value: any;
-  onChange?: (event: SelectChangeEvent<any>, child: React.ReactNode) => void;
+  value: T | T[] | unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onChange?: (event: SelectChangeEvent<any>, child?: React.ReactNode) => void;
   searchPlaceholder?: string;
   allOptionLabel?: React.ReactNode;
   allOptionValue?: string | number;
   multiple?: boolean;
+  selectAllByDefault?: boolean;
 }
 
-const SearchableSelect: React.FC<SearchableSelectProps> = ({
+const SearchableSelect = <T extends string | number = string | number>({
   options,
   value,
   onChange,
@@ -42,8 +44,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   onClose,
   renderValue: parentRenderValue,
   disabled,
+  selectAllByDefault = true,
   ...rest
-}) => {
+}: SearchableSelectProps<T>) => {
   const [searchTerm, setSearchTerm] = useState('');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -69,29 +72,29 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   const isExplicitlyNone = isMultiple && Array.isArray(value) && value.includes(NONE_MARKER);
 
-  const isAllSelected = isMultiple && !isExplicitlyNone && (
+  const isAllSelected = isMultiple && selectAllByDefault && !isExplicitlyNone && (
     !Array.isArray(value) || 
     value.length === 0 || 
     (allOptionValues.length > 0 && Array.isArray(value) && value.length === allOptionValues.length)
   );
 
-  let internalValue: any;
+  let internalValue: unknown;
   if (isMultiple) {
     if (isAllSelected) {
       internalValue = allOptionValues;
     } else {
-      internalValue = Array.isArray(value) ? value.filter((v: any) => v !== NONE_MARKER) : [];
+      internalValue = Array.isArray(value) ? value.filter((v: unknown) => v !== NONE_MARKER) : [];
     }
   } else {
     const isCurrentlyEmpty = value === allOptionValue || value === "" || value == null;
     internalValue = (hasPlaceholder && isCurrentlyEmpty) ? EMPTY_VALUE : (value ?? "");
   }
 
-  const handleChange = (e: SelectChangeEvent<any>, child: React.ReactNode) => {
+  const handleChange = (e: SelectChangeEvent<unknown>, child: React.ReactNode) => {
     if (onChange) {
       if (isMultiple) {
         const valArr = Array.isArray(e.target.value) ? e.target.value : [e.target.value];
-        const childVal = (child as any)?.props?.value;
+        const childVal = (child as React.ReactElement<{ value?: unknown }>)?.props?.value;
 
         if (childVal === EMPTY_VALUE) {
           const newValues = isAllSelected ? [NONE_MARKER] : [];
@@ -102,14 +105,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 ...e.target,
                 value: newValues
               }
-            } as any,
+            } as SelectChangeEvent<unknown>,
             child
           );
         } else {
-          let cleanVal = valArr.filter((v: any) => v !== EMPTY_VALUE && v !== NONE_MARKER);
+          let cleanVal = valArr.filter((v: unknown) => v !== EMPTY_VALUE && v !== NONE_MARKER);
           if (cleanVal.length === 0) {
-            cleanVal = [NONE_MARKER];
-          } else if (allOptionValues.length > 0 && cleanVal.length === allOptionValues.length) {
+            cleanVal = selectAllByDefault ? [NONE_MARKER] : [];
+          } else if (selectAllByDefault && allOptionValues.length > 0 && cleanVal.length === allOptionValues.length) {
             cleanVal = [];
           }
           onChange(
@@ -119,7 +122,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 ...e.target,
                 value: cleanVal
               }
-            } as any,
+            } as SelectChangeEvent<unknown>,
             child
           );
         }
@@ -132,7 +135,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 ...e.target,
                 value: allOptionValue
               }
-            } as any,
+            } as SelectChangeEvent<unknown>,
             child
           );
         } else {
@@ -149,7 +152,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       onClose={handleClose}
       displayEmpty
       size={rest.size || "small"}
-      renderValue={(selected: any) => {
+      renderValue={(selected: unknown) => {
         const actualSelected = selected === EMPTY_VALUE ? allOptionValue : selected;
 
         if (parentRenderValue) {
@@ -157,9 +160,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }
 
         if (isMultiple) {
-          const arr = Array.isArray(selected) ? selected.filter((v: any) => v !== EMPTY_VALUE && v !== NONE_MARKER && v !== "") : [];
-          if (arr.length === 0 || (options.length > 0 && arr.length === options.length)) {
+          const arr = Array.isArray(selected) ? selected.filter((v: unknown) => v !== EMPTY_VALUE && v !== NONE_MARKER && v !== "") : [];
+          if (selectAllByDefault && (arr.length === 0 || (options.length > 0 && arr.length === options.length))) {
             return <span style={{ color: '#9ca3af' }}>{allOptionLabel || 'All'}</span>;
+          }
+          if (arr.length === 0) {
+            return <span style={{ color: '#9ca3af' }}>{allOptionLabel || 'Select...'}</span>;
           }
           const labels = arr.map(val => {
             const opt = options.find(o => String(o.value).trim() === String(val).trim());
@@ -172,7 +178,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           return <span style={{ color: '#9ca3af' }}>{allOptionLabel}</span>;
         }
         const selectedOpt = options.find(opt => String(opt.value).trim() === String(actualSelected).trim());
-        return selectedOpt ? selectedOpt.label : actualSelected;
+        return selectedOpt ? selectedOpt.label : (actualSelected as React.ReactNode);
       }}
       MenuProps={{
         ...MenuProps,
@@ -238,7 +244,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       )}
       {filteredOptions.map((opt) => {
         const isSelected = isMultiple
-          ? (isAllSelected || (Array.isArray(value) && value.some((v: any) => String(v).trim() === String(opt.value).trim())))
+          ? (isAllSelected || (Array.isArray(value) && value.some((v: unknown) => String(v).trim() === String(opt.value).trim())))
           : String(value).trim() === String(opt.value).trim();
         return (
           <MenuItem key={opt.value} value={opt.value} disabled={opt.disabled}>

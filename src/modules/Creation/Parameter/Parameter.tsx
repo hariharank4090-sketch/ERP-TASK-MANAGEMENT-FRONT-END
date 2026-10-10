@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, CircularProgress, Alert, Snackbar } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 import {
   createparameter,
@@ -87,14 +88,18 @@ const Parameters: React.FC<ParametersProps> = ({ onClose, open = true }) => {
 
       // Validation
       if (!parameterObj.Paramet_Name?.trim()) {
-        setError("Parameter name is required");
+        const msg = "Parameter name is required";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (parameterObj.Paramet_Data_Type === null || parameterObj.Paramet_Data_Type === undefined) {
-        setError("Please select a data type");
+        const msg = "Please select a data type";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
@@ -108,19 +113,15 @@ const Parameters: React.FC<ParametersProps> = ({ onClose, open = true }) => {
       const success = await createparameter(parameterData);
 
       if (success) {
-        setSuccessMessage(`Parameter "${parameterObj.Paramet_Name}" created successfully!`);
-        setShowSuccessAlert(true);
-        
-        // Reset form after successful submission
-        resetForm();
-        
-        // Close dialog after 2 seconds
-        setTimeout(() => {
-          handleCloseDialog();
-        }, 2000);
+        toast.dismiss();
+        toast.success(`Parameter "${parameterObj.Paramet_Name}" created successfully!`);
+        handleCloseDialog();
       } else {
-        setError("Failed to create parameter. Please try again.");
+        const msg = "Failed to create parameter. Please try again.";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.dismiss();
+        toast.error(msg);
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
@@ -128,6 +129,8 @@ const Parameters: React.FC<ParametersProps> = ({ onClose, open = true }) => {
       const errorMessage = err?.response?.data?.message || "Failed to create parameter";
       setError(errorMessage);
       setShowErrorAlert(true);
+      toast.dismiss();
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

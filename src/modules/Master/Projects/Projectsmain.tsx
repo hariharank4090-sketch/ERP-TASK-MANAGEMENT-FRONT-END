@@ -68,11 +68,7 @@ const formatDate = (dateString: string | null) => {
   }
 };
 
-const noop = () => {};
-
-const ProjectMainPage: React.FC<PageProps> = () => {
-  const loadingOn = noop;
-  const loadingOff = noop;
+const ProjectMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [projects, setProjects] = useState<projectData[]>([]);
   const [companyOptions, setCompanyOptions] = useState<companyDropdown[]>([]);
   const [projectHeadOptions, setProjectHeadOptions] = useState<projectheadDropdown[]>([]);
@@ -477,7 +473,6 @@ const ProjectMainPage: React.FC<PageProps> = () => {
   // Delete Confirm
   const deleteProjectConfirm = useCallback(async () => {
     if (!selectedId) return;
-    if (!window.confirm("Are you sure you want to delete this project?")) return;
 
     const success = await deleteProjectMaster(selectedId, loadingOn, loadingOff);
 

@@ -7,6 +7,7 @@ import {
   Typography
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 import { createProcessMaster } from "../../Master/Process Master/Process Master.api";
 import type { ProcessMasterCreateInput } from "../../Master/Process Master/Process Master.variables";
@@ -52,8 +53,10 @@ const ProcessMasterMainPage: React.FC<Props> = ({
 
   const validateForm = () => {
     if (!processObj.Process_Name.trim()) {
-      setError("Process name is required");
+      const msg = "Process name is required";
+      setError(msg);
       setShowErrorAlert(true);
+      toast.error(msg);
       return false;
     }
     return true;
@@ -71,21 +74,20 @@ const ProcessMasterMainPage: React.FC<Props> = ({
 
       setSuccessMessage("Process created successfully");
       setShowSuccessAlert(true);
-
-      resetForm();
-
-      setTimeout(() => {
-        handleCloseDialog();
-      }, 1500);
+      toast.dismiss();
+      toast.success("Process created successfully");
+      handleCloseDialog();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      setError(
+      const errorMessage =
         err?.response?.data?.message ||
         err?.message ||
-        "Failed to create process"
-      );
+        "Failed to create process";
+      setError(errorMessage);
       setShowErrorAlert(true);
+      toast.dismiss();
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

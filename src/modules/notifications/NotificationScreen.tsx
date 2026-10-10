@@ -98,7 +98,7 @@ const NotificationScreen: React.FC = () => {
     try {
       setLoading(true);
       const userId = user.Global_User_ID || user.id || "";
-      const companyId = user.Company_Id || user.Company_Id || "";
+      const companyId = user?.Company_Id ?? "";
       
       const res = await fetchLink({
         address: `masters/tickets?User_Id=${userId}&Company_Id=${companyId}`,
@@ -234,12 +234,21 @@ const NotificationScreen: React.FC = () => {
   };
 
 
-  const markAsRead = (id: string) => {
+  const markAsRead = async (id: string) => {
     setNotifications((prev) =>
       prev.map((notif) => (notif.id === id ? { ...notif, isRead: true } : notif))
     );
     const userId = user?.Global_User_ID || user?.id || "";
     if (userId) {
+      try {
+        await fetchLink({
+          address: "notifications/read",
+          method: "POST",
+          bodyData: { notificationId: id, userId },
+        }).catch(() => { /* fallback to client storage */ });
+      } catch {
+        // ignore endpoint error
+      }
       const localReadIdsKey = `read_notifications_${userId}`;
       const localReadIds: string[] = JSON.parse(localStorage.getItem(localReadIdsKey) || "[]");
       if (!localReadIds.includes(id)) {
@@ -250,11 +259,20 @@ const NotificationScreen: React.FC = () => {
     }
   };
 
-  const deleteNotification = (id: string) => {
+  const deleteNotification = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this notification?")) return;
     setNotifications((prev) => prev.filter((notif) => notif.id !== id));
     const userId = user?.Global_User_ID || user?.id || "";
     if (userId) {
+      try {
+        await fetchLink({
+          address: "notifications/dismiss",
+          method: "POST",
+          bodyData: { notificationId: id, userId },
+        }).catch(() => { /* fallback to client storage */ });
+      } catch {
+        // ignore endpoint error
+      }
       const localDeletedIdsKey = `deleted_notifications_${userId}`;
       const localDeletedIds: string[] = JSON.parse(localStorage.getItem(localDeletedIdsKey) || "[]");
       if (!localDeletedIds.includes(id)) {
@@ -265,10 +283,19 @@ const NotificationScreen: React.FC = () => {
     }
   };
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
     setNotifications((prev) => prev.map((notif) => ({ ...notif, isRead: true })));
     const userId = user?.Global_User_ID || user?.id || "";
     if (userId) {
+      try {
+        await fetchLink({
+          address: "notifications/read-all",
+          method: "POST",
+          bodyData: { userId },
+        }).catch(() => {});
+      } catch {
+        // ignore
+      }
       const localReadIdsKey = `read_notifications_${userId}`;
       const localReadIds: string[] = JSON.parse(localStorage.getItem(localReadIdsKey) || "[]");
       notifications.forEach((notif) => {
@@ -281,11 +308,20 @@ const NotificationScreen: React.FC = () => {
     }
   };
 
-  const deleteAll = () => {
+  const deleteAll = async () => {
     if (!window.confirm("Are you sure you want to delete all notifications?")) return;
     setNotifications([]);
     const userId = user?.Global_User_ID || user?.id || "";
     if (userId) {
+      try {
+        await fetchLink({
+          address: "notifications/dismiss-all",
+          method: "POST",
+          bodyData: { userId },
+        }).catch(() => {});
+      } catch {
+        // ignore
+      }
       const localDeletedIdsKey = `deleted_notifications_${userId}`;
       const localDeletedIds: string[] = JSON.parse(localStorage.getItem(localDeletedIdsKey) || "[]");
       notifications.forEach((notif) => {

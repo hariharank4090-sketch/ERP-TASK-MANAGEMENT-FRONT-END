@@ -1,7 +1,7 @@
 
 
 
-import EmployeeDayAbstract from "../modules/today activitty/todayactivity";
+import EmployeeDayAbstract from "../modules/todayActivity/todayactivity";
 import type { componentRoute } from "./indexRouter";
 
 export const todayactivityRoutePath: componentRoute[] = [

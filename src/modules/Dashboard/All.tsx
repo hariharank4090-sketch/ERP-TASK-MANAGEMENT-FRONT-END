@@ -158,7 +158,7 @@ const numEq = (a: any, b: any): boolean => {
   return Number(a) === Number(b);
 };
 
-type ScheduleFilterTab = "DAY" | "WEEKLY" | "MONTHLY" | "SPECIFIC_DAY" | "TIME_BASED" | "ALL";
+type ScheduleFilterTab = "ALL" | "DAY" | "WEEKLY" | "MONTHLY" | "SPECIFIC_DAY" | "TIME_BASED";
 
 const extractTime = (val: unknown, defaultTime = "09:00"): string => {
   const str = String(val || "").trim();
@@ -808,7 +808,7 @@ const ExpandedSchedulesComponent: React.FC<{
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [taskId, taskName, taskTypeName, getPlanTypeFromId, resolveProjectName]);
+  }, [taskId, taskName, taskTypeName, getPlanTypeFromId, resolveProjectName, projectEmpSchedules]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -828,7 +828,7 @@ const ExpandedSchedulesComponent: React.FC<{
     if (appliedFromDate || appliedToDate) {
       result = result.filter(s => isScheduleInDateRange(s, appliedFromDate, appliedToDate));
     }
-    return result;
+    return [...result].sort((a, b) => (a.schId || 0) - (b.schId || 0));
   }, [schedules, activeTab, appliedEmployeeId, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
   const tabCounts = useMemo(() => {
@@ -848,12 +848,12 @@ const ExpandedSchedulesComponent: React.FC<{
     };
 
     return {
-      DAY: filterSchedulesList("DAY"),
+      ALL: filterSchedulesList("ALL"),
       WEEKLY: filterSchedulesList("WEEKLY"),
       MONTHLY: filterSchedulesList("MONTHLY"),
+      DAY: filterSchedulesList("DAY"),
       SPECIFIC_DAY: filterSchedulesList("SPECIFIC_DAY"),
       TIME_BASED: filterSchedulesList("TIME_BASED"),
-      ALL: filterSchedulesList("ALL"),
     };
   }, [schedules, appliedEmployeeId, projectEmpSchedules, appliedFromDate, appliedToDate]);
 
@@ -943,13 +943,18 @@ const ExpandedSchedulesComponent: React.FC<{
               py: 0.5,
             },
             "& .Mui-selected": { color: "#1976d2" },
-            "& .MuiTabs-indicator": { backgroundColor: "#1976d2", height: 2 },
+            "& .MuiTabs-indicator": { display: "none" },
           }}
         >
-          {(["DAY", "WEEKLY", "MONTHLY", "SPECIFIC_DAY", "TIME_BASED", "ALL"] as ScheduleFilterTab[]).map((tab) => (
+          {(["ALL", "WEEKLY", "MONTHLY", "DAY", "SPECIFIC_DAY", "TIME_BASED"] as ScheduleFilterTab[]).map((tab) => (
             <Tab
               key={tab}
               value={tab}
+              sx={{
+                borderBottom: activeTab === tab ? "2px solid #1976d2 !important" : "2px solid transparent",
+                color: activeTab === tab ? "#1976d2 !important" : "text.secondary",
+                boxSizing: "border-box",
+              }}
               label={
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
                   {tab === "SPECIFIC_DAY" ? "SPECIFIC DAY" : tab === "TIME_BASED" ? "TIME BASED" : tab}
@@ -1622,7 +1627,6 @@ const TaskExpandedComponent: React.FC<{
 
   const deleteTaskConfirm = useCallback(async () => {
     if (!selectedTask) return;
-    if (!window.confirm("Are you sure you want to delete this task?")) return;
     try {
       const success = await deleteTask(selectedTask.Task_Id);
       if (success && isMounted.current) {
@@ -1866,7 +1870,6 @@ const TaskExpandedComponent: React.FC<{
 
   const deleteScheduleConfirm = useCallback(async () => {
     if (!selectedScheduleId) return;
-    if (!window.confirm("Are you sure you want to delete this schedule?")) return;
     const success = await deleteprojectschedule(selectedScheduleId);
     if (success && isMounted.current) {
       const affectedTaskId = selectedTaskForSch || Number(scheduleObj.Task_Id);
@@ -2423,7 +2426,6 @@ const TaskTypeExpandedComponent: React.FC<{
 
   const deleteTaskTypeConfirm = useCallback(async () => {
     if (!selectedTaskType) return;
-    if (!window.confirm("Are you sure you want to delete this task type?")) return;
 
     const success = await deleteTaskType(selectedTaskType.Task_Type_Id);
 

@@ -148,13 +148,16 @@ export const createProjectMaster = async (
     const statusValue = Number(body.Project_Status ?? 1);
     const isActiveValue = body.IsActive != null ? Number(body.IsActive) : (statusValue === 0 ? 0 : 1);
     
+    const startDt = body.Est_Start_Dt && body.Est_Start_Dt !== "Invalid date" ? body.Est_Start_Dt : null;
+    const endDt = body.Est_End_Dt && body.Est_End_Dt !== "Invalid date" ? body.Est_End_Dt : null;
+
     const cleanBody = {
       Project_Name: body.Project_Name.trim(),
       Project_Desc: body.Project_Desc?.trim() || null,
       Company_Id: body.Company_Id || null,
       Project_Head: body.Project_Head || null,
-      Est_Start_Dt: body.Est_Start_Dt || null,
-      Est_End_Dt: body.Est_End_Dt || null,
+      Est_Start_Dt: startDt,
+      Est_End_Dt: endDt,
       Project_Status: statusValue,
       IsActive: isActiveValue
     };
@@ -171,15 +174,30 @@ export const createProjectMaster = async (
 
     if (res && res.success) {
       invalidateProjectsCache();
-      toast.success(res.message || "Project created successfully");
+      const hasDates = Boolean(startDt || endDt);
+      const baseMsg = res.message || "Project created successfully";
+      const finalMsg = hasDates
+        ? baseMsg
+        : (baseMsg.toLowerCase().includes("without date") ? baseMsg : `${baseMsg} without dates`);
+      toast.success(finalMsg);
       return true;
     } else {
-      toast.error(res?.message || "Failed to create project");
+      const hasDates = Boolean(startDt || endDt);
+      const rawMsg = res?.message || "Failed to create project. Please try again.";
+      const finalMsg = hasDates
+        ? rawMsg
+        : (rawMsg.toLowerCase().includes("without date")
+            ? rawMsg
+            : (rawMsg.includes("Failed to create project")
+                ? rawMsg.replace("Failed to create project", "Failed to create project without dates")
+                : `${rawMsg} without dates`));
+      toast.error(finalMsg);
       return false;
     }
   } catch (e: unknown) {
     console.error("createProjectMaster Error:", e);
-    toast.error("Network error creating project");
+    const hasDates = Boolean(body.Est_Start_Dt || body.Est_End_Dt);
+    toast.error(hasDates ? "Network error creating project" : "Network error creating project without dates");
     return false;
   }
 };
@@ -198,14 +216,17 @@ export const updateProjectMaster = async (
 
     const statusValue = Number(body.Project_Status ?? 1);
     const isActiveValue = body.IsActive != null ? Number(body.IsActive) : (statusValue === 0 ? 0 : 1);
+
+    const startDt = body.Est_Start_Dt && body.Est_Start_Dt !== "Invalid date" ? body.Est_Start_Dt : null;
+    const endDt = body.Est_End_Dt && body.Est_End_Dt !== "Invalid date" ? body.Est_End_Dt : null;
     
     const cleanBody = {
       Project_Name: body.Project_Name.trim(),
       Project_Desc: body.Project_Desc?.trim() || null,
       Company_Id: body.Company_Id || null,
       Project_Head: body.Project_Head || null,
-      Est_Start_Dt: body.Est_Start_Dt || null,
-      Est_End_Dt: body.Est_End_Dt || null,
+      Est_Start_Dt: startDt,
+      Est_End_Dt: endDt,
       Project_Status: statusValue,
       IsActive: isActiveValue
     };
@@ -222,7 +243,12 @@ export const updateProjectMaster = async (
 
     if (res?.success) {
       invalidateProjectsCache();
-      toast.success(res.message || "Project updated successfully");
+      const hasDates = Boolean(startDt || endDt);
+      const baseMsg = res.message || "Project updated successfully";
+      const finalMsg = hasDates
+        ? baseMsg
+        : (baseMsg.toLowerCase().includes("without date") ? baseMsg : `${baseMsg} without dates`);
+      toast.success(finalMsg);
       return true;
     } else {
       toast.error(res?.message || "Failed to update project");

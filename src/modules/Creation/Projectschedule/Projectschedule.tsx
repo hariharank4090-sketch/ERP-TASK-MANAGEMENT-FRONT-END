@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, CircularProgress, Alert, Snackbar } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 import {
   createprojectschedule,
@@ -48,7 +49,7 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
   const [loading, setLoading] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
-  const [isLoadingTaskTypes, setIsLoadingTaskTypes] = useState(false);
+  const [, setIsLoadingTaskTypes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -279,40 +280,52 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
 
       // Validation
       if (!scheduleObj.Sch_No?.trim()) {
-        setError("Schedule number is required");
+        const msg = "Schedule number is required";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!scheduleObj.Project_Id || scheduleObj.Project_Id === 0) {
-        setError("Please select a project");
+        const msg = "Please select a project";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!scheduleObj.Task_Id || scheduleObj.Task_Id === 0) {
-        setError("Please select a task");
+        const msg = "Please select a task";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!scheduleObj.Task_Type_Id || scheduleObj.Task_Type_Id === 0) { // Using Task_Type_Id
-        setError("Please select a task type");
+        const msg = "Please select a task type";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       if (!scheduleObj.Sch_Start_Date || !scheduleObj.Sch_End_Date) {
-        setError("Please select start and end dates");
+        const msg = "Please select start and end dates";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
       const startDate = new Date(scheduleObj.Sch_Start_Date);
       const endDate = new Date(scheduleObj.Sch_End_Date);
       if (endDate < startDate) {
-        setError("End date cannot be before start date");
+        const msg = "End date cannot be before start date";
+        setError(msg);
         setShowErrorAlert(true);
+        toast.error(msg);
         return;
       }
 
@@ -333,25 +346,22 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
       }
 
       if (response) {
-        setSuccessMessage(
+        const msg =
           dialogType === "create" ? `Schedule "${scheduleObj.Sch_No}" created successfully!` :
           dialogType === "edit" ? `Schedule updated successfully!` :
-          dialogType === "delete" ? `Schedule deleted successfully!` : ""
-        );
-        setShowSuccessAlert(true);
-        
-        resetForm();
-        
-        setTimeout(() => {
-          handleCloseDialog();
-        }, 2000);
+          dialogType === "delete" ? `Schedule deleted successfully!` : "Operation successful!";
+        toast.dismiss();
+        toast.success(msg);
+        handleCloseDialog();
       } else {
-        setError(
+        const errMsg =
           dialogType === "create" ? "Failed to create schedule. Please try again." :
           dialogType === "edit" ? "Failed to update schedule. Please try again." :
-          dialogType === "delete" ? "Failed to delete schedule. Please try again." : ""
-        );
+          dialogType === "delete" ? "Failed to delete schedule. Please try again." : "Operation failed.";
+        setError(errMsg);
         setShowErrorAlert(true);
+        toast.dismiss();
+        toast.error(errMsg);
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
@@ -362,6 +372,8 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
          dialogType === "delete" ? "Failed to delete schedule" : "An error occurred");
       setError(errorMessage);
       setShowErrorAlert(true);
+      toast.dismiss();
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -377,7 +389,7 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
     setError(null);
   };
 
-  if (isLoadingProjects || isLoadingTaskTypes) {
+  if (isLoadingProjects) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
@@ -421,12 +433,12 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
         taskTypeOptions={taskTypeOptions}
         schedulePlanOptions={schedulePlanOptions}
         selectedId={scheduleId}
-        isLoading={loading || isLoadingTasks}
+        isLoading={isLoadingTasks}
         readOnly={dialogType === "view"}
         onProjectChange={handleProjectChange}
       />
 
-      {(isLoadingProjects || isLoadingTaskTypes || loading || isLoadingTasks) && (
+      {loading && (
         <Box
           position="fixed"
           top={0}

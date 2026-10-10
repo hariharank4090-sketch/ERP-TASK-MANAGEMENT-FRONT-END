@@ -236,26 +236,27 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, loadingOn, loadingOff }
 
   const isAdmin = user?.UserTypeId === 0 || user?.UserTypeId === 1;
 
+  const [prevPath, setPrevPath] = useState(location.pathname);
+  const [prevAdmin, setPrevAdmin] = useState(isAdmin);
+  const [prevMobileTablet, setPrevMobileTablet] = useState(isMobile || isTablet);
+
   const [isTodayPlanOpen, setIsTodayPlanOpen] = useState(() => {
     if (isAdmin) return false;
     return (!isMobile && !isTablet) || ((isMobile || isTablet) && location.pathname === "/");
   });
 
-  const toggleTodayPlan = () => setIsTodayPlanOpen((prev) => !prev);
-
-  useEffect(() => {
+  if (location.pathname !== prevPath || isAdmin !== prevAdmin || (isMobile || isTablet) !== prevMobileTablet) {
+    setPrevPath(location.pathname);
+    setPrevAdmin(isAdmin);
+    setPrevMobileTablet(isMobile || isTablet);
     if (isAdmin) {
       setIsTodayPlanOpen(false);
+    } else if (isMobile || isTablet) {
+      setIsTodayPlanOpen(location.pathname === "/");
     }
-  }, [isAdmin]);
+  }
 
-  useEffect(() => {
-    if (isAdmin) return;
-    if (isMobile || isTablet) {
-      const isHome = location.pathname === "/";
-      setIsTodayPlanOpen(isHome);
-    }
-  }, [location.pathname, isMobile, isTablet, isAdmin]);
+  const toggleTodayPlan = () => setIsTodayPlanOpen((prev) => !prev);
 
   useEffect(() => {
     if (Array.isArray(navDetails) && navDetails.length > 0) {

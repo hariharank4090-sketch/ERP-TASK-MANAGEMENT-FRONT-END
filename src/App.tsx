@@ -120,7 +120,7 @@ function App() {
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <>
-            <ToastContainer />
+            <ToastContainer autoClose={1500} limit={1} newestOnTop />
 
             {/*
              * ✅ FIX: BrowserRouter is the single top-level router.

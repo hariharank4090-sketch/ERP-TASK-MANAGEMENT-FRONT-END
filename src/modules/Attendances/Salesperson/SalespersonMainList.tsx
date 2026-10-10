@@ -44,13 +44,13 @@ import {
   LocalDateWithTime,
 } from "../../../Components/functions.ts";
 import type { SalesPersonDropdown } from "./Salesperson.variables";
+import { useAuth } from "../../../auth/authContext";
 
 const INPUT_HEIGHT = 40;
-const Subraction = (a: number, b: number) => (a - b).toFixed(2);
+const subtraction = (a: number, b: number) => (a - b).toFixed(2);
 
 const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
-
-  const storage = JSON.parse(localStorage.getItem("user") || "{}");
+  const { user } = useAuth();
 
   const [attendance, setAttendance] = useState<any[]>([]);
   const [salesPersons, setSalesPersons] = useState<SalesPersonDropdown[]>([]);
@@ -85,7 +85,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
         From: fromDate,
         To: toDate,
         UserId: null, // Always fetch all from API; filter client-side
-        Company_id: storage?.Company_id,
+        Company_id: user?.Company_Id ?? null,
       });
       setAttendance(Array.isArray(response?.data) ? response.data : []);
     } catch (error) {
@@ -98,7 +98,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
   const loadSalesPersons = async () => {
     loadingOn?.();
     try {
-      const data = await getSalesPersonDropdown(storage?.Company_id);
+      const data = await getSalesPersonDropdown(user?.Company_Id ?? undefined);
       setSalesPersons(data || []);
     } catch (error) {
       console.error("Error loading sales persons:", error);
@@ -355,7 +355,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
       Cell: ({ row }: any) => (
         <Typography fontWeight={600}>
           {row.End_KM && row.Start_KM
-            ? Subraction(row.End_KM, row.Start_KM)
+            ? subtraction(row.End_KM, row.Start_KM)
             : "--"}
         </Typography>
       ),
@@ -563,7 +563,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
               </Typography>
               <Typography variant="body1" fontWeight={600} gutterBottom>
                 {objDetails.End_KM && objDetails.Start_KM
-                  ? `${Subraction(objDetails.End_KM, objDetails.Start_KM)} KM`
+                  ? `${subtraction(objDetails.End_KM, objDetails.Start_KM)} KM`
                   : "--"}
               </Typography>
 

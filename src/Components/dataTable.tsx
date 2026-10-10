@@ -52,11 +52,13 @@ export type TableRowData = Record<string, unknown>;
 
 export interface Column {
   Field_Name?: string;
+  Field_Data?: DataType;
   Fied_Data?: DataType;
   verticalAlign?: "top" | "middle" | "bottom" | "center";
   ColumnHeader?: string;
   tdClass?: (args: { row: TableRowData; Field_Name?: string; index: number }) => string;
   isVisible?: 0 | 1;
+  Default_Display?: 0 | 1 | boolean;
   Defult_Display?: 0 | 1 | boolean;
   align?: "left" | "right" | "center";
   isCustomCell?: boolean;
@@ -74,9 +76,10 @@ export interface FilterableTableProps {
   dataArray?: TableRowData[];
   columns?: Column[];
   onClickFun?: ((row: TableRowData) => void) | null;
+  isExpandable?: boolean;
   isExpendable?: boolean;
   expandableComp?: ((args: { row: TableRowData; index: number }) => React.ReactNode) | null;
-  tableMaxHeight?: number;
+  tableMaxHeight?: number | string;
   initialPageCount?: number;
   EnableSerialNumber?: boolean;
   CellSize?: "small" | "medium";
@@ -141,7 +144,8 @@ const preprocessDataForExport = (data: TableRowData[], columns: Column[]) => {
   return data.map((row) => {
     const flattenedRow: Record<string, unknown> = {};
     columns.forEach((column, index) => {
-      if (column.isVisible || column.Defult_Display) {
+      const isDisplay = column.isVisible || column.Default_Display || column.Defult_Display;
+      if (isDisplay) {
         if (column.isCustomCell && column.Cell) {
           const cellContent = column.Cell({ row, Field_Name: column.Field_Name, index });
           const safeColumnHeader = column.ColumnHeader
@@ -169,7 +173,7 @@ const generatePDF = (dataArray: TableRowData[], columns: Column[]) => {
     const doc = new jsPDF();
     const processedData = preprocessDataForExport(dataArray, columns);
     const headers: string[] = columns
-      .filter((column) => column.isVisible || column.Defult_Display)
+      .filter((column) => column.isVisible || column.Default_Display || column.Defult_Display)
       .map((column, idx) =>
         column.Field_Name
           ? column.Field_Name
@@ -208,6 +212,7 @@ const createCol = (
 ): Column => ({
   isVisible,
   Field_Name: field,
+  Field_Data: type,
   Fied_Data: type,
   align,
   verticalAlign,
@@ -274,6 +279,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
   dataArray = [],
   columns = [],
   onClickFun = null,
+  isExpandable,
   isExpendable = false,
   expandableComp = null,
   tableMaxHeight = 650,
@@ -319,7 +325,13 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
 
   // On mobile, cap table height so it doesn't overflow
   const responsiveMaxHeight = isMobile ? 400 : isTablet ? 520 : tableMaxHeight;
-  const tableHeight = showFullHeight && maxHeightOption ? "max-content" : responsiveMaxHeight;
+  const tableHeight =
+    (showFullHeight && maxHeightOption) ||
+    tableMaxHeight === "none" ||
+    tableMaxHeight === "auto" ||
+    tableMaxHeight === "max-content"
+      ? "none"
+      : responsiveMaxHeight;
 
   const columnAlign: { type: "left" | "right" | "center"; class: string }[] = [
     { type: "left", class: "text-left" },
@@ -389,6 +401,8 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
     setOpenRows((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
+  const canExpand = isExpandable ?? isExpendable;
+
   const renderRow = (row: TableRowData, index: number) => {
     const open = openRows[index] || false;
     const iconFontSize = "20px";
@@ -396,7 +410,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
     return (
       <Fragment key={index}>
         <TableRow>
-          {isExpendable && expandableComp && (
+          {canExpand && expandableComp && (
             <TableCell className="border-r border-gray-300 text-center align-top" sx={{ fontSize: `${bodyFontSizePx}px`, px: { xs: 0.5, sm: 1 } }}>
               <IconButton size="small" onClick={() => toggleRow(index)}>
                 {open ? <KeyboardArrowUp sx={{ fontSize: iconFontSize }} /> : <KeyboardArrowDown sx={{ fontSize: iconFontSize }} />}
@@ -409,7 +423,8 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
             </TableCell>
           )}
           {columns.map((column, columnInd) => {
-            const isColumnVisible = isEqualNumber(column?.Defult_Display, 1) || isEqualNumber(column?.isVisible, 1);
+            const isDefDisplay = column?.Default_Display ?? column?.Defult_Display;
+            const isColumnVisible = isEqualNumber(isDefDisplay, 1) || isEqualNumber(column?.isVisible, 1);
             if (!isColumnVisible) return null;
             const isCustomCell = Boolean(column?.isCustomCell) && column.Cell;
             const isCommonValue = !isCustomCell;
@@ -447,7 +462,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
                   sx={cellSx}
                   onClick={() => onClickFun ? onClickFun(row) : null}
                 >
-                  {foundEntry ? formatString(foundEntry[1], column?.Fied_Data) : "-"}
+                  {foundEntry ? formatString(foundEntry[1], column?.Field_Data ?? column?.Fied_Data) : "-"}
                 </TableCell>
               );
             }
@@ -649,7 +664,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
         sx={{
           maxHeight: tableHeight,
           overflowX: "auto",
-          overflowY: "auto",
+          overflowY: tableHeight === "none" ? "visible" : "auto",
           WebkitOverflowScrolling: "touch",
           minHeight: 0,
           flex: 1,

@@ -140,7 +140,6 @@ const LeaveTypeMainPage: React.FC<PageProps> = ({
   /** Delete Confirm */
   const deleteLeaveTypeConfirm = async () => {
     if (!selectedId) return;
-    if (!window.confirm("Are you sure you want to delete this leave type?")) return;
 
     const success = await deleteleavetype(selectedId, loadingOn, loadingOff);
 

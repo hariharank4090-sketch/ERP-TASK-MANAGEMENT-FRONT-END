@@ -32,7 +32,7 @@ export type DateRangeFilter = {
   To: string;
   UserId?: number | string | null;
   UserTypeID?: number;
-  Company_id?: number;
+  Company_id?: number | null;
 };
 
 export type AttendanceDetailsDialogData = {

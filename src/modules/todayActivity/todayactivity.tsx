@@ -35,16 +35,16 @@ import {
   getBranchDropdown,
   getTaskTypes,
   getDesignationList,
-} from "../today activitty/todayactivity.api";
+} from "../todayActivity/todayactivity.api";
 import type {
   WorkMasterData,
   TaskDropdown,
   EmployeeDropdown,
   ProjectDropdown
-} from "../today activitty/todayactivity.variable";
+} from "../todayActivity/todayactivity.variable";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import TodayTaskDialog from "../work master/TodayTaskDialog";
+import TodayTaskDialog from "../workMaster/TodayTaskDialog";
 import { useAuth } from "../../auth/authContext";
 import SearchableSelect from "../../Components/SearchableSelect";
 import DashboardTopFilterBar from "../../Components/TopFilterBar";
