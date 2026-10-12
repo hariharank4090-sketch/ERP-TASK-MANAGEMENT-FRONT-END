@@ -762,18 +762,43 @@ const ExpandedSchedulesComponent: React.FC<{
         <Tabs
           value={activeTab}
           onChange={(_e, newVal: ScheduleFilterTab) => setActiveTab(newVal)}
-          textColor="primary" indicatorColor="primary"
-          variant="scrollable" scrollButtons="auto"
+          textColor="primary"
+          indicatorColor="primary"
+          variant="scrollable"
+          scrollButtons="auto"
           sx={{
             minHeight: 40,
-            "& .MuiTab-root": { minHeight: 40, fontSize: "0.78rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", px: 2, py: 0.5 },
-            "& .Mui-selected": { color: "#1976d2" },
-            "& .MuiTabs-indicator": { backgroundColor: "#1976d2", height: 2 },
+            mb: "-1px",
+            px: 1,
+            "& .MuiTabs-indicator": { display: "none" },
+            "& .MuiTab-root": {
+              minHeight: 40,
+              minWidth: "auto",
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              px: 0,
+              py: 0.5,
+              mr: 2.5,
+              color: "text.secondary",
+              borderBottom: "2px solid transparent",
+              transition: "color 0.2s, border-color 0.2s",
+              "&:last-child": { mr: 0 },
+              "&.Mui-selected": {
+                color: "#1976d2 !important",
+                borderBottom: "2px solid #1976d2 !important",
+              },
+            },
           }}
         >
           {(["DAY", "WEEKLY", "MONTHLY", "SPECIFIC_DAY", "TIME_BASED", "ALL"] as ScheduleFilterTab[]).map((tab) => (
             <Tab
-              key={tab} value={tab}
+              key={tab}
+              value={tab}
+              sx={{
+                boxSizing: "border-box",
+              }}
               label={
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
                   {tab === "SPECIFIC_DAY" ? "SPECIFIC DAY" : tab === "TIME_BASED" ? "TIME BASED" : tab}

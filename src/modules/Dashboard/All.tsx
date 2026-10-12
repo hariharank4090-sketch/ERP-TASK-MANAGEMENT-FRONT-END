@@ -933,17 +933,28 @@ const ExpandedSchedulesComponent: React.FC<{
           scrollButtons="auto"
           sx={{
             minHeight: 40,
+            mb: "-1px",
+            px: 1,
+            "& .MuiTabs-indicator": { display: "none" },
             "& .MuiTab-root": {
               minHeight: 40,
+              minWidth: "auto",
               fontSize: "0.78rem",
               fontWeight: 600,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              px: 2,
+              px: 0,
               py: 0.5,
+              mr: 2.5,
+              color: "text.secondary",
+              borderBottom: "2px solid transparent",
+              transition: "color 0.2s, border-color 0.2s",
+              "&:last-child": { mr: 0 },
+              "&.Mui-selected": {
+                color: "#1976d2 !important",
+                borderBottom: "2px solid #1976d2 !important",
+              },
             },
-            "& .Mui-selected": { color: "#1976d2" },
-            "& .MuiTabs-indicator": { display: "none" },
           }}
         >
           {(["ALL", "WEEKLY", "MONTHLY", "DAY", "SPECIFIC_DAY", "TIME_BASED"] as ScheduleFilterTab[]).map((tab) => (
@@ -951,8 +962,6 @@ const ExpandedSchedulesComponent: React.FC<{
               key={tab}
               value={tab}
               sx={{
-                borderBottom: activeTab === tab ? "2px solid #1976d2 !important" : "2px solid transparent",
-                color: activeTab === tab ? "#1976d2 !important" : "text.secondary",
                 boxSizing: "border-box",
               }}
               label={

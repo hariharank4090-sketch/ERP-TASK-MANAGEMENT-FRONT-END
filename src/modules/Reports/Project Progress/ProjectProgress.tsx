@@ -477,6 +477,20 @@ const removeDuplicates = (data: any[]) => {
     });
 };
 
+const calculateWorkingDelta = (assignHrsInput: string | number, workingHrsInput: string | number): string => {
+  const assignVal = typeof assignHrsInput === 'number' ? assignHrsInput : (parseFloat(String(assignHrsInput)) || 0);
+  const workingVal = typeof workingHrsInput === 'number' ? workingHrsInput : (parseFloat(String(workingHrsInput)) || 0);
+  const deltaVal = parseFloat((assignVal - workingVal).toFixed(1));
+
+  if (Math.abs(deltaVal) < 0.05) {
+    return '0.0h';
+  } else if (deltaVal < 0) {
+    return deltaVal.toFixed(1) + 'h';
+  } else {
+    return '+' + deltaVal.toFixed(1) + 'h';
+  }
+};
+
 const getRowStats = (items: any[]) => {
     let assignMin = 0;
     let completedMin = 0;
@@ -488,8 +502,6 @@ const getRowStats = (items: any[]) => {
     let totalWeight = 0;
     let earnedWeight = 0;
 
-    let deltaMin = 0;
-    const todayStr = getDateOnly(new Date());
 
     // Check if Process_Id 1 was saved for any item in this set
     const hasProcessId1 = items.some(it => Boolean(it.hasProcess1) || Boolean(it.rawActualCompletedDate));
@@ -514,14 +526,6 @@ const getRowStats = (items: any[]) => {
       const assignStatStr = String(it.assignedStatus || '').toLowerCase();
       const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || hasProcessId1 || Boolean(it.hasProcess1);
 
-      const isPreviousDate = Boolean(it.date && it.date < todayStr);
-      if (execMin > 0) {
-        deltaMin += (assMin - execMin);
-      } else if (isCompleted || Boolean(it.rawActualCompletedDate)) {
-        deltaMin += 0;
-      } else if (isPreviousDate && assMin > 0) {
-        deltaMin -= assMin;
-      }
       const weight = assMin > 0 ? assMin : (execMin > 0 ? execMin : 60);
       totalWeight += weight;
 
@@ -563,18 +567,8 @@ const getRowStats = (items: any[]) => {
     }
 
     const totalWorkingMin = workingMin;
-    const workingDeltaVal = parseFloat((deltaMin / 60).toFixed(1));
-
-    let workingDeltaStr = '';
-    if (totalWorkingMin === 0 && Math.abs(workingDeltaVal) < 0.05) {
-      workingDeltaStr = 'Not Started';
-    } else if (Math.abs(workingDeltaVal) < 0.05) {
-      workingDeltaStr = '0.0h';
-    } else if (workingDeltaVal < 0) {
-      workingDeltaStr = workingDeltaVal.toFixed(1) + 'h';
-    } else {
-      workingDeltaStr = '+' + workingDeltaVal.toFixed(1) + 'h';
-    }
+    const workingDeltaVal = parseFloat(((assignMin - totalWorkingMin) / 60).toFixed(1));
+    const workingDeltaStr = calculateWorkingDelta(assignMin / 60, totalWorkingMin / 60);
 
     const assignHrsStr = (assignMin / 60).toFixed(1) + 'h';
     const assignDaysCount = uniqueAssignDates.size;
@@ -1451,6 +1445,7 @@ export default function Projectprogress() {
         stats.completedHrs = sumCompleteHrs.toFixed(1) + 'h';
         stats.delayHrs = sumDelayHrs.toFixed(1) + 'h';
         stats.workingHrs = sumWorkingHrs.toFixed(1) + 'h';
+        stats.workingDelta = calculateWorkingDelta(stats.assignHrs, stats.workingHrs);
         
 
 
@@ -1686,6 +1681,7 @@ export default function Projectprogress() {
         stats.completedHrs = sumCompleteHrs.toFixed(1) + 'h';
         stats.delayHrs = sumDelayHrs.toFixed(1) + 'h';
         stats.workingHrs = sumWorkingHrs.toFixed(1) + 'h';
+        stats.workingDelta = calculateWorkingDelta(stats.assignHrs, stats.workingHrs);
         
 
 

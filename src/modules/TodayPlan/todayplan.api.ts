@@ -272,18 +272,26 @@ export const getProjectDropdown = async (
 };
 
 // Date helper
-export const getDateOnly = (dateInput: string | Date): string => {
+export const getDateOnly = (dateInput: string | Date | null | undefined): string => {
     if (!dateInput) return "";
     if (typeof dateInput === "string") {
         const s = dateInput.trim();
         if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        if (/^\d{2}-\d{2}-\d{4}/.test(s)) {
+            const parts = s.slice(0, 10).split("-");
+            return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+            const parts = s.slice(0, 10).split("/");
+            return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
     }
     try {
         const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
         if (isNaN(date.getTime())) return "";
-        const year = date.getUTCFullYear();
-        const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-        const day = String(date.getUTCDate()).padStart(2, "0");
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
     } catch {
         return "";
@@ -324,87 +332,91 @@ export const getProjectScheduleMaster = async (
 
 /**
  * Checks whether a task schedule card should be HIDDEN on future dates
- * after the schedule has been completed.
+ * after the schedule itself has been completed.
+ * Note: Completing work date and saving Task Process in TodayTaskDialog
+ * does NOT hide this card. Only when the schedule itself is completed
+ * (Status 3 = Completed) will future date cards be hidden.
+ *
+ * Example: Schedule assigned for 12-10-2026 and 13-10-2026:
+ * - When schedule is completed for 12-10-2026:
+ *   - 12-10-2026 card remains visible (assignDate <= completionDate)
+ *   - 13-10-2026 card is hidden from view (assignDate > completionDate)
  */
 export const isScheduleCompletedForNextDate = (
     plan: any,
     projectSchedules: any[],
-    workItems: any[]
+    _workItems: any[]
 ): boolean => {
     if (!plan) return false;
+
+    const assignDate = getDateOnly(plan.Task_Assign_dt);
+    if (!assignDate) return false;
+
     const schId = plan.Sch_Id != null && plan.Sch_Id !== "" && plan.Sch_Id !== "0" && plan.Sch_Id !== "null" && plan.Sch_Id !== "undefined"
         ? String(plan.Sch_Id).trim()
         : "";
 
-    const assignDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
-    if (!assignDate) return false;
-
-    // 1. Find matching master schedule from http://localhost:5001/api/masters/projectSchedule/
+    // 1. Find matching master schedule from masters/projectSchedule/
     const masterSch = schId
-        ? projectSchedules.find((s: any) => String(s.schId ?? s.Sch_Id ?? s.id ?? '').trim() === schId)
+        ? (projectSchedules || []).find((s: any) => String(s?.schId ?? s?.Sch_Id ?? s?.id ?? '').trim() === schId)
         : null;
 
-    // Check if master schedule status or plan status indicates completion
+    // Check if the SCHEDULE itself is completed (Status 3 = Completed)
     const isMasterCompleted = masterSch
         ? (Number(masterSch.schStatus ?? masterSch.Sch_Status ?? masterSch.status) === 3 ||
             String(masterSch.schStatus ?? masterSch.Sch_Status ?? masterSch.status).toLowerCase() === "completed")
         : (Number(plan.Schedule_Sch_Status) === 3 || String(plan.Schedule_Sch_Status).toLowerCase() === "completed");
 
-    // 2. Check if there are completed work entries for this schedule (or Task_Id & Emp_Id)
-    const completedWorkEntries = (workItems || []).filter((w: any) => {
-        const sameSch = schId && w.Sch_Id && String(w.Sch_Id).trim() === schId;
-        const sameTaskEmp = String(w.Task_Id).trim() === String(plan.Task_Id).trim() &&
-            String(w.Emp_Id).trim() === String(plan.Emp_Id).trim();
-        const isDone = w.Work_Status === "Completed" || String(w.Work_Status) === "3";
-        return (sameSch || sameTaskEmp) && isDone;
-    });
-
-    const isWorkCompleted = completedWorkEntries.length > 0;
-
-    if (!isMasterCompleted && !isWorkCompleted) {
+    // Only hide if the schedule itself is marked completed!
+    if (!isMasterCompleted) {
         return false;
     }
 
-    // 3. Collect completion dates
+    // 2. Determine completion date of the schedule
     const completionDates: string[] = [];
 
+    // Check explicit completion date from master schedule
     if (masterSch) {
-        const compDt = masterSch.schCompDate || masterSch.Sch_Comp_Date || masterSch.updateDate || masterSch.update_date;
-        if (compDt) {
-            const formatted = getDateOnly(compDt);
-            if (formatted) completionDates.push(formatted);
+        const compDt = getDateOnly(masterSch.schCompDate || masterSch.Sch_Comp_Date || masterSch.Sch_Comp_date);
+        if (compDt) completionDates.push(compDt);
+    }
+
+    // Check update date when schedule was updated/completed
+    if (completionDates.length === 0 && masterSch) {
+        const updDt = getDateOnly(masterSch.updateDate || masterSch.Update_Date);
+        if (updDt) completionDates.push(updDt);
+    }
+
+    // Check earliest task date from master schedule task dates
+    if (completionDates.length === 0 && masterSch?.taskDates && Array.isArray(masterSch.taskDates) && masterSch.taskDates.length > 0) {
+        const dates = masterSch.taskDates
+            .map((td: any) => getDateOnly(td.taskWorkDate || td.Task_Work_Date))
+            .filter(Boolean)
+            .sort();
+        if (dates.length > 0) {
+            completionDates.push(dates[0]);
         }
     }
 
-    completedWorkEntries.forEach((w: any) => {
-        if (w.Work_Dt) {
-            const formatted = getDateOnly(w.Work_Dt);
-            if (formatted) completionDates.push(formatted);
-        }
-    });
-
-    // Fallback: If marked completed but no explicit completion date found, check schDate / schStartDate
-    if (completionDates.length === 0 && masterSch) {
-        const fallbackDt = masterSch.schDate || masterSch.schStartDate || masterSch.Sch_Date || masterSch.Sch_Start_Date;
-        if (fallbackDt) {
-            const formatted = getDateOnly(fallbackDt);
-            if (formatted) completionDates.push(formatted);
-        }
+    // Fallback: Schedule start date or schedule date
+    if (completionDates.length === 0) {
+        const fallbackDt = getDateOnly(
+            masterSch?.schStartDate ||
+            masterSch?.schDate ||
+            masterSch?.Sch_Start_Date ||
+            masterSch?.Sch_Date ||
+            plan.Schedule_Sch_Start_Date ||
+            plan.Schedule_Sch_Date
+        );
+        if (fallbackDt) completionDates.push(fallbackDt);
     }
 
     if (completionDates.length > 0) {
-        // Sort completion dates ascending to find earliest completion date
         completionDates.sort();
         const earliestCompDate = completionDates[0];
 
-        // If the assignment date is strictly AFTER the completion date (e.g., 30-9-2026 > 29-9-2026), HIDE IT!
+        // If the assignment date is strictly AFTER the completion date (e.g., 13-10-2026 > 12-10-2026), HIDE IT!
         if (assignDate > earliestCompDate) {
-            return true;
-        }
-    } else if (isMasterCompleted) {
-        // Fallback if master schedule is completed and assignDate is after start date
-        const startDate = masterSch ? getDateOnly(masterSch.schStartDate || masterSch.schDate || masterSch.Sch_Start_Date) : "";
-        if (startDate && assignDate > startDate) {
             return true;
         }
     }

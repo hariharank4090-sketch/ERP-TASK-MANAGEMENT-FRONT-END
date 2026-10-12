@@ -3639,7 +3639,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
           position: "sticky",
           top: 0,
           zIndex: 10,
-          bgcolor: "background.paper",
           "&::-webkit-scrollbar": isMobile ? { display: "none" } : {}
         }}
       >
@@ -3658,9 +3657,28 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
               aria-label="attendance tabs"
               variant="standard"
               sx={{
+                mb: "-1px",
+                "& .MuiTabs-indicator": {
+                  display: "none",
+                },
                 "& .MuiTab-root": {
-                  minWidth: 120,
-                  px: 3,
+                  minWidth: "auto",
+                  px: 0,
+                  mr: 3.5,
+                  py: 1,
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  textTransform: "uppercase",
+                  color: "text.secondary",
+                  borderBottom: "2px solid transparent",
+                  transition: "color 0.2s, border-color 0.2s",
+                  "&:last-child": {
+                    mr: 0,
+                  },
+                  "&.Mui-selected": {
+                    color: "#1976d2",
+                    borderBottom: "2px solid #1976d2",
+                  },
                 },
               }}
             >
@@ -4106,7 +4124,6 @@ const FingerPrintMainPage: React.FC<PageProps> = ({
             <DataTable
               headerTitle="Employee Attendance Correction"
               EnableSerialNumber
-              tableMaxHeight="none"
               dataArray={searchedRecords as TableRowData[]}
             showSearch={true}
             searchPlaceholder="Search Employee ID or Name..."
