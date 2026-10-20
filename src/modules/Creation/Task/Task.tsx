@@ -116,7 +116,11 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
     }
 
     // Navigate back
-    navigate(-1);
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/master/task", { replace: true });
+    }
   };
 
   // Reset form to initial state
@@ -295,7 +299,7 @@ const TaskMainPage: React.FC<TaskProps> = ({ onClose, open = true }) => {
         projectOptions={projects}
         taskGroupOptions={taskGroups}
         parameterOptions={parameters}
-        isLoading={isLoadingDropdowns || loading}
+        isLoading={isLoadingDropdowns}
         disableSubmit={!currentUserId}
       />
 

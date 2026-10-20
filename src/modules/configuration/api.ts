@@ -17,50 +17,27 @@ function slugFromTUrl(tUrl: string | null | undefined, name: string): string {
 
 // ─── Convert backend node to MenuRow ─────────────────────────────────────────
 
-function normalizeTUrl(tUrl: string | null | undefined): string | null {
-    if (!tUrl) return null;
-    let url = tUrl.trim();
-    const reportMappings: Record<string, string> = {
-        "/reports/Execution Reports": "/reports/execution-reports",
-        "/reports/Comparison Reports": "/reports/comparison-reports",
-        "/reports/cost category report": "/reports/cost-category",
-        "/reports/Staff based reports": "/reports/staff-reports",
-        "/reports/Project Progress": "/reports/project-progress",
-        "/reports/Project Plan": "/reports/project-plan",
-        "/reports/User Rights": "/reports/user-rights",
-        "reports/Execution Reports": "/reports/execution-reports",
-        "reports/Comparison Reports": "/reports/comparison-reports",
-        "reports/cost category report": "/reports/cost-category",
-        "reports/Staff based reports": "/reports/staff-reports",
-        "reports/Project Progress": "/reports/project-progress",
-        "reports/Project Plan": "/reports/project-plan",
-        "reports/User Rights": "/reports/user-rights",
-    };
-    if (reportMappings[url]) return reportMappings[url];
-    return url;
-}
-
 function toMenuRow(node: BackendSubRoute): MenuRow {
     return {
-        menuId:       node.id,
-        parentId:     node.parent_id,
-        slug:         slugFromTUrl(node.tUrl, node.name),
-        title:        node.name,
-        iconKey:      null,
-        menuType:     node.menu_type,
+        menuId: node.id,
+        parentId: node.parent_id,
+        slug: slugFromTUrl(node.tUrl, node.name),
+        title: node.name,
+        iconKey: null,
+        menuType: node.menu_type,
         // Backend uses is_active === 2 to mean "active"
-        isActive:     node.is_active === 2,
-        isVisible:    true,
-        sortOrder:    node.display_order,
+        isActive: node.is_active === 2,
+        isVisible: true,
+        sortOrder: node.display_order,
         componentKey: null,
-        // Store normalized tUrl — path resolution uses this directly
-        tUrl:         normalizeTUrl(node.tUrl ?? null),
-        rUrl:         node.rUrl ?? null,
-        readRights:   node.Read_Rights   ?? 0,
-        addRights:    node.Add_Rights    ?? 0,
-        editRights:   node.Edit_Rights   ?? 0,
+        // Store tUrl exactly as-is — path resolution uses this directly
+        tUrl: node.tUrl ?? null,
+        rUrl: node.rUrl ?? null,
+        readRights: node.Read_Rights ?? 0,
+        addRights: node.Add_Rights ?? 0,
+        editRights: node.Edit_Rights ?? 0,
         deleteRights: node.Delete_Rights ?? 0,
-        printRights:  node.Print_Rights  ?? 0,
+        printRights: node.Print_Rights ?? 0,
     };
 }
 
@@ -122,12 +99,6 @@ export function flattenBackendMenu(items: BackendMenuItem[]): MenuRow[] {
     });
 }
 
-// ─── Safe response extractor ─────────────────────────────────────────────────
-// fetchLink may return:
-//   Case A: { status: true,   data: BackendMenuItem[] }   ← backend JSON as-is
-//   Case B: { success: true,  data: BackendMenuItem[] }   ← fetchLink remapped
-//   Case C: { success: true,  data: { status: true, data: BackendMenuItem[] } } ← double-wrapped
-//   Case D: BackendMenuItem[]                              ← raw array
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractMenuArray(res: any): BackendMenuItem[] | null {
@@ -162,7 +133,7 @@ export const getAppMenuData = async (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res: any = await fetchLink({
         address: menuAPI,
-        loadingOn:  typeof loadingOn  === "function" ? loadingOn  : undefined,
+        loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
         loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
     }).catch((e: Error) => {
         throw new Error("NETWORK_ERROR:" + e.message);

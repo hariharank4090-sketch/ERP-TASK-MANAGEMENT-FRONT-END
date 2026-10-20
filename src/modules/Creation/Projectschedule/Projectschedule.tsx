@@ -224,7 +224,11 @@ const ProjectSchedule: React.FC<ProjectScheduleProps> = ({
       onClose();
     }
 
-    navigate(-1);
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/master/projectschedule", { replace: true });
+    }
   };
 
   const resetForm = () => {

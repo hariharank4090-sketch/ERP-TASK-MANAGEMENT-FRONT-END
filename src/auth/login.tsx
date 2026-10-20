@@ -4,6 +4,8 @@ import { z } from "zod";
 import { useAuth, type User } from "./authContext";
 import { useNavigate } from "react-router-dom";
 import baseURL from "../config/baseURL";
+import CryptoJS from "crypto-js";
+import JWT_SECRET from "../config/jwtSecret";
 import { toast } from "react-toastify";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -90,6 +92,39 @@ interface LoginResponse {
     message: string;
     data: LoginResponseData;
     others: object;
+}
+
+
+function decryptCurrentCompany(raw: unknown): Array<{
+    companyId: number;
+    companyName: string | null;
+    dbName: string | null;
+    dbConnected: boolean;
+    token: string;
+    UserTypeId: number;
+    Local_User_ID?: number | null;
+    Global_User_ID?: number | null;
+}> {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+        try {
+            const bytes = CryptoJS.AES.decrypt(raw, JWT_SECRET);
+            const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+            if (decryptedStr) {
+                const parsed = JSON.parse(decryptedStr);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch {
+            // ignore
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+        } catch {
+            // ignore
+        }
+    }
+    return [];
 }
 
 // ─────────────────────────────────────────────
@@ -426,12 +461,13 @@ const Login: React.FC<LoginProps> = ({
 
                 if (data.status === "success" && data.data) {
                     const { currentCompany, user } = data.data;
+                    const resolvedCompanies = decryptCurrentCompany(currentCompany);
 
-                    if (!currentCompany || currentCompany.length === 0) {
+                    if (!resolvedCompanies || resolvedCompanies.length === 0) {
                         throw new Error("No companies found for this user");
                     }
 
-                    const companiesWithToken: CompanyWithToken[] = currentCompany.map(comp => ({
+                    const companiesWithToken: CompanyWithToken[] = resolvedCompanies.map(comp => ({
                         companyId: comp.companyId,
                         companyName: comp.companyName,
                         dbName: comp.dbName,
@@ -441,15 +477,20 @@ const Login: React.FC<LoginProps> = ({
                         Global_User_ID: comp.Global_User_ID ?? null,
                     }));
 
+                    const normalizedResponseData = {
+                        ...data.data,
+                        currentCompany: resolvedCompanies,
+                    };
+
                     pendingLoginRef.current = {
-                        responseData: data.data,
+                        responseData: normalizedResponseData,
                         companies: companiesWithToken,
                     };
 
                     if (companiesWithToken.length === 1) {
                         await handleCompanySelect(
                             companiesWithToken[0].companyId,
-                            data.data,
+                            normalizedResponseData,
                             companiesWithToken
                         );
                     } else {
@@ -509,6 +550,7 @@ const Login: React.FC<LoginProps> = ({
                 }}
             >
                 <form
+                    data-testid="login-form"
                     onSubmit={handleSubmit}
                     style={{
                         width: "100%",
@@ -544,6 +586,7 @@ const Login: React.FC<LoginProps> = ({
                             Username
                         </span>
                         <input
+                            data-testid="login-username-input"
                             style={{
                                 ...inputStyle,
                                 borderColor: fieldErrors.username ? "#dc2626" : "#ddd",
@@ -578,6 +621,7 @@ const Login: React.FC<LoginProps> = ({
                         </span>
                         <div style={{ position: "relative", marginBottom: fieldErrors.password ? 4 : 12 }}>
                             <input
+                                data-testid="login-password-input"
                                 style={{
                                     ...inputStyle,
                                     paddingRight: "2.5rem",
@@ -595,6 +639,7 @@ const Login: React.FC<LoginProps> = ({
                                 disabled={loading}
                             />
                             <button
+                                data-testid="login-toggle-password-btn"
                                 type="button"
                                 onClick={() => setShowPassword(prev => !prev)}
                                 style={{
@@ -643,6 +688,7 @@ const Login: React.FC<LoginProps> = ({
                     )}
 
                     <button
+                        data-testid="login-submit-btn"
                         type="submit"
                         style={{
                             ...buttonStyle,

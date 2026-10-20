@@ -1,15 +1,15 @@
-// src/routes/Masters.ts
+import { lazy } from "react";
 import { MenuGroupPage } from "../Layout/Submenu";
-import LeaveTypeMainPage from "../modules/Master/Leave Type/LeaveTypeMainlist";
-import ParameterDataTypeMainPage from "../modules/Master/Parameters/ParametersMainList";
-import ProcessMasterMain from "../modules/Master/Process Master/Process MasterMain";
-import ProjectScheduleMainPage from "../modules/Master/Project Schedule/Project ScheduleMain";
-
-import ProjectMainPage from "../modules/Master/Projects/Projectsmain";
-import TaskMainPage from "../modules/Master/Task/TaskMain";
-import EmpSchedulesMainPage from "../modules/Master/nonworkMaster/EmpScheduleMain";
-import TaskTypeMainPage from "../modules/Master/Tasktype/TaskType.list";
 import type { componentRoute } from "./indexRouter";
+
+const LeaveTypeMainPage = lazy(() => import("../modules/Master/leaveType/LeaveTypeMainlist"));
+const ParameterDataTypeMainPage = lazy(() => import("../modules/Master/Parameters/ParametersMainList"));
+const ProcessMasterMain = lazy(() => import("../modules/Master/processMaster/Process MasterMain"));
+const ProjectScheduleMainPage = lazy(() => import("../modules/Master/Project Schedule/Project ScheduleMain"));
+const ProjectMainPage = lazy(() => import("../modules/Master/Projects/Projectsmain"));
+const TaskMainPage = lazy(() => import("../modules/Master/Task/TaskMain"));
+const EmpSchedulesMainPage = lazy(() => import("../modules/Master/nonworkMaster/EmpScheduleMain"));
+const TaskTypeMainPage = lazy(() => import("../modules/Master/Tasktype/TaskType.list"));
 
 export const mastersRoutePath: componentRoute[] = [
     { path: '', component: MenuGroupPage },
@@ -19,7 +19,6 @@ export const mastersRoutePath: componentRoute[] = [
     { path: 'parameters', component: ParameterDataTypeMainPage },
     { path: 'processmaster', component: ProcessMasterMain },
     { path: 'leavetype', component: LeaveTypeMainPage },
-
     { path: 'projectschedule', component: ProjectScheduleMainPage },
     { path: 'workMaster', component: EmpSchedulesMainPage },
 ];

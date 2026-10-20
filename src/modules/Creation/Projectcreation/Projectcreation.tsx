@@ -87,7 +87,11 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
       onClose();
     }
 
-    navigate(-1);
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/master/projects", { replace: true });
+    }
   };
 
   const resetForm = () => {
@@ -286,7 +290,7 @@ const ProjectMainPage: React.FC<ProjectProps> = ({ onClose, open = true }) => {
         setProjectObj={setProjectObj}
         companyOptions={companies}
         projectHeadOptions={projectHeads}
-        isLoading={isLoadingDropdowns || loading}
+        isLoading={isLoadingDropdowns}
       />
 
       {/* Global Loading Overlay */}

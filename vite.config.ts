@@ -5,12 +5,28 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-
-    // host: "localhost",
-    // port: 5173
-
-  //   //  host: "192.168.1.10",
-  //   // port: 5173
-
-  }
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5005',
+        changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          mui: ['@mui/material', '@mui/icons-material'],
+          charts: ['recharts'],
+          xlsx: ['xlsx', 'exceljs'],
+          calendar: [
+            '@fullcalendar/react',
+            '@fullcalendar/daygrid',
+            '@fullcalendar/timegrid',
+          ],
+        },
+      },
+    },
+  },
 })

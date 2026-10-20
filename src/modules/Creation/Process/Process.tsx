@@ -9,9 +9,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
-import { createProcessMaster } from "../../Master/Process Master/Process Master.api";
-import type { ProcessMasterCreateInput } from "../../Master/Process Master/Process Master.variables";
-import { ProcessMasterDialog } from "../../Master/Process Master/Process Masterform";
+import { createProcessMaster } from "../../Master/processMaster/Process Master.api";
+import type { ProcessMasterCreateInput } from "../../Master/processMaster/Process Master.variables";
+import { ProcessMasterDialog } from "../../Master/processMaster/Process Masterform";
 
 interface Props {
   open?: boolean;
@@ -48,7 +48,12 @@ const ProcessMasterMainPage: React.FC<Props> = ({
     resetForm();
 
     if (onClose) onClose();
-    navigate(-1);
+
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/master/processmaster", { replace: true });
+    }
   };
 
   const validateForm = () => {

@@ -427,6 +427,42 @@ const CreditListPage = () => {
   const lastFetchedCompanyId = useRef<number | null | undefined>(undefined);
   const isMounted = useRef(true);
 
+  const computeWorkStatusesFromList = useCallback((
+    tasks: AssignedTask[],
+    workList: any[]
+  ): { hasWorkKeys: Set<string>; dbRunningKeys: Set<string> } => {
+    const hasWorkKeysSet = new Set<string>();
+    const dbRunningKeysSet = new Set<string>();
+    if (!tasks || tasks.length === 0 || !workList || workList.length === 0) {
+      return { hasWorkKeys: hasWorkKeysSet, dbRunningKeys: dbRunningKeysSet };
+    }
+
+    tasks.forEach((plan) => {
+      const planRowKey = getAssignedTaskKey(plan);
+      const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+
+      workList.forEach((work: any) => {
+        const sameSch = work.Sch_Id && String(work.Sch_Id) === String(plan.Sch_Id);
+        const sameTask = String(work.Task_Id) === String(plan.Task_Id);
+        const sameEmp = String(work.Emp_Id) === String(plan.Emp_Id);
+        const sameDate = work.Work_Dt ? getDateOnly(work.Work_Dt) === planDate : false;
+
+        if ((sameSch || sameTask) && sameEmp && sameDate) {
+          const isCompleted = work.Work_Status === "Completed" || String(work.Work_Status) === "3";
+          const isInProgress = work.Work_Status === "In Progress" || String(work.Work_Status) === "2" || (work.Start_Time && !work.End_Time);
+
+          if (isCompleted || work.Tot_Minutes > 0 || work.End_Time) {
+            hasWorkKeysSet.add(planRowKey);
+          } else if (isInProgress || work.Start_Time) {
+            dbRunningKeysSet.add(planRowKey);
+          }
+        }
+      });
+    });
+
+    return { hasWorkKeys: hasWorkKeysSet, dbRunningKeys: dbRunningKeysSet };
+  }, []);
+
   const fetchWorkStatuses = useCallback(async (
     tasks: AssignedTask[],
     aStart: string,
@@ -501,7 +537,7 @@ const CreditListPage = () => {
         const [empRes, todayRes, workRes, projectsRes, schedulesRes] = await Promise.all([
           getEmployeeDropdown(companyId ?? undefined),
           getEnrichedTodayPlan({ from_Task_Assign_dt: aStart, to_Task_Assign_dt: aEnd }, companyId),
-          getEnrichedWorkMaster({ fromDate: eStart, toDate: eEnd }),
+          getEnrichedWorkMaster({ fromDate: eStart, toDate: eEnd }, companyId),
           getProjectMaster().catch(() => []),
           getProjectScheduleMaster().catch(() => []),
         ]);
@@ -552,7 +588,20 @@ const CreditListPage = () => {
             ? uniqueExecuted.filter((t) => allowedEmpIds.has(Number(t.Emp_Id)))
             : uniqueExecuted;
 
-        const { hasWorkKeys: workKeys, dbRunningKeys: runKeys } = await fetchWorkStatuses(scopedA, aStart, aEnd, companyId);
+        let workKeys: Set<string>;
+        let runKeys: Set<string>;
+
+        if (aStart === eStart && aEnd === eEnd) {
+          // Fast-path: Work data was already fetched in Promise.all!
+          // Compute statuses synchronously in memory with zero extra network latency
+          const computed = computeWorkStatusesFromList(scopedA, processedWork);
+          workKeys = computed.hasWorkKeys;
+          runKeys = computed.dbRunningKeys;
+        } else {
+          const fetched = await fetchWorkStatuses(scopedA, aStart, aEnd, companyId);
+          workKeys = fetched.hasWorkKeys;
+          runKeys = fetched.dbRunningKeys;
+        }
 
         if (isMounted.current) {
           setHasWorkKeys(workKeys);
@@ -573,7 +622,7 @@ const CreditListPage = () => {
         }
       }
     },
-    [token, fetchWorkStatuses, assignedViewStart, assignedViewEnd, executedViewStart, executedViewEnd]
+    [token, fetchWorkStatuses, computeWorkStatusesFromList, assignedViewStart, assignedViewEnd, executedViewStart, executedViewEnd]
   );
 
   const lastFetchedDates = useRef({ aStart: "", aEnd: "", eStart: "", eEnd: "" });
@@ -737,7 +786,7 @@ const CreditListPage = () => {
     : scopedAssigned
   )
     .filter(isProjectActive)
-    .filter((plan) => !isScheduleCompletedForNextDate(plan, projectSchedules, scopedExecuted));
+    .filter((plan) => !isScheduleCompletedForNextDate(plan, projectSchedules));
 
   const filteredExecuted = selectedEmployee
     ? scopedExecuted.filter((t) => t.Emp_Id === Number(selectedEmployee))
@@ -1163,7 +1212,7 @@ const CreditListPage = () => {
   }
 
   return (
-    <Box p={isMobile ? 0.25 : 2} sx={!isMobile ? { zoom: 1.33333 } : {}}>
+    <Box p={isMobile ? 0.25 : 2}>
       {/* HEADER */}
       <Paper sx={{ p: isMobile ? 0.75 : 2, mb: isMobile ? 0.25 : 2 }}>
         <Stack

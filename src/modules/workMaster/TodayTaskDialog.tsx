@@ -25,6 +25,10 @@ import { fetchLink } from "../../Components/customFetch";
 const WORK_API = "masters/workMaster";
 const TASK_PARAM_API = "masters/taskParameterDetails";
 
+// Module-level cache for task parameter details to make dialog opening instant
+let taskParamsCache: any[] | null = null;
+let taskParamsPromise: Promise<any[]> | null = null;
+
 interface Props {
   open?: boolean;
   onClose?: () => void;
@@ -367,6 +371,12 @@ const TodayTaskDialog: React.FC<Props> = ({
     let active = true;
 
     const fetchExistingWorkRecord = async () => {
+      // If already in edit mode with Work_Id/SNo, sourceData is already the complete work record
+      if (isEditMode && (sourceData.Work_Id || sourceData.SNo)) {
+        setMatchedWorkRecord(sourceData);
+        return;
+      }
+
       const workDate = formatDateForInput(sourceData.Work_Dt);
       
       try {
@@ -467,19 +477,41 @@ const TodayTaskDialog: React.FC<Props> = ({
   ]);
 
   useEffect(() => {
+    let active = true;
     const fetchTaskParameters = async () => {
       if (!sourceData?.Task_Id) return;
 
       try {
-        const response = await fetchLink<any>({
-          address: `${TASK_PARAM_API}?page=1&limit=100`,
-          method: "GET"
-        });
+        let allParams: any[] = [];
+        if (taskParamsCache) {
+          allParams = taskParamsCache;
+        } else {
+          if (!taskParamsPromise) {
+            taskParamsPromise = fetchLink<any>({
+              address: `${TASK_PARAM_API}?page=1&limit=100`,
+              method: "GET"
+            }).then((response) => {
+              if (response?.success && response?.data && Array.isArray(response.data)) {
+                taskParamsCache = response.data;
+                return response.data;
+              }
+              return [];
+            }).catch((err) => {
+              console.error("Error fetching task parameters:", err);
+              return [];
+            }).finally(() => {
+              taskParamsPromise = null;
+            });
+          }
+          allParams = await taskParamsPromise;
+        }
 
-        if (response?.success && response?.data) {
-          const taskParams = response.data.filter(
+        if (!active) return;
+
+        if (allParams && Array.isArray(allParams)) {
+          const taskParams = allParams.filter(
             (param: TaskParameter) =>
-              param.Task_Id === String(sourceData.Task_Id)
+              String(param.Task_Id) === String(sourceData.Task_Id)
           );
 
           setTaskParameters(taskParams);
@@ -538,6 +570,10 @@ const TodayTaskDialog: React.FC<Props> = ({
     };
 
     fetchTaskParameters();
+
+    return () => {
+      active = false;
+    };
   }, [
     sourceData?.Task_Id,
     sourceData?.Work_Id,
@@ -892,7 +928,8 @@ const TodayTaskDialog: React.FC<Props> = ({
       aria-labelledby="work-timer-dialog-title"
       PaperProps={{
         sx: {
-          zoom: 0.75, // Scale dialog card to 75% size
+          maxHeight: "90vh",
+          zoom: 0.75,
         },
       }}
     >

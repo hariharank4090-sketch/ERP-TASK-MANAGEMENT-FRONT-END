@@ -1255,7 +1255,7 @@ const ProjectMasterPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   // Main Render
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ p: { xs: 1.5, sm: 2, md: 0 }, display: "flex", flexDirection: "column", width: "100%", maxWidth: "100%", overflow: "hidden", zoom: 1.33333 }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 0 }, display: "flex", flexDirection: "column", width: "100%", maxWidth: "100%", overflow: "hidden" }}>
       {/* Filters Section */}
       <Paper sx={{ p: 0.5, px: 2, mb: 1.5, borderRadius: 2 }} elevation={1}>
         <Box

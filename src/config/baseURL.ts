@@ -1,8 +1,6 @@
 
 
-const { protocol, host } = window.location, baseURL: string = `${protocol}//${host}/api/`;
-
-
-// const baseURL: string = import.meta.env.VITE_API_URL || "http://localhost:5001/api/";
+const { protocol, host } = typeof window !== "undefined" ? window.location : { protocol: "http:", host: "localhost:5173" };
+const baseURL: string = import.meta.env.VITE_API_URL || `${protocol}//${host}/api/`;
 
 export default baseURL;

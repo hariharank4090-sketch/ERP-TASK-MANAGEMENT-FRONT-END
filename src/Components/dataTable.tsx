@@ -129,6 +129,7 @@ export interface FilterableTableProps {
     size?: "small" | "medium";
   };
   resetKey?: number;
+  "data-testid"?: string;
 }
 
 type SortDirection = "asc" | "desc";
@@ -313,6 +314,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
   createButtonProps,
   searchFieldProps,
   resetKey,
+  "data-testid": dataTestId,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -565,6 +567,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
           >
             {showSearch && (
               <TextField
+                data-testid="data-table-search-input"
                 size="small"
                 placeholder={searchPlaceholder}
                 value={searchValue}
@@ -587,6 +590,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
             {showCreateButton && onCreateClick && (
               <Tooltip title={createButtonLabel}>
                 <Button
+                  data-testid="data-table-create-btn"
                   variant="contained"
                   onClick={onCreateClick}
                   size={isMobile ? "small" : createButtonProps?.size || "medium"}
@@ -661,6 +665,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
 
       {/* ===== TABLE ===== */}
       <TableContainer
+        data-testid={dataTestId || "data-table-container"}
         sx={{
           maxHeight: tableHeight,
           overflowX: "auto",
@@ -703,7 +708,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
           })(),
         }}
       >
-        <Table stickyHeader size={isMobile ? "small" : CellSize} sx={{ minWidth: tableProps?.sx?.minWidth !== undefined ? tableProps.sx.minWidth : { xs: 480, sm: 700, md: 900 } }}>
+        <Table data-testid="data-table" stickyHeader size={isMobile ? "small" : CellSize} sx={{ minWidth: tableProps?.sx?.minWidth !== undefined ? tableProps.sx.minWidth : { xs: 480, sm: 700, md: 900 } }}>
           <TableHead>
             {showMasterTableHeader && (
               <TableRow>

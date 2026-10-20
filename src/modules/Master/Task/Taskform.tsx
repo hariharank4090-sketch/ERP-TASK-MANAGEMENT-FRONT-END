@@ -302,9 +302,25 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({
             value={parameterValues}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             onChange={handleParameterChange as any}
+            sx={{
+              minHeight: '38px',
+              height: 'auto',
+              '& .MuiSelect-select': {
+                minHeight: '38px',
+                height: 'auto',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                boxSizing: 'border-box',
+                whiteSpace: 'normal',
+                gap: 0.5,
+                py: '4px',
+                pr: '36px !important',
+              },
+            }}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             renderValue={(selected: any) => (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, width: "100%", alignItems: "center" }}>
                 {(selected as string[]).map((v) => {
                   const param = getParameterById(Number(v));
                   return (

@@ -503,8 +503,15 @@ const getRowStats = (items: any[]) => {
     let earnedWeight = 0;
 
 
-    // Check if Process_Id 1 was saved for any item in this set
+    // Check if Process_Id 1 was saved for any item in this set, or if schedule is completed
     const hasProcessId1 = items.some(it => Boolean(it.hasProcess1) || Boolean(it.rawActualCompletedDate));
+    const isScheduleCompleted = items.some(it => 
+      Boolean(it.isScheduleCompleted) ||
+      Number(it.Sch_Status) === 3 ||
+      Number(it.schStatus) === 3 ||
+      Number(it.Schedule_Sch_Status) === 3 ||
+      String(it.Sch_Status || it.schStatus || it.Schedule_Sch_Status || '').toLowerCase() === 'completed'
+    );
 
     const uniqueAssignDates = new Set<string>();
 
@@ -524,21 +531,16 @@ const getRowStats = (items: any[]) => {
 
       const statStr = String(it.executedStatus || '').toLowerCase();
       const assignStatStr = String(it.assignedStatus || '').toLowerCase();
-      const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || hasProcessId1 || Boolean(it.hasProcess1);
+      const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || hasProcessId1 || Boolean(it.hasProcess1) || isScheduleCompleted || Boolean(it.isScheduleCompleted);
 
       const weight = assMin > 0 ? assMin : (execMin > 0 ? execMin : 60);
       totalWeight += weight;
-
-      const isInProgress = statStr === 'in progress' || statStr === 'inprocess';
 
       if (isCompleted) {
         completedMin += execMin > 0 ? execMin : weight;
         earnedWeight += weight;
       } else {
         delayMin += assMin > 0 ? assMin : weight;
-        if (isInProgress && execMin > 0) {
-          earnedWeight += Math.min(weight * 0.5, execMin);
-        }
       }
 
       // ONLY set maxActualCompDate if rawActualCompletedDate is present (from Process_Id === 1 save)
@@ -550,12 +552,12 @@ const getRowStats = (items: any[]) => {
     });
 
     let progress = 0;
-    if (hasProcessId1) {
+    if (hasProcessId1 || isScheduleCompleted) {
       progress = 100;
     } else if (totalWeight > 0) {
       progress = Math.min(100, Math.round((earnedWeight / totalWeight) * 100));
     } else {
-      progress = workingMin > 0 ? 100 : 0;
+      progress = 0;
     }
 
     let delayHrsStr = '';
@@ -843,6 +845,42 @@ export default function Projectprogress() {
       }
     });
 
+    const completedSchIdSet = new Set<string>();
+    const completedTaskIdSet = new Set<string>();
+    const completedTaskNameSet = new Set<string>();
+
+    scheduleData.forEach((s: any) => {
+      const status = s.schStatus ?? s.Sch_Status ?? s.status;
+      const isCompleted = Number(status) === 3 || String(status ?? '').trim().toLowerCase() === 'completed';
+      if (isCompleted) {
+        const sId = String(s.schId ?? s.Sch_Id ?? s.id ?? s.Id ?? '').trim();
+        const tId = String(s.taskId ?? s.Task_Id ?? s.Task_Levl_Id ?? '').trim();
+        const tName = String(s.taskName ?? s.Task_Name ?? s.taskDetails?.Task_Name ?? '').trim().toLowerCase();
+
+        if (sId && sId !== '0' && sId !== 'null' && sId !== 'undefined') completedSchIdSet.add(sId);
+        if (tId && tId !== '0' && tId !== 'null' && tId !== 'undefined') completedTaskIdSet.add(tId);
+        if (tName) completedTaskNameSet.add(tName);
+      }
+    });
+
+    const isScheduleDone = (task: any): boolean => {
+      const schId = String(task.Sch_Id || task.Sch_Emp_Id || task.sch_id || task.taskDetails?.Sch_Id || '').trim();
+      const taskId = String(task.Task_Id || task.taskDetails?.Task_Id || '').trim();
+      const taskName = String(task.Task_Name || task.taskDetails?.Task_Name || '').trim().toLowerCase();
+
+      if (schId && completedSchIdSet.has(schId)) return true;
+      if (taskId && completedTaskIdSet.has(taskId)) return true;
+      if (taskName && completedTaskNameSet.has(taskName)) return true;
+
+      const rawStatus = task.Schedule_Sch_Status ?? task.Sch_Status ?? task.schStatus ?? task.taskDetails?.Sch_Status;
+      if (rawStatus !== undefined && rawStatus !== null) {
+        if (Number(rawStatus) === 3 || String(rawStatus).trim().toLowerCase() === 'completed') {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const getProjectObj = (task: any) => {
       const projId = task.Project_Id 
         || task.project_id 
@@ -946,6 +984,7 @@ export default function Projectprogress() {
         || Boolean(actualCompDt);
 
       const activeProj = checkIsProjectActive(task);
+      const schDone = isScheduleDone(task);
 
       map.set(key, {
         date: date,
@@ -965,7 +1004,8 @@ export default function Projectprogress() {
         executedStatus: "-",
         rawActualCompletedDate: actualCompDt,
         hasProcess1: hasProc1,
-        isProjectActive: activeProj
+        isProjectActive: activeProj,
+        isScheduleCompleted: schDone
       });
     });
 
@@ -998,6 +1038,7 @@ export default function Projectprogress() {
         || Boolean(actualCompDt);
 
       const activeProj = checkIsProjectActive(task);
+      const schDone = isScheduleDone(task);
 
       if(map.has(key)) {
         const existing = map.get(key)!;
@@ -1009,6 +1050,7 @@ export default function Projectprogress() {
         if(actualCompDt) existing.rawActualCompletedDate = actualCompDt;
         existing.hasProcess1 = existing.hasProcess1 || hasProc1;
         if (existing.isProjectActive === undefined) existing.isProjectActive = activeProj;
+        existing.isScheduleCompleted = existing.isScheduleCompleted || schDone;
       } else {
         map.set(key, {
           date: date,
@@ -1028,13 +1070,14 @@ export default function Projectprogress() {
           executedStatus: stat.label,
           rawActualCompletedDate: actualCompDt,
           hasProcess1: hasProc1,
-          isProjectActive: activeProj
+          isProjectActive: activeProj,
+          isScheduleCompleted: schDone
         });
       }
     });
 
     return Array.from(map.values());
-  }, [assignedTasks, executedTasks, taskTypes, employees, projects]);
+  }, [assignedTasks, executedTasks, taskTypes, employees, projects, scheduleData]);
 
   const projStatusMap = useMemo(() => {
     const map = new Map<string, number>();

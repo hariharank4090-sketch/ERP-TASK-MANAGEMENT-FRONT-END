@@ -31,6 +31,7 @@ export interface SearchableSelectProps<T extends string | number = string | numb
   allOptionValue?: string | number;
   multiple?: boolean;
   selectAllByDefault?: boolean;
+  "data-testid"?: string;
 }
 
 const SearchableSelect = <T extends string | number = string | number>({
@@ -147,6 +148,7 @@ const SearchableSelect = <T extends string | number = string | number>({
 
   return (
     <Select
+      data-testid={rest["data-testid"] || "searchable-select"}
       value={internalValue}
       onChange={handleChange}
       onClose={handleClose}
@@ -187,11 +189,25 @@ const SearchableSelect = <T extends string | number = string | number>({
       disabled={disabled}
       sx={{
         borderRadius: '8px',
-        height: '38px',
+        minHeight: '38px',
+        height: isMultiple ? 'auto' : '38px',
         width: '100%',
         backgroundColor: disabled ? '#f3f4f6' : '#fff',
         color: disabled ? '#9ca3af' : 'inherit',
         pointerEvents: disabled ? 'none' : 'auto',
+        ...(isMultiple && {
+          '& .MuiSelect-select': {
+            minHeight: '38px',
+            height: 'auto',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+            whiteSpace: 'normal',
+            py: '4px',
+            pr: '36px !important',
+          },
+        }),
         '& .MuiOutlinedInput-notchedOutline': {
           borderColor: disabled ? '#e5e7eb' : '#d1d5db',
         },
@@ -207,6 +223,7 @@ const SearchableSelect = <T extends string | number = string | number>({
     >
       <ListSubheader sx={{ pt: 1, pb: 1, zIndex: 2, bgcolor: 'background.paper', lineHeight: 'normal' }}>
         <TextField
+          data-testid="searchable-select-search-input"
           size="small"
           autoFocus={!isMobile}
           placeholder={searchPlaceholder}

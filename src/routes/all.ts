@@ -1,12 +1,12 @@
-
-import ProjectsOverview from "../modules/Dashboard/All";
-import NotificationScreen from "../modules/notifications/NotificationScreen";
-
+import { lazy } from "react";
 import type { componentRoute } from "./indexRouter";
+
+const ProjectsOverview = lazy(() => import("../modules/Dashboard/All"));
+const NotificationScreen = lazy(() => import("../modules/notifications/NotificationScreen"));
 
 export const allRoutePath: componentRoute[] = [
     {
-        path: '/all',  // Use full path starting with /all
+        path: '/all',
         component: ProjectsOverview
     },
     {

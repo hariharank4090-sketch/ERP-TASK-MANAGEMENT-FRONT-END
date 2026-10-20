@@ -1,12 +1,11 @@
-
-import LeaveMasterPage from "../modules/Master/Leave/Leavemaster";
-
+import { lazy } from "react";
 import type { componentRoute } from "./indexRouter";
 
+const LeaveMasterPage = lazy(() => import("../modules/Master/Leave/Leavemaster"));
+
 export const leaveRoutePath: componentRoute[] = [
-    {  
-        path: '/leavemodule',  // Use full path starting with /all
-        component: LeaveMasterPage  
+    {
+        path: '/leavemodule',
+        component: LeaveMasterPage
     },
-    
 ];

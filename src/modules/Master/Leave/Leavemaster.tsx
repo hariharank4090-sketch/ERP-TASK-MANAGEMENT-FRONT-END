@@ -381,7 +381,7 @@ const LeaveMaster: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
 
   // Auto-set session to Full on multi-day leave
   useEffect(() => {
-    if (formState.noOfDays >= 1 && formState.session !== "Full") {
+    if (formState.noOfDays > 1 && formState.session !== "Full") {
       setFormState((prev) => ({ ...prev, session: "Full" }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

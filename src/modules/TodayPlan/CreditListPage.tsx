@@ -373,7 +373,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
         const [empRes, todayRes, workRes, projectsRes, schedulesRes] = await Promise.all([
           getEmployeeDropdown(companyId ?? undefined),
           getEnrichedTodayPlan({ from_Task_Assign_dt: todayStr, to_Task_Assign_dt: todayStr }, companyId),
-          getEnrichedWorkMaster({ fromDate: todayStr, toDate: todayStr }),
+          getEnrichedWorkMaster({ fromDate: todayStr, toDate: todayStr }, companyId),
           getProjectMaster().catch(() => []),
           getProjectScheduleMaster().catch(() => []),
         ]);
@@ -422,8 +422,25 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
             ? uniqueExecuted.filter((t) => allowedEmpIds.has(Number(t.Emp_Id)))
             : uniqueExecuted;
 
-        const todayplanDataArray = scopedA.map(convertToTodayplanData);
-        const workKeys = await fetchWorkStatuses(todayplanDataArray);
+        // Fast-path: calculate work existence keys directly from processedWork (already fetched in Promise.all)
+        // This avoids a redundant, blocking getWorkMaster network request
+        const validEmpIds = [...new Set(scopedA.map((t) => t.Emp_Id).filter((id) => id != null))];
+        const workKeys = new Set<string>();
+        processedWork.forEach((work: any) => {
+          if (validEmpIds.includes(work.Emp_Id)) {
+            if (
+              work.Work_Status === "Completed" ||
+              work.Work_Status === "Pending" ||
+              work.Work_Status === "In Progress" ||
+              work.Tot_Minutes > 0
+            ) {
+              if (work.Sch_Id) {
+                const workDate = work.Work_Dt ? getDateOnly(work.Work_Dt) : "";
+                workKeys.add(`${work.Sch_Id}_${workDate}_${work.Emp_Id}`);
+              }
+            }
+          }
+        });
 
         const runningKeys = new Set<string>();
         scopedA.forEach((plan) => {
@@ -561,7 +578,7 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
       filtered = filtered.filter((plan) => plan.Emp_Id === Number(selectedEmployee));
     }
     filtered = filtered.filter(
-      (plan) => !isScheduleCompletedForNextDate(plan, projectSchedules, scopedExecuted)
+      (plan) => !isScheduleCompletedForNextDate(plan, projectSchedules)
     );
     setFilteredPlans(filtered);
   }, [selectedEmployee, scopedAssigned, isProjectActive, projectSchedules, scopedExecuted]);

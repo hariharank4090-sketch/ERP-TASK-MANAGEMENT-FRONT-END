@@ -8,6 +8,9 @@ import type {
     TaskDropdown,
     ProjectDropdown
 } from "./variable";
+import type { tasktypeData } from "../Master/Tasktype/variables";
+import { getprojectschedule } from "../Master/Project Schedule/Project Schedule.api";
+import { gettasktype } from "../Master/Tasktype/TaskType.api";
 
 // Base API URLs
 const workMasterAPI = "masters/workMaster";
@@ -19,24 +22,56 @@ const projectAPI = "masters/project";
 let tasksCache: TaskDropdown[] = [];
 let employeesCache: EmployeeDropdown[] = [];
 let projectsCache: ProjectDropdown[] = [];
+let workMasterCache: WorkMasterData[] = [];
+let projectSchedulesCache: any = null;
+let taskTypesCache: tasktypeData[] = [];
+let scheduleEmpCache: any[] = [];
+
+// In-flight promises to deduplicate simultaneous requests
+let tasksPromise: Promise<TaskDropdown[]> | null = null;
+let employeesPromise: Promise<EmployeeDropdown[]> | null = null;
+let projectsPromise: Promise<ProjectDropdown[]> | null = null;
+let workMasterPromise: Promise<{
+    success: boolean;
+    message: string;
+    data: WorkMasterData[];
+    pagination?: any;
+}> | null = null;
+let projectSchedulesPromise: Promise<any> | null = null;
+let taskTypesPromise: Promise<tasktypeData[]> | null = null;
+let scheduleEmpPromise: Promise<any[]> | null = null;
 
 // Clear caches (called on login/logout/company switch/CRUD actions)
 export const clearDashboardCaches = () => {
     tasksCache = [];
     employeesCache = [];
     projectsCache = [];
+    workMasterCache = [];
+    projectSchedulesCache = null;
+    taskTypesCache = [];
+    scheduleEmpCache = [];
+    tasksPromise = null;
+    employeesPromise = null;
+    projectsPromise = null;
+    workMasterPromise = null;
+    projectSchedulesPromise = null;
+    taskTypesPromise = null;
+    scheduleEmpPromise = null;
 };
 
 export const clearTasksCache = () => {
     tasksCache = [];
+    tasksPromise = null;
 };
 
 export const clearEmployeesCache = () => {
     employeesCache = [];
+    employeesPromise = null;
 };
 
 export const clearProjectsCache = () => {
     projectsCache = [];
+    projectsPromise = null;
 };
 
 export const invalidateTasksCache = clearTasksCache;
@@ -125,30 +160,43 @@ export const getTaskDropdown = async (
     loadingOff?: () => void,
     forceRefresh: boolean = false
 ): Promise<TaskDropdown[]> => {
-    if (tasksCache.length > 0 && !forceRefresh) {
+    if (forceRefresh) {
+        tasksCache = [];
+        tasksPromise = null;
+    }
+    if (tasksCache.length > 0) {
         return tasksCache;
     }
+    if (tasksPromise) {
+        return tasksPromise;
+    }
 
-    try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: taskAPI,
-            method: "GET",
-            loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
-            loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
-        });
+    tasksPromise = (async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({
+                address: taskAPI,
+                method: "GET",
+                loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+                loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+            });
 
-        if (res && res.success) {
-            tasksCache = (res.data as unknown as TaskDropdown[]) || [];
-            return tasksCache;
-        } else {
-            toast.error(res?.message || "Failed to load Tasks");
+            if (res && res.success) {
+                tasksCache = (res.data as unknown as TaskDropdown[]) || [];
+                return tasksCache;
+            } else {
+                toast.error(res?.message || "Failed to load Tasks");
+                tasksPromise = null;
+                return [];
+            }
+        } catch (e: unknown) {
+            console.error("getTaskDropdown Error:", e);
+            toast.error("Network error loading Tasks");
+            tasksPromise = null;
             return [];
         }
-    } catch (e: unknown) {
-        console.error("getTaskDropdown Error:", e);
-        toast.error("Network error loading Tasks");
-        return [];
-    }
+    })();
+
+    return tasksPromise;
 };
 
 // Get Employee dropdown 
@@ -157,30 +205,43 @@ export const getEmployeeDropdown = async (
     loadingOff?: () => void,
     forceRefresh: boolean = false
 ): Promise<EmployeeDropdown[]> => {
-    if (employeesCache.length > 0 && !forceRefresh) {
+    if (forceRefresh) {
+        employeesCache = [];
+        employeesPromise = null;
+    }
+    if (employeesCache.length > 0) {
         return employeesCache;
     }
+    if (employeesPromise) {
+        return employeesPromise;
+    }
 
-    try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: employeeAPI,
-            method: "GET",
-            loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
-            loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
-        });
+    employeesPromise = (async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({
+                address: employeeAPI,
+                method: "GET",
+                loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+                loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+            });
 
-        if (res && res.success) {
-            employeesCache = (res.data as unknown as EmployeeDropdown[]) || [];
-            return employeesCache;
-        } else {
-            toast.error(res?.message || "Failed to load Employees");
+            if (res && res.success) {
+                employeesCache = (res.data as unknown as EmployeeDropdown[]) || [];
+                return employeesCache;
+            } else {
+                toast.error(res?.message || "Failed to load Employees");
+                employeesPromise = null;
+                return [];
+            }
+        } catch (e: unknown) {
+            console.error("getEmployeeDropdown Error:", e);
+            toast.error("Network error loading Employees");
+            employeesPromise = null;
             return [];
         }
-    } catch (e: unknown) {
-        console.error("getEmployeeDropdown Error:", e);
-        toast.error("Network error loading Employees");
-        return [];
-    }
+    })();
+
+    return employeesPromise;
 };
 
 // Get Project dropdown
@@ -190,48 +251,61 @@ export const getProjectDropdown = async (
     loadingOff?: () => void,
     forceRefresh: boolean = false
 ): Promise<ProjectDropdown[]> => {
-    if (projectsCache.length > 0 && !forceRefresh) {
+    if (forceRefresh) {
+        projectsCache = [];
+        projectsPromise = null;
+    }
+    if (projectsCache.length > 0) {
         return projectsCache;
     }
+    if (projectsPromise) {
+        return projectsPromise;
+    }
 
-    try {
-        const res = await fetchLink<BasicApiResponse>({
-            address: projectAPI,
-            method: "GET",
-            loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
-            loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
-        });
+    projectsPromise = (async () => {
+        try {
+            const res = await fetchLink<BasicApiResponse>({
+                address: projectAPI,
+                method: "GET",
+                loadingOn: typeof loadingOn === 'function' ? loadingOn : undefined,
+                loadingOff: typeof loadingOff === 'function' ? loadingOff : undefined
+            });
 
-        if (res && res.success) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const rawData = (res.data as unknown as any[]) || [];
-            // Map the full API response into ProjectDropdown, preserving IsActive and all fields
-            projectsCache = rawData.map((item) => ({
-                Project_Id: item.Project_Id != null ? Number(item.Project_Id) : null,
-                Project_Name: item.Project_Name || '',
-                Project_Desc: item.Project_Desc || '',
-                Company_Id: item.Company_Id != null ? Number(item.Company_Id) : undefined,
-                Project_Head: item.Project_Head != null ? Number(item.Project_Head) : undefined,
-                Est_Start_Dt: item.Est_Start_Dt || undefined,
-                Est_End_Dt: item.Est_End_Dt || undefined,
-                Project_Status: item.Project_Status != null ? Number(item.Project_Status) : undefined,
-                Entry_By: item.Entry_By != null ? Number(item.Entry_By) : undefined,
-                Entry_Date: item.Entry_Date || undefined,
-                Update_By: item.Update_By != null ? Number(item.Update_By) : undefined,
-                Update_Date: item.Update_Date || undefined,
-                IsActive: item.IsActive != null ? Number(item.IsActive) : undefined,
-                statusText: item.statusText || undefined,
-                projectStatusText: item.projectStatusText || undefined,
-            }));
-            return projectsCache;
-        } else {
-            toast.error(res?.message || "Failed to load Projects");
+            if (res && res.success) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const rawData = (res.data as unknown as any[]) || [];
+                // Map the full API response into ProjectDropdown, preserving IsActive and all fields
+                projectsCache = rawData.map((item) => ({
+                    Project_Id: item.Project_Id != null ? Number(item.Project_Id) : null,
+                    Project_Name: item.Project_Name || '',
+                    Project_Desc: item.Project_Desc || '',
+                    Company_Id: item.Company_Id != null ? Number(item.Company_Id) : undefined,
+                    Project_Head: item.Project_Head != null ? Number(item.Project_Head) : undefined,
+                    Est_Start_Dt: item.Est_Start_Dt || undefined,
+                    Est_End_Dt: item.Est_End_Dt || undefined,
+                    Project_Status: item.Project_Status != null ? Number(item.Project_Status) : undefined,
+                    Entry_By: item.Entry_By != null ? Number(item.Entry_By) : undefined,
+                    Entry_Date: item.Entry_Date || undefined,
+                    Update_By: item.Update_By != null ? Number(item.Update_By) : undefined,
+                    Update_Date: item.Update_Date || undefined,
+                    IsActive: item.IsActive != null ? Number(item.IsActive) : undefined,
+                    statusText: item.statusText || undefined,
+                    projectStatusText: item.projectStatusText || undefined,
+                }));
+                return projectsCache;
+            } else {
+                toast.error(res?.message || "Failed to load Projects");
+                projectsPromise = null;
+                return [];
+            }
+        } catch (e: unknown) {
+            console.error("getProjectDropdown Error:", e);
+            projectsPromise = null;
             return [];
         }
-    } catch (e: unknown) {
-        console.error("getProjectDropdown Error:", e);
-        return [];
-    }
+    })();
+
+    return projectsPromise;
 };
 
 // Get Work Master data - FIXED for your API structure (data is direct array, not nested in items)
@@ -294,7 +368,8 @@ export const getWorkMaster = async (
 export const getEnrichedWorkMaster = async (
     params?: WorkMasterQueryParams,
     loadingOn?: () => void,
-    loadingOff?: () => void
+    loadingOff?: () => void,
+    forceRefresh: boolean = false
 ): Promise<{
     success: boolean;
     message: string;
@@ -306,41 +381,147 @@ export const getEnrichedWorkMaster = async (
         totalPages: number;
     };
 }> => {
-    try {
-        // Fetch main data
-        const response = await getWorkMaster(params, loadingOn, loadingOff);
-
-        if (!response.success) {
-            return response;
-        }
-
-        // Fetch employee data for employee names
-        const employees = await getEmployeeDropdown();
-
-        // Create lookup map for employees
-        const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
-
-        // Enrich data with employee names
-        const enrichedData = response.data.map(item => {
-            return {
-                ...item,
-                Emp_Name: employeeMap.get(String(item.Emp_Id)) || '',
-                // Ensure Project_Name and Task_Name are properly set
-                Project_Name: item.Project_Name || item.taskDetails?.Project_Name || '',
-                Task_Name: item.Task_Name || item.taskDetails?.Task_Name || '',
-            };
-        });
-
+    const isDefaultQuery = !params || Object.keys(params).length === 0;
+    if (forceRefresh && isDefaultQuery) {
+        workMasterCache = [];
+        workMasterPromise = null;
+    }
+    if (isDefaultQuery && workMasterCache.length > 0) {
         return {
-            ...response,
-            data: enrichedData
-        };
-    } catch (e: unknown) {
-        console.error("getEnrichedWorkMaster Error:", e);
-        return {
-            success: false,
-            message: "Error enriching Work Master data",
-            data: []
+            success: true,
+            message: 'Success',
+            data: workMasterCache
         };
     }
+    if (isDefaultQuery && workMasterPromise) {
+        return workMasterPromise;
+    }
+
+    const promise = (async () => {
+        try {
+            // Fetch main data and employees in parallel
+            const [response, employees] = await Promise.all([
+                getWorkMaster(params, loadingOn, loadingOff),
+                getEmployeeDropdown()
+            ]);
+
+            if (!response.success) {
+                if (isDefaultQuery) workMasterPromise = null;
+                return response;
+            }
+
+            // Create lookup map for employees
+            const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
+
+            // Enrich data with employee names
+            const enrichedData = response.data.map(item => {
+                return {
+                    ...item,
+                    Emp_Name: employeeMap.get(String(item.Emp_Id)) || '',
+                    // Ensure Project_Name and Task_Name are properly set
+                    Project_Name: item.Project_Name || item.taskDetails?.Project_Name || '',
+                    Task_Name: item.Task_Name || item.taskDetails?.Task_Name || '',
+                };
+            });
+
+            if (isDefaultQuery) {
+                workMasterCache = enrichedData;
+            }
+
+            return {
+                ...response,
+                data: enrichedData
+            };
+        } catch (e: unknown) {
+            console.error("getEnrichedWorkMaster Error:", e);
+            if (isDefaultQuery) workMasterPromise = null;
+            return {
+                success: false,
+                message: "Error enriching Work Master data",
+                data: []
+            };
+        }
+    })();
+
+    if (isDefaultQuery) {
+        workMasterPromise = promise;
+    }
+
+    return promise;
+};
+
+// Cached Project Schedules for Dashboard
+export const getDashboardProjectSchedules = async (
+    forceRefresh: boolean = false
+): Promise<any> => {
+    if (forceRefresh) {
+        projectSchedulesCache = null;
+        projectSchedulesPromise = null;
+    }
+    if (projectSchedulesCache) {
+        return projectSchedulesCache;
+    }
+    if (projectSchedulesPromise) {
+        return projectSchedulesPromise;
+    }
+    projectSchedulesPromise = getprojectschedule(1, 1000, "Sch_Id", "DESC")
+        .then(res => {
+            projectSchedulesCache = res;
+            return res;
+        })
+        .catch(() => ({ data: [] }));
+    return projectSchedulesPromise;
+};
+
+// Cached Task Types for Dashboard
+export const getDashboardTaskTypes = async (
+    forceRefresh: boolean = false
+): Promise<tasktypeData[]> => {
+    if (forceRefresh) {
+        taskTypesCache = [];
+        taskTypesPromise = null;
+    }
+    if (taskTypesCache.length > 0) {
+        return taskTypesCache;
+    }
+    if (taskTypesPromise) {
+        return taskTypesPromise;
+    }
+    taskTypesPromise = gettasktype()
+        .then(res => {
+            taskTypesCache = res || [];
+            return taskTypesCache;
+        })
+        .catch(() => []);
+    return taskTypesPromise;
+};
+
+// Cached Project Schedule Employees (direct single API call, eliminates waterfall delay)
+export const getDashboardProjectScheduleEmp = async (
+    forceRefresh: boolean = false
+): Promise<any[]> => {
+    if (forceRefresh) {
+        scheduleEmpCache = [];
+        scheduleEmpPromise = null;
+    }
+    if (scheduleEmpCache.length > 0) {
+        return scheduleEmpCache;
+    }
+    if (scheduleEmpPromise) {
+        return scheduleEmpPromise;
+    }
+    scheduleEmpPromise = fetchLink<BasicApiResponse>({
+        address: "masters/projectScheduleEmp/list",
+        method: "GET"
+    }).then(res => {
+        if (res && res.success && Array.isArray(res.data)) {
+            scheduleEmpCache = res.data;
+            return res.data;
+        }
+        return [];
+    }).catch(err => {
+        console.error("getDashboardProjectScheduleEmp Error:", err);
+        return [];
+    });
+    return scheduleEmpPromise;
 };

@@ -68,7 +68,11 @@ const Parameters: React.FC<ParametersProps> = ({ onClose, open = true }) => {
       onClose();
     }
 
-    navigate(-1);
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/master/parameters", { replace: true });
+    }
   };
 
   const resetForm = () => {
@@ -188,11 +192,11 @@ const Parameters: React.FC<ParametersProps> = ({ onClose, open = true }) => {
         parameterObj={parameterObj}
         setParameterObj={setParameterObj}
         datatypeOptions={datatypeOptions}
-        isLoading={isLoadingDatatypes || loading}
+        isLoading={isLoadingDatatypes}
       />
 
       {/* Global Loading Overlay */}
-      {(isLoadingDatatypes || loading) && (
+      {loading && (
         <Box
           position="fixed"
           top={0}

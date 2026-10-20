@@ -71,7 +71,11 @@ const TaskType: React.FC<TaskTypeProps> = ({ onClose, open = true }) => {
       onClose();
     }
 
-    navigate(-1);
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/master/tasktype", { replace: true });
+    }
   };
 
   const resetForm = () => {
@@ -216,11 +220,11 @@ const TaskType: React.FC<TaskTypeProps> = ({ onClose, open = true }) => {
         taskTypeObj={taskTypeObj}
         setTaskTypeObj={setTaskTypeObj}
         projectOptions={projectOptions}  // Fixed prop name
-        isLoading={isLoadingProjects || loading}
+        isLoading={isLoadingProjects}
       />
 
       {/* Global Loading Overlay */}
-      {(isLoadingProjects || loading) && (
+      {loading && (
         <Box
           position="fixed"
           top={0}

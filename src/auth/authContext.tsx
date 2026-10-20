@@ -8,17 +8,47 @@ import React, {
 } from "react";
 import type { MenuTreeNode } from "../utils/menuManagement";
 import baseURL from "../config/baseURL";
+import JWT_SECRET from "../config/jwtSecret";
 import { clearAllCaches } from "../modules/TodayPlan/todayplan.api";
 import { clearDashboardCaches } from "../modules/Dashboard/All.api";
 import { clearTodayActivityCaches } from "../modules/todayActivity/todayactivity.api";
 
+import CryptoJS from "crypto-js";
+
 // ─────────────────────────────────────────────
-// Storage helpers (module-level, not inside component)
+// Storage helpers (module-level, modern TextEncoder/TextDecoder UTF-8 base64)
 // ─────────────────────────────────────────────
+
+function toBase64(str: string): string {
+    try {
+        const bytes = new TextEncoder().encode(str);
+        let binString = "";
+        for (let i = 0; i < bytes.length; i++) {
+            binString += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binString);
+    } catch {
+        return btoa(str);
+    }
+}
+
+function fromBase64(base64: string): string {
+    try {
+        const binString = atob(base64);
+        const bytes = new Uint8Array(binString.length);
+        for (let i = 0; i < binString.length; i++) {
+            bytes[i] = binString.charCodeAt(i);
+        }
+        return new TextDecoder().decode(bytes);
+    } catch {
+        return atob(base64);
+    }
+}
+
 function encodeStorage(value: unknown): string {
     try {
         const jsonStr = typeof value === "string" ? value : JSON.stringify(value);
-        return btoa(unescape(encodeURIComponent(jsonStr)));
+        return toBase64(jsonStr);
     } catch {
         return typeof value === "string" ? value : JSON.stringify(value);
     }
@@ -29,12 +59,27 @@ function decodeStorage<T>(raw: string | null, fallback: T): T {
     try {
         let jsonStr = raw;
         try {
-            jsonStr = decodeURIComponent(escape(atob(raw)));
+            jsonStr = fromBase64(raw);
         } catch {
-            // raw was unencoded plain text/JSON
+            try {
+                const bytes = CryptoJS.AES.decrypt(raw, JWT_SECRET);
+                const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+                if (decrypted) jsonStr = decrypted;
+            } catch {
+                // raw is plain JSON
+            }
         }
         return JSON.parse(jsonStr) as T;
     } catch {
+        try {
+            const bytes = CryptoJS.AES.decrypt(raw, JWT_SECRET);
+            const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+            if (decrypted) {
+                return JSON.parse(decrypted) as T;
+            }
+        } catch {
+            // ignore
+        }
         return fallback;
     }
 }
@@ -52,10 +97,23 @@ if (typeof window !== "undefined" && window.Storage) {
             key === "loginResponse"
         ) {
             try {
-                return decodeURIComponent(escape(atob(raw)));
+                const decoded = fromBase64(raw);
+                if (decoded && (decoded.startsWith("{") || decoded.startsWith("["))) {
+                    return decoded;
+                }
             } catch {
-                return raw;
+                // ignore
             }
+            try {
+                const bytes = CryptoJS.AES.decrypt(raw, JWT_SECRET);
+                const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+                if (decrypted) {
+                    return decrypted;
+                }
+            } catch {
+                // ignore
+            }
+            return raw;
         }
         return raw;
     };
@@ -371,16 +429,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     setToken(e.newValue);
                 }
                 if (e.key === "user") {
-                    setUser(e.newValue ? (JSON.parse(e.newValue) as User) : null);
+                    setUser(decodeStorage<User | null>(e.newValue, null));
                 }
                 if (e.key === "availableCompanies") {
                     setAvailableCompanies(
-                        e.newValue ? (JSON.parse(e.newValue) as CompanyInfo[]) : []
+                        decodeStorage<CompanyInfo[]>(e.newValue, [])
                     );
                 }
                 if (e.key === "currentCompany") {
                     setCurrentCompany(
-                        e.newValue ? (JSON.parse(e.newValue) as CompanyInfo) : null
+                        decodeStorage<CompanyInfo | null>(e.newValue, null)
                     );
                 }
             } catch (err) {

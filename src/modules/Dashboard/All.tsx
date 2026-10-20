@@ -57,8 +57,10 @@ import {
   getTaskDropdown,
   getEmployeeDropdown,
   getProjectDropdown,
+  getDashboardProjectSchedules,
+  getDashboardTaskTypes,
+  getDashboardProjectScheduleEmp,
 } from "./All.api";
-import { getProjectScheduleEmpWithStaffNames } from "../Reports/Execution reports/ExecutionReports.api";
 
 import type {
   WorkMasterData,
@@ -536,6 +538,8 @@ const ScheduleCard: React.FC<{
 );
 
 // ─── ExpandedSchedulesComponent ───────────────────────────────────────────────
+const taskSchedulesMapCache = new Map<number, any[]>();
+
 const ExpandedSchedulesComponent: React.FC<{
   taskId: number;
   taskName?: string;
@@ -555,6 +559,7 @@ const ExpandedSchedulesComponent: React.FC<{
   projectEmpSchedules?: any[];
   appliedFromDate?: string | null;
   appliedToDate?: string | null;
+  projectSchedules?: any[];
 }> = ({
   taskId, taskName, taskTypeName, taskProjectId,
   schedulePlans, allProjects,
@@ -563,6 +568,7 @@ const ExpandedSchedulesComponent: React.FC<{
   appliedEmployeeId, projectEmpSchedules,
   appliedFromDate,
   appliedToDate,
+  projectSchedules,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -617,16 +623,26 @@ const ExpandedSchedulesComponent: React.FC<{
     if (!taskId) return;
     setLoading(true);
     try {
-      const raw = await getTaskSchedules(taskId);
+      let raw: any[] = [];
+      if (taskSchedulesMapCache.has(taskId)) {
+        raw = taskSchedulesMapCache.get(taskId)!;
+      } else {
+        raw = await getTaskSchedules(taskId);
+        if (raw && Array.isArray(raw)) {
+          taskSchedulesMapCache.set(taskId, raw);
+        }
+      }
       if (!mountedRef.current) return;
 
-      // Fetch full project schedules for fallback data (taskDates, planDetails, schType)
-      let projectSchedules: any[] = [];
-      try {
-        const psRes = await getprojectschedule(1, 1000, "Sch_Id", "DESC");
-        projectSchedules = psRes?.data || [];
-      } catch (e) {
-        console.error("Failed to fetch project schedules for schType", e);
+      // Use pre-fetched project schedules if available, else fetch fallback
+      let projectSchedulesList: any[] = projectSchedules && projectSchedules.length > 0 ? projectSchedules : [];
+      if (projectSchedulesList.length === 0) {
+        try {
+          const psRes = await getprojectschedule(1, 1000, "Sch_Id", "DESC");
+          projectSchedulesList = psRes?.data || [];
+        } catch (e) {
+          console.error("Failed to fetch project schedules for schType", e);
+        }
       }
 
       const empCounts: Record<number, number> = {};
@@ -645,7 +661,7 @@ const ExpandedSchedulesComponent: React.FC<{
             empCounts[sId] = empSet.size;
           });
         }
-        projectSchedules.forEach((ps: any) => {
+        projectSchedulesList.forEach((ps: any) => {
           const sId = Number(ps.schId || ps.Sch_Id);
           if (sId && empCounts[sId] === undefined) {
             empCounts[sId] = ps.empCount || 0;
@@ -691,7 +707,7 @@ const ExpandedSchedulesComponent: React.FC<{
           const schId = Number(s?.Sch_Id || s?.schId) || 0;
 
           // Look up full schedule from projectSchedules for fallback data
-          const pSch = projectSchedules.find((ps: any) => Number(ps.schId || ps.Sch_Id) === schId);
+          const pSch = projectSchedulesList.find((ps: any) => Number(ps.schId || ps.Sch_Id) === schId);
 
           // Get schType from pSch or raw data
           const rawSchType =
@@ -1284,6 +1300,14 @@ const ExpandedSchedulesComponent: React.FC<{
 };
 
 // ─── TaskExpandedComponent (for Tasks under Task Type) ─────────────────────────────
+let cachedTaskExpandedDropdowns: {
+  spd: ScheduleProjectDropdown[];
+  pd: ParameterDropdown[];
+  pld: schedulePlanDropdown[];
+  std: taskTypeDropdown[];
+} | null = null;
+let taskGroupsCache: taskgroupDropdown[] | null = null;
+
 const TaskExpandedComponent: React.FC<{
   taskTypeId: number;
   taskTypeName: string;
@@ -1296,7 +1320,9 @@ const TaskExpandedComponent: React.FC<{
   projectSchedules?: any[];
   appliedFromDate?: string | null;
   appliedToDate?: string | null;
-}> = ({ taskTypeId, projectId, projectName, appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate }) => {
+  parentTasks?: any[];
+  parentProjects?: any[];
+}> = ({ taskTypeId, projectId, projectName, appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate, parentTasks, parentProjects }) => {
   const [tasks, setTasks] = useState<TaskDisplay[]>([]);
   const [taskGroups, setTaskGroups] = useState<taskgroupDropdown[]>([]);
   const [taskProjects, setTaskProjects] = useState<TaskProjectDropdown[]>([]);
@@ -1369,10 +1395,12 @@ const TaskExpandedComponent: React.FC<{
       setError(null);
 
       const [tasksData, groupsData, schedulesResult, projectsData] = await Promise.all([
-        getTask().catch(() => []),
-        getAllTaskGroups().catch(() => []),
-        getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
-        getTaskProjects().catch(() => []),
+        parentTasks && parentTasks.length > 0 ? Promise.resolve(parentTasks) : getTask().catch(() => []),
+        taskGroupsCache ? Promise.resolve(taskGroupsCache) : getAllTaskGroups().then(res => { taskGroupsCache = res || []; return taskGroupsCache; }).catch(() => []),
+        projectSchedules && projectSchedules.length > 0
+          ? Promise.resolve({ data: projectSchedules })
+          : getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
+        parentProjects && parentProjects.length > 0 ? Promise.resolve(parentProjects) : getTaskProjects().catch(() => []),
       ]);
 
       if (!isMounted.current) return;
@@ -1388,15 +1416,22 @@ const TaskExpandedComponent: React.FC<{
         (projectsData || []).map((p: TaskProjectDropdown) => [Number(p?.Project_Id), p?.Project_Name])
       );
 
+      const assignedSchIdSet = new Set<number>();
+      if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+        (projectEmpSchedules || []).forEach((emp: any) => {
+          if (numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)) {
+            const sId = Number(emp.Sch_Id || emp.schId);
+            if (sId) assignedSchIdSet.add(sId);
+          }
+        });
+      }
+
       const schedCountMap = new Map<number, number>();
       (schedulesResult?.data || []).forEach((s: any) => {
         const tid = s?.Task_Id || s?.taskId;
         if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
-          const schId = s?.Sch_Id || s?.schId;
-          const isAssigned = (projectEmpSchedules || []).some((emp: any) =>
-            numEq(emp.Sch_Id || emp.schId, schId) && numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)
-          );
-          if (!isAssigned) return;
+          const schId = Number(s?.Sch_Id || s?.schId);
+          if (!assignedSchIdSet.has(schId)) return;
         }
         if (appliedFromDate || appliedToDate) {
           if (!isScheduleInDateRange(s, appliedFromDate, appliedToDate)) return;
@@ -1455,6 +1490,13 @@ const TaskExpandedComponent: React.FC<{
   // ── Fetch dropdowns ───────────────────────────────────────────────────────
   const fetchDropdownData = useCallback(async () => {
     try {
+      if (cachedTaskExpandedDropdowns) {
+        setScheduleProjects(cachedTaskExpandedDropdowns.spd);
+        setParameterOptions(cachedTaskExpandedDropdowns.pd);
+        setSchedulePlans(cachedTaskExpandedDropdowns.pld);
+        setTaskTypes(cachedTaskExpandedDropdowns.std);
+        return;
+      }
       setLoadingDropdowns(true);
       const [spd, pd, pld, std] = await Promise.all([
         getprojectDropdown().catch(() => []),
@@ -1463,10 +1505,16 @@ const TaskExpandedComponent: React.FC<{
         gettaskTypeDropdown().catch(() => []),
       ]);
       if (!isMounted.current) return;
-      setScheduleProjects(spd || []);
-      setParameterOptions(pd || []);
-      setSchedulePlans(pld || []);
-      setTaskTypes(std || []);
+      cachedTaskExpandedDropdowns = {
+        spd: spd || [],
+        pd: pd || [],
+        pld: pld || [],
+        std: std || [],
+      };
+      setScheduleProjects(cachedTaskExpandedDropdowns.spd);
+      setParameterOptions(cachedTaskExpandedDropdowns.pd);
+      setSchedulePlans(cachedTaskExpandedDropdowns.pld);
+      setTaskTypes(cachedTaskExpandedDropdowns.std);
     } catch (err) {
       console.error("fetchDropdownData error:", err);
       if (isMounted.current) toast.error("Failed to load dropdown data");
@@ -1624,9 +1672,9 @@ const TaskExpandedComponent: React.FC<{
         success = await createTask(taskObj);
       }
       if (success && isMounted.current) {
+        closeAllDialogs();
         await fetchTasks();
         await onDataChange?.();
-        closeAllDialogs();
       }
     } catch (err) {
       console.error("saveTask error:", err);
@@ -1639,9 +1687,9 @@ const TaskExpandedComponent: React.FC<{
     try {
       const success = await deleteTask(selectedTask.Task_Id);
       if (success && isMounted.current) {
+        closeAllDialogs();
         await fetchTasks();
         await onDataChange?.();
-        closeAllDialogs();
       }
     } catch (err) {
       console.error("deleteTaskConfirm error:", err);
@@ -1869,11 +1917,11 @@ const TaskExpandedComponent: React.FC<{
     if (success && isMounted.current) {
       const oldTaskId = selectedTaskForSch;
       const newTaskId = Number(scheduleObj.Task_Id);
+      closeAllDialogs();
       await fetchTasks();
       if (oldTaskId) refreshExpanded(oldTaskId);
       if (newTaskId && newTaskId !== oldTaskId) refreshExpanded(newTaskId);
       await onDataChange?.();
-      closeAllDialogs();
     }
   }, [scheduleObj, selectedScheduleId, scheduleDialogType, selectedTaskForSch, closeAllDialogs, fetchTasks, refreshExpanded, onDataChange]);
 
@@ -1882,10 +1930,10 @@ const TaskExpandedComponent: React.FC<{
     const success = await deleteprojectschedule(selectedScheduleId);
     if (success && isMounted.current) {
       const affectedTaskId = selectedTaskForSch || Number(scheduleObj.Task_Id);
+      closeAllDialogs();
       await fetchTasks();
       if (affectedTaskId) refreshExpanded(affectedTaskId);
       await onDataChange?.();
-      closeAllDialogs();
     }
   }, [selectedScheduleId, scheduleObj.Task_Id, selectedTaskForSch, closeAllDialogs, fetchTasks, refreshExpanded, onDataChange]);
 
@@ -1896,6 +1944,8 @@ const TaskExpandedComponent: React.FC<{
 
   const handleAssignTaskSuccess = useCallback(async () => {
     const taskIdVal = correctionData?.Task_Id || correctionData?.taskId;
+    setAssignTaskOpen(false);
+    setCorrectionData(null);
     if (taskIdVal) refreshExpanded(Number(taskIdVal));
     await fetchTasks();
     await onDataChange?.();
@@ -2077,6 +2127,7 @@ const TaskExpandedComponent: React.FC<{
                             projectEmpSchedules={projectEmpSchedules}
                             appliedFromDate={appliedFromDate}
                             appliedToDate={appliedToDate}
+                            projectSchedules={projectSchedules}
                           />
                         </Box>
                       </Collapse>
@@ -2158,7 +2209,10 @@ const TaskTypeExpandedComponent: React.FC<{
   projectSchedules?: any[];
   appliedFromDate?: string | null;
   appliedToDate?: string | null;
-}> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate }) => {
+  allTaskTypes?: tasktypeData[];
+  allProjects?: any[];
+  allTasks?: any[];
+}> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate, allTaskTypes, allProjects, allTasks }) => {
   const [taskTypes, setTaskTypes] = useState<TaskTypeDisplay[]>([]);
   const [projectOptions, setProjectOptions] = useState<TaskTypeProjectDropdown[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -2196,9 +2250,9 @@ const TaskTypeExpandedComponent: React.FC<{
       setError(null);
 
       const [typesData, projectsData, tasksData] = await Promise.all([
-        gettasktype(),
-        getTaskTypeProjects(),
-        getTask().catch(() => []),
+        allTaskTypes && allTaskTypes.length > 0 ? Promise.resolve(allTaskTypes) : gettasktype(),
+        allProjects && allProjects.length > 0 ? Promise.resolve(allProjects) : getTaskTypeProjects(),
+        allTasks && allTasks.length > 0 ? Promise.resolve(allTasks) : getTask().catch(() => []),
       ]);
 
       if (!isMounted.current) return;
@@ -2214,25 +2268,33 @@ const TaskTypeExpandedComponent: React.FC<{
 
       // Count tasks per task type (respecting active filters)
       const taskCountMap = new Map<number, number>();
+      const thisProjectSchs = projectId != null
+        ? (projectSchedules || []).filter((s: any) => numEq(s.Project_Id ?? s.project_id ?? s.projectId, projectId))
+        : (projectSchedules || []);
+
+      const assignedSchIdSet = new Set<number>();
+      if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+        (projectEmpSchedules || []).forEach((emp: any) => {
+          if (numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)) {
+            const sId = Number(emp.Sch_Id || emp.schId);
+            if (sId) assignedSchIdSet.add(sId);
+          }
+        });
+      }
+
       (tasksData || []).forEach((task: any) => {
         const typeId = task?.Task_Type_Id;
         if (typeId != null) {
           const key = Number(typeId);
 
           if ((appliedEmployeeId && appliedEmployeeId !== "ALL") || appliedFromDate || appliedToDate) {
-            const hasSch = (projectSchedules || []).some((sch: any) => {
-              const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+            const hasSch = thisProjectSchs.some((sch: any) => {
               const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
-              if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
+              if (!numEq(schTaskId, task.Task_Id)) return false;
 
               if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
-                const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-                const matchesEmp = (projectEmpSchedules || []).some((emp: any) => {
-                  const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-                  const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-                  return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-                });
-                if (!matchesEmp) return false;
+                const schId = Number(sch.Sch_Id ?? sch.sch_id ?? sch.schId);
+                if (!assignedSchIdSet.has(schId)) return false;
               }
 
               if (appliedFromDate || appliedToDate) {
@@ -2313,21 +2375,29 @@ const TaskTypeExpandedComponent: React.FC<{
       result = result.filter(tt => tt.status === taskTypeStatusFilter);
     }
     if ((appliedEmployeeId && appliedEmployeeId !== "ALL") || appliedFromDate || appliedToDate) {
+      const thisProjectSchs = projectId != null
+        ? (projectSchedules || []).filter((s: any) => numEq(s.Project_Id ?? s.project_id ?? s.projectId, projectId))
+        : (projectSchedules || []);
+
+      const assignedSchIdSet = new Set<number>();
+      if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
+        (projectEmpSchedules || []).forEach((emp: any) => {
+          if (numEq(emp.Emp_Id || emp.empId, appliedEmployeeId)) {
+            const sId = Number(emp.Sch_Id || emp.schId);
+            if (sId) assignedSchIdSet.add(sId);
+          }
+        });
+      }
+
       result = result.filter(tt => {
         // Check if there is any schedule for this task type and project assigned to the employee/date range
-        const hasSch = (projectSchedules || []).some((sch: any) => {
-          const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
+        const hasSch = thisProjectSchs.some((sch: any) => {
           const schTaskTypeId = sch.Task_Type_Id ?? sch.taskTypeId;
-          if (!numEq(schProjId, projectId) || !numEq(schTaskTypeId, tt.Task_Type_Id)) return false;
+          if (!numEq(schTaskTypeId, tt.Task_Type_Id)) return false;
           
           if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
-            const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-            const matchesEmp = (projectEmpSchedules || []).some((emp: any) => {
-              const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-              const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-              return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-            });
-            if (!matchesEmp) return false;
+            const schId = Number(sch.Sch_Id ?? sch.sch_id ?? sch.schId);
+            if (!assignedSchIdSet.has(schId)) return false;
           }
 
           if (appliedFromDate || appliedToDate) {
@@ -2427,9 +2497,9 @@ const TaskTypeExpandedComponent: React.FC<{
     }
 
     if (success && isMounted.current) {
+      closeAllDialogs();
       await fetchTaskTypes();
       await onDataChange?.();
-      closeAllDialogs();
     }
   }, [taskTypeDialogType, selectedTaskType, taskTypeObj, closeAllDialogs, fetchTaskTypes, onDataChange]);
 
@@ -2439,9 +2509,9 @@ const TaskTypeExpandedComponent: React.FC<{
     const success = await deleteTaskType(selectedTaskType.Task_Type_Id);
 
     if (success && isMounted.current) {
+      closeAllDialogs();
       await fetchTaskTypes();
       await onDataChange?.();
-      closeAllDialogs();
     }
   }, [selectedTaskType, closeAllDialogs, fetchTaskTypes, onDataChange]);
 
@@ -2615,6 +2685,8 @@ const TaskTypeExpandedComponent: React.FC<{
                             projectSchedules={projectSchedules}
                             appliedFromDate={appliedFromDate}
                             appliedToDate={appliedToDate}
+                            parentTasks={allTasks}
+                            parentProjects={allProjects}
                           />
                         </Box>
                       </Collapse>
@@ -2648,7 +2720,7 @@ const TaskTypeExpandedComponent: React.FC<{
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 const All = () => {
-  const [, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [workData, setWorkData] = useState<WorkMasterData[]>([]);
   const [taskTypes, setTaskTypes] = useState<tasktypeData[]>([]);
@@ -2696,37 +2768,30 @@ const All = () => {
     return () => { isMounted.current = false; };
   }, []);
 
-  useEffect(() => {
-    // Only load if we have a company ID so we don't fetch prematurely
-    if (user && !user.Company_Id) return;
-    
-    const loadAll = async () => {
-      setLoading(true);
-      try {
-        await Promise.all([
-          loadMasterData(),
-          loadWorkData(),
-          loadTaskTypes()
-        ]);
-      } finally {
-        if (isMounted.current) setLoading(false);
-      }
-    };
-    loadAll();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.Company_Id]); // Fetch when company DB/Id changes
-
-  const loadMasterData = async (forceRefresh: boolean = true) => {
+  const loadAllData = useCallback(async (forceRefresh: boolean = false) => {
+    setLoading(true);
+    setError("");
     try {
-      const [tasksData, employeesData, projectsData, psRes] = await Promise.all([
+      const [
+        tasksData,
+        employeesData,
+        projectsData,
+        psRes,
+        empData,
+        workResponse,
+        typesData
+      ] = await Promise.all([
         getTaskDropdown(undefined, undefined, forceRefresh),
         getEmployeeDropdown(undefined, undefined, forceRefresh),
         getProjectDropdown(undefined, undefined, forceRefresh),
-        getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
+        getDashboardProjectSchedules(forceRefresh),
+        getDashboardProjectScheduleEmp(forceRefresh),
+        getEnrichedWorkMaster({}, undefined, undefined, forceRefresh).catch(() => ({ success: false, data: [] })),
+        getDashboardTaskTypes(forceRefresh),
       ]);
-      setTasks(tasksData || []);
-      setEmployees(employeesData || []);
-      
+
+      if (!isMounted.current) return;
+
       const formattedProjects = (projectsData || []).map((p: any) => {
         const rawActive = p.IsActive ?? p.isActive ?? p.Status ?? p.status ?? p.Project_Status;
         return {
@@ -2736,39 +2801,30 @@ const All = () => {
           IsActive: rawActive !== undefined && rawActive !== null ? Number(rawActive) : 1,
         };
       });
+
+      // Batch all state updates together into a single render pass
+      setTasks(tasksData || []);
+      setEmployees(employeesData || []);
       setProjects(formattedProjects);
       setProjectSchedules(psRes?.data || []);
-      
-      const empData: any[] = await getProjectScheduleEmpWithStaffNames(undefined, undefined, forceRefresh).catch(() => []);
-      setProjectEmpSchedules(empData);
-    } catch (err) {
-      console.error("Error loading dropdowns", err);
-    }
-  };
-
-  const loadTaskTypes = async () => {
-    try {
-      const typesData = await gettasktype();
-      setTaskTypes(typesData);
-    } catch (err) {
-      console.error("Error loading task types", err);
-    }
-  };
-
-  const loadWorkData = async () => {
-    setError("");
-    try {
-      const response = await getEnrichedWorkMaster({});
-      if (response.success) {
-        if (isMounted.current) setWorkData(response.data);
-      } else {
-        if (isMounted.current) setError(response.message || "Failed to load data");
+      setProjectEmpSchedules(empData || []);
+      if (workResponse?.success && Array.isArray(workResponse.data)) {
+        setWorkData(workResponse.data);
       }
+      setTaskTypes(typesData || []);
     } catch (err) {
-      console.error(err);
+      console.error("Error loading dashboard data", err);
       if (isMounted.current) setError("Error loading data");
+    } finally {
+      if (isMounted.current) setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Only load if we have a company ID so we don't fetch prematurely
+    if (user && !user.Company_Id) return;
+    loadAllData(false);
+  }, [user?.Company_Id, loadAllData]);
 
   // ── refreshExpanded ───────────────────────────────────────────────────────
   const refreshExpanded = useCallback((projectName: string) => {
@@ -2784,32 +2840,15 @@ const All = () => {
       correctionData?.Project_Name ||
       correctionData?.projectName ||
       "";
+    setAssignTaskOpen(false);
+    setCorrectionData(null);
     if (projectName) refreshExpanded(projectName);
-    
-    setLoading(true);
-    try {
-      await Promise.all([
-        loadMasterData(true),
-        loadWorkData()
-      ]);
-    } finally {
-      if (isMounted.current) setLoading(false);
-    }
-  }, [correctionData, refreshExpanded]);
+    await loadAllData(true);
+  }, [correctionData, refreshExpanded, loadAllData]);
 
   const handleDataChange = useCallback(async () => {
-    setLoading(true);
-    try {
-      await Promise.all([
-        loadMasterData(true),
-        loadWorkData(),
-        loadTaskTypes()
-      ]);
-    } finally {
-      if (isMounted.current) setLoading(false);
-    }
-  
-  }, []);
+    await loadAllData(true);
+  }, [loadAllData]);
 
   // ── Get active projects list for dropdown (based on filter) ───────────────
   const projectsFilteredByIsActive = useMemo(() => {
@@ -2831,271 +2870,292 @@ const All = () => {
     );
   }, [projects, appliedProjectIsActiveFilter]);
 
+  // ── Precomputed Index Lookups (O(1) access to prevent N^4 bottlenecks) ─────
+  const tasksByProj = useMemo(() => {
+    const map = new Map<number, TaskDropdown[]>();
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i] as any;
+      const pid = t.Project_Id != null ? Number(t.Project_Id) : Number(t.project_id);
+      if (!isNaN(pid)) {
+        let list = map.get(pid);
+        if (!list) {
+          list = [];
+          map.set(pid, list);
+        }
+        list.push(t);
+      }
+    }
+    return map;
+  }, [tasks]);
+
+  const { schsByProj, schedCountMap } = useMemo(() => {
+    const byProj = new Map<number, any[]>();
+    const countMap = new Map<number, number>();
+    for (let i = 0; i < projectSchedules.length; i++) {
+      const s = projectSchedules[i];
+      const tid = Number(s?.Task_Id ?? s?.taskId);
+      if (tid) {
+        countMap.set(tid, (countMap.get(tid) || 0) + 1);
+      }
+      const pid = Number(s?.Project_Id ?? s?.project_id ?? s?.projectId);
+      if (!isNaN(pid) && pid > 0) {
+        let list = byProj.get(pid);
+        if (!list) {
+          list = [];
+          byProj.set(pid, list);
+        }
+        list.push(s);
+      }
+    }
+    return { schsByProj: byProj, schedCountMap: countMap };
+  }, [projectSchedules]);
+
+  const schEmpSetMap = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    for (let i = 0; i < projectEmpSchedules.length; i++) {
+      const emp = projectEmpSchedules[i];
+      const sId = Number(emp.Sch_Id ?? emp.sch_id ?? emp.schId);
+      const eId = Number(emp.Emp_Id ?? emp.emp_id ?? emp.empId);
+      if (sId && eId) {
+        let set = map.get(sId);
+        if (!set) {
+          set = new Set<number>();
+          map.set(sId, set);
+        }
+        set.add(eId);
+      }
+    }
+    return map;
+  }, [projectEmpSchedules]);
+
+  const taskTypesByProj = useMemo(() => {
+    const map = new Map<number, tasktypeData[]>();
+    for (let i = 0; i < taskTypes.length; i++) {
+      const tt = taskTypes[i];
+      const pid = Number(tt.Project_Id ?? (tt as any).project_id);
+      if (!isNaN(pid) && pid > 0) {
+        let list = map.get(pid);
+        if (!list) {
+          list = [];
+          map.set(pid, list);
+        }
+        list.push(tt);
+      }
+    }
+    return map;
+  }, [taskTypes]);
+
+  const projectsById = useMemo(() => {
+    const map = new Map<number, ProjectDropdown>();
+    for (let i = 0; i < projects.length; i++) {
+      const pid = Number(projects[i].Project_Id);
+      if (!isNaN(pid)) {
+        map.set(pid, projects[i]);
+      }
+    }
+    return map;
+  }, [projects]);
+
+  // Precomputed sets for the active employee filter
+  const { taskIdsWithTargetEmp, taskTypeIdsWithTargetEmp, projIdsWithTargetEmp } = useMemo(() => {
+    const targetEmpId = appliedEmployeeId !== "ALL" ? Number(appliedEmployeeId) : null;
+    const schIds = new Set<number>();
+    const taskIds = new Set<number>();
+    const taskTypeIds = new Set<number>();
+    const projIds = new Set<number>();
+
+    if (targetEmpId !== null) {
+      schEmpSetMap.forEach((empSet, sId) => {
+        if (empSet.has(targetEmpId)) {
+          schIds.add(sId);
+        }
+      });
+
+      for (let i = 0; i < projectSchedules.length; i++) {
+        const s = projectSchedules[i];
+        const sId = Number(s.Sch_Id ?? s.sch_id ?? s.schId);
+        if (schIds.has(sId)) {
+          const tid = Number(s.Task_Id ?? s.task_id ?? s.taskId);
+          if (tid) taskIds.add(tid);
+          const ttid = Number(s.Task_Type_Id ?? s.taskTypeId);
+          if (ttid) taskTypeIds.add(ttid);
+          const pid = Number(s.Project_Id ?? s.project_id ?? s.projectId);
+          if (pid) projIds.add(pid);
+        }
+      }
+    }
+
+    return {
+      taskIdsWithTargetEmp: taskIds,
+      taskTypeIdsWithTargetEmp: taskTypeIds,
+      projIdsWithTargetEmp: projIds,
+    };
+  }, [appliedEmployeeId, schEmpSetMap, projectSchedules]);
+
   // ── Group workData → ProjectRows WITH active project filtering ────────────
-  const groupedData: ProjectRow[] = useMemo(
-    () => {
-      const projectMap: Record<string, any> = {};
+  const groupedData: ProjectRow[] = useMemo(() => {
+    const projectMap: Record<string, any> = {};
+    const targetEmpId = appliedEmployeeId !== "ALL" ? Number(appliedEmployeeId) : null;
 
-      const schedCountMap = new Map<number, number>();
-      projectSchedules.forEach((s: any) => {
-        const tid = s?.Task_Id || s?.taskId;
-        if (tid) schedCountMap.set(Number(tid), (schedCountMap.get(Number(tid)) || 0) + 1);
-      });
+    // Helper to calculate project stats in O(N) using precomputed maps
+    const computeProjectStats = (projectId: number | null, projectName: string, estStartDt: string) => {
+      let maxEndDate = "";
+      const pStatusCounts = { Completed: 0, Pending: 0, Inprocess: 0 };
+      let projectTasksCount = 0;
+      let projectStaffCount = 0;
 
-      // 1. Initialize map with all projects matching the applied IsActive filter
-      const projectsToInclude = appliedProjectIsActiveFilter === "ALL" 
-        ? projects 
-        : appliedProjectIsActiveFilter === "ACTIVE" 
-          ? projects.filter(p => Number(p.IsActive) === 1)
-          : projects.filter(p => Number(p.IsActive) === 0);
-
-      projectsToInclude.forEach(p => {
-        const projectName = p.Project_Name || "Unknown Project";
-        const projectId = p.Project_Id != null ? Number(p.Project_Id) : null;
-        
-        let maxEndDate = "";
-        const pStatusCounts = { Completed: 0, Pending: 0, Inprocess: 0 };
-        let projectTasksCount = 0;
-        let projectStaffCount = 0;
-        
-        if (projectId != null) {
-            let projectTasks = tasks.filter((t: any) => 
-                (t.Project_Id != null ? Number(t.Project_Id) : Number(t.project_id)) === projectId
-            );
-            if (appliedEmployeeId !== "ALL") {
-                projectTasks = projectTasks.filter(task => {
-                    const hasSch = projectSchedules.some((sch: any) => {
-                        const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
-                        const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
-                        if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
-                        
-                        const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-                        return projectEmpSchedules.some((emp: any) => {
-                            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-                            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-                            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-                        });
-                    });
-                    return hasSch;
-                });
-            }
-            projectTasksCount = projectTasks.length;
-
-            let noScheduleTasksCount = 0;
-            projectTasks.forEach((t: any) => {
-                const tid = t.Task_Id || t.taskId;
-                const count = schedCountMap.get(Number(tid)) || 0;
-                if (count === 0) {
-                    noScheduleTasksCount++;
-                }
-            });
-            pStatusCounts.Pending += noScheduleTasksCount;
-
-            const projectSchs = projectSchedules.filter((s: any) => 
-                (s.Project_Id != null ? Number(s.Project_Id) : s.project_id != null ? Number(s.project_id) : null) === projectId
-            );
-            
-            if (projectSchs.length > 0) {
-                const schIds = new Set(projectSchs.map((s: any) => Number(s.Sch_Id || s.schId)));
-                const empIds = new Set<number>();
-                projectEmpSchedules.forEach((emp: any) => {
-                    if (schIds.has(Number(emp.Sch_Id || emp.schId))) {
-                        const empId = Number(emp.Emp_Id || emp.empId);
-                        if (!isNaN(empId) && empId > 0) {
-                            if (appliedEmployeeId === "ALL" || numEq(empId, appliedEmployeeId)) {
-                                empIds.add(empId);
-                            }
-                        }
-                    }
-                });
-                projectStaffCount = empIds.size;
-                
-                const latestSch = [...projectSchs].sort((a, b) => {
-                    const toMs = (v: string) => {
-                        const str = v ? v.split('T')[0] : "";
-                        return str ? new Date(str + "T00:00:00").getTime() : 0;
-                    };
-                    return toMs(b.schEndDate || b.Sch_End_Date) - toMs(a.schEndDate || a.Sch_End_Date);
-                })[0];
-                
-                if (latestSch && (latestSch.schEndDate || latestSch.Sch_End_Date)) {
-                    maxEndDate = latestSch.schEndDate || latestSch.Sch_End_Date;
-                }
-                
-                projectSchs.forEach((sch: any) => {
-                    const st = Number(sch.Sch_Status || sch.schStatus) || 1;
-                    if (st === 1) pStatusCounts.Inprocess++;
-                    else if (st === 2) pStatusCounts.Pending++;
-                    else if (st === 3) pStatusCounts.Completed++;
-                });
-            }
+      if (projectId != null) {
+        let projectTasks = tasksByProj.get(projectId) || [];
+        if (targetEmpId !== null) {
+          projectTasks = projectTasks.filter(task =>
+            taskIdsWithTargetEmp.has(Number(task.Task_Id || (task as any).taskId))
+          );
         }
+        projectTasksCount = projectTasks.length;
 
-        projectMap[projectName] = {
-          Project_Name: projectName,
-          Project_Id: projectId,
-          Work_Dt: p.Est_Start_Dt || "",
-          Est_End_Dt: maxEndDate,
-          taskCount: projectTasksCount,
-          staffCount: projectStaffCount,
-          taskTypesCount: 0,
-          statusCounts: pStatusCounts,
-          workEntries: [] as WorkMasterData[],
-        };
-      });
-
-      // 2. Add workData to the corresponding projects
-      workData.forEach(row => {
-        const projectId = row.Project_Id != null
-          ? Number(row.Project_Id)
-          : (row as any).project_id != null
-            ? Number((row as any).project_id)
-            : null;
-
-        // Skip work data if it doesn't match the active filter
-        if (appliedProjectIsActiveFilter !== "ALL") {
-          if (projectId == null || activeProjectIds === null || !activeProjectIds.has(projectId)) {
-            return;
+        let noScheduleTasksCount = 0;
+        for (let i = 0; i < projectTasks.length; i++) {
+          const tid = Number(projectTasks[i].Task_Id || (projectTasks[i] as any).taskId);
+          if (!schedCountMap.get(tid)) {
+            noScheduleTasksCount++;
           }
         }
+        pStatusCounts.Pending += noScheduleTasksCount;
 
-        let projectName = row.Project_Name;
-        if (projectId != null) {
-          const foundProject = projects.find(p => Number(p.Project_Id) === projectId);
-          if (foundProject) {
-            projectName = foundProject.Project_Name;
-          }
-        }
-        const project = projectName ?? "Unknown Project";
+        const projectSchs = schsByProj.get(projectId) || [];
+        if (projectSchs.length > 0) {
+          const empIds = new Set<number>();
+          let latestMs = 0;
 
-        if (!projectMap[project]) {
-          let estEndDt = "";
-          let estStartDt = "";
-          const pStatusCounts = { Completed: 0, Pending: 0, Inprocess: 0 };
-          
-          if (projectId != null) {
-            const foundProject = projects.find(p => Number(p.Project_Id) === projectId);
-            if (foundProject) {
-              estStartDt = foundProject.Est_Start_Dt || "";
-            }
+          for (let i = 0; i < projectSchs.length; i++) {
+            const sch = projectSchs[i];
+            const sId = Number(sch.Sch_Id || sch.schId);
 
-            let projectTasks = tasks.filter((t: any) => 
-                (t.Project_Id != null ? Number(t.Project_Id) : Number(t.project_id)) === projectId
-            );
-            if (appliedEmployeeId !== "ALL") {
-                projectTasks = projectTasks.filter(task => {
-                    const hasSch = projectSchedules.some((sch: any) => {
-                        const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
-                        const schTaskId = sch.Task_Id ?? sch.task_id ?? sch.taskId;
-                        if (!numEq(schProjId, projectId) || !numEq(schTaskId, task.Task_Id)) return false;
-                        
-                        const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-                        return projectEmpSchedules.some((emp: any) => {
-                            const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-                            const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-                            return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-                        });
-                    });
-                    return hasSch;
-                });
-            }
-
-            let noScheduleTasksCount = 0;
-            projectTasks.forEach((t: any) => {
-                const tid = t.Task_Id || t.taskId;
-                const count = schedCountMap.get(Number(tid)) || 0;
-                if (count === 0) {
-                    noScheduleTasksCount++;
+            const emps = schEmpSetMap.get(sId);
+            if (emps) {
+              emps.forEach(eId => {
+                if (targetEmpId === null || eId === targetEmpId) {
+                  empIds.add(eId);
                 }
-            });
-            pStatusCounts.Pending += noScheduleTasksCount;
+              });
+            }
 
-            if (projectSchedules.length > 0) {
-              const projectSchs = projectSchedules.filter((s: any) => 
-                  (s.Project_Id != null ? Number(s.Project_Id) : s.project_id != null ? Number(s.project_id) : null) === projectId
-              );
-              if (projectSchs.length > 0) {
-                  const latestSch = [...projectSchs].sort((a, b) => {
-                      const toMs = (v: string) => {
-                          const str = v ? v.split('T')[0] : "";
-                          return str ? new Date(str + "T00:00:00").getTime() : 0;
-                      };
-                      return toMs(b.schEndDate || b.Sch_End_Date) - toMs(a.schEndDate || a.Sch_End_Date);
-                  })[0];
-                  
-                  if (latestSch && (latestSch.schEndDate || latestSch.Sch_End_Date)) {
-                      estEndDt = latestSch.schEndDate || latestSch.Sch_End_Date;
-                  }
-
-                  // Calculate status counts based on schedule status (1: Inprocess, 2: Pending, 3: Completed)
-                  projectSchs.forEach((sch: any) => {
-                      const st = Number(sch.Sch_Status || sch.schStatus) || 1;
-                      if (st === 1) pStatusCounts.Inprocess++;
-                      else if (st === 2) pStatusCounts.Pending++;
-                      else if (st === 3) pStatusCounts.Completed++;
-                  });
+            const endDate = sch.schEndDate || sch.Sch_End_Date;
+            if (endDate) {
+              const cleanDate = endDate.split('T')[0];
+              const ms = cleanDate ? new Date(cleanDate + "T00:00:00").getTime() : 0;
+              if (ms > latestMs) {
+                latestMs = ms;
+                maxEndDate = endDate;
               }
             }
+
+            const st = Number(sch.Sch_Status || sch.schStatus) || 1;
+            if (st === 1) pStatusCounts.Inprocess++;
+            else if (st === 2) pStatusCounts.Pending++;
+            else if (st === 3) pStatusCounts.Completed++;
           }
-          projectMap[project] = {
-            Project_Name: project,
-            Project_Id: projectId,
-            Work_Dt: estStartDt,
-            Est_End_Dt: estEndDt,
-            taskCount: 0,
-            staffSet: new Set<string>(),
-            taskTypesCount: 0,
-            statusCounts: pStatusCounts,
-            workEntries: [] as WorkMasterData[],
-          };
+
+          projectStaffCount = empIds.size;
         }
+      }
 
-        if (!projectMap[project].Work_Dt) {
-          projectMap[project].Work_Dt = row.Work_Dt;
+      return {
+        Project_Name: projectName,
+        Project_Id: projectId,
+        Work_Dt: estStartDt || "",
+        Est_End_Dt: maxEndDate,
+        taskCount: projectTasksCount,
+        staffCount: projectStaffCount,
+        taskTypesCount: 0,
+        statusCounts: pStatusCounts,
+        workEntries: [] as WorkMasterData[],
+      };
+    };
+
+    // 1. Initialize map with all projects matching the applied IsActive filter
+    const projectsToInclude = appliedProjectIsActiveFilter === "ALL"
+      ? projects
+      : appliedProjectIsActiveFilter === "ACTIVE"
+        ? projects.filter(p => Number(p.IsActive) === 1)
+        : projects.filter(p => Number(p.IsActive) === 0);
+
+    projectsToInclude.forEach(p => {
+      const projectName = p.Project_Name || "Unknown Project";
+      const projectId = p.Project_Id != null ? Number(p.Project_Id) : null;
+      projectMap[projectName] = computeProjectStats(projectId, projectName, p.Est_Start_Dt || "");
+    });
+
+    // 2. Add workData to the corresponding projects
+    workData.forEach(row => {
+      const projectId = row.Project_Id != null
+        ? Number(row.Project_Id)
+        : (row as any).project_id != null
+          ? Number((row as any).project_id)
+          : null;
+
+      // Skip work data if it doesn't match the active filter
+      if (appliedProjectIsActiveFilter !== "ALL") {
+        if (projectId == null || activeProjectIds === null || !activeProjectIds.has(projectId)) {
+          return;
         }
+      }
 
-        // Do not accumulate statusCounts from workData, as requested
-        projectMap[project].workEntries.push(row);
-      });
+      let projectName = row.Project_Name;
+      let estStartDt = "";
+      if (projectId != null) {
+        const foundProject = projectsById.get(projectId);
+        if (foundProject) {
+          projectName = foundProject.Project_Name;
+          estStartDt = foundProject.Est_Start_Dt || "";
+        }
+      }
+      const project = projectName ?? "Unknown Project";
 
-      // 3. Map into the final array
-      const grouped = Object.values(projectMap).map((item: any) => {
-        // Filter task types by project
-        let projectTaskTypes = taskTypes.filter(tt =>
-          numEq(tt.Project_Id, item.Project_Id)
+      if (!projectMap[project]) {
+        projectMap[project] = computeProjectStats(projectId, project, estStartDt);
+      }
+
+      if (!projectMap[project].Work_Dt) {
+        projectMap[project].Work_Dt = row.Work_Dt;
+      }
+
+      projectMap[project].workEntries.push(row);
+    });
+
+    // 3. Map into the final array
+    const grouped = Object.values(projectMap).map((item: any) => {
+      let projectTaskTypes = item.Project_Id != null ? taskTypesByProj.get(item.Project_Id) || [] : [];
+      if (targetEmpId !== null) {
+        projectTaskTypes = projectTaskTypes.filter(tt =>
+          taskTypeIdsWithTargetEmp.has(Number(tt.Task_Type_Id))
         );
+      }
 
-        // If employee filter is active, filter project task types
-        if (appliedEmployeeId && appliedEmployeeId !== "ALL") {
-          projectTaskTypes = projectTaskTypes.filter(tt => {
-            const hasSch = projectSchedules.some((sch: any) => {
-              const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
-              const schTaskTypeId = sch.Task_Type_Id ?? sch.taskTypeId;
-              if (!numEq(schProjId, item.Project_Id) || !numEq(schTaskTypeId, tt.Task_Type_Id)) return false;
-              
-              const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-              return projectEmpSchedules.some((emp: any) => {
-                const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-                const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-                return numEq(empSchId, schId) && numEq(empId, appliedEmployeeId);
-              });
-            });
-            return hasSch;
-          });
-        }
-        
-        return {
-          ...item,
-          Task_Name: `${item.taskCount}`,
-          Emp_Name: `${item.staffCount}`,
-          taskTypesCount: projectTaskTypes.length,
-        };
-      });
-      
-      return grouped;
-    },
-    [workData, taskTypes, activeProjectIds, appliedProjectIsActiveFilter, projects, tasks, projectSchedules, projectEmpSchedules, appliedEmployeeId],
-  );
+      return {
+        ...item,
+        Task_Name: `${item.taskCount}`,
+        Emp_Name: `${item.staffCount}`,
+        taskTypesCount: projectTaskTypes.length,
+      };
+    });
+
+    return grouped;
+  }, [
+    workData,
+    activeProjectIds,
+    appliedProjectIsActiveFilter,
+    projects,
+    appliedEmployeeId,
+    tasksByProj,
+    schsByProj,
+    schedCountMap,
+    schEmpSetMap,
+    taskTypesByProj,
+    projectsById,
+    taskIdsWithTargetEmp,
+    taskTypeIdsWithTargetEmp,
+  ]);
 
   // ── Apply project id filter (on already filtered data) ───────────────────
   const filteredGroupedData = useMemo(() => {
@@ -3104,45 +3164,38 @@ const All = () => {
       data = data.filter((row) => numEq(row.Project_Id, appliedProjectId));
     }
     if (appliedTaskTypeId !== "ALL") {
-      data = data.filter((row) => 
-        taskTypes.some((tt: any) => numEq(tt.Project_Id, row.Project_Id) && numEq(tt.Task_Type_Id, appliedTaskTypeId))
-      );
+      const targetTypeId = Number(appliedTaskTypeId);
+      data = data.filter((row) => {
+        const pTypes = row.Project_Id != null ? taskTypesByProj.get(Number(row.Project_Id)) || [] : [];
+        return pTypes.some((tt: any) => Number(tt.Task_Type_Id) === targetTypeId);
+      });
     }
     if (appliedTaskId !== "ALL") {
+      const targetTaskId = Number(appliedTaskId);
       data = data.filter((row) => {
-        // Check if the task belongs to the project via tasks array
-        const hasTaskInTasks = tasks.some((t: any) => numEq(t.Task_Id, appliedTaskId) && numEq(t.Project_Id || t.project_id, row.Project_Id));
-        // Check if the project has a schedule for this task
-        const hasSch = projectSchedules.some((sch: any) => numEq(sch.Task_Id || sch.taskId, appliedTaskId) && numEq(sch.Project_Id || sch.project_id || sch.projectId, row.Project_Id));
-        // Check if there are any work entries for this task
-        const hasWork = row.workEntries?.some((w: any) => numEq(w.Task_Id, appliedTaskId));
-        return hasTaskInTasks || hasSch || hasWork;
+        const pid = row.Project_Id != null ? Number(row.Project_Id) : null;
+        if (pid != null) {
+          const pTasks = tasksByProj.get(pid) || [];
+          if (pTasks.some((t: any) => Number(t.Task_Id) === targetTaskId)) return true;
+          const pSchs = schsByProj.get(pid) || [];
+          if (pSchs.some((sch: any) => Number(sch.Task_Id || sch.taskId) === targetTaskId)) return true;
+        }
+        return row.workEntries?.some((w: any) => Number(w.Task_Id) === targetTaskId);
       });
     }
     if (appliedEmployeeId !== "ALL") {
       data = data.filter((row) => {
-        const hasSch = projectEmpSchedules.some((emp: any) => {
-          const empId = emp.Emp_Id ?? emp.emp_id ?? emp.empId;
-          if (!numEq(empId, appliedEmployeeId)) return false;
-          
-          const empSchId = emp.Sch_Id ?? emp.sch_id ?? emp.schId;
-          return projectSchedules.some((sch: any) => {
-            const schId = sch.Sch_Id ?? sch.sch_id ?? sch.schId;
-            const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
-            return numEq(schId, empSchId) && numEq(schProjId, row.Project_Id);
-          });
-        });
-        return hasSch;
+        return row.Project_Id != null && projIdsWithTargetEmp.has(Number(row.Project_Id));
       });
     }
     if (appliedFromDate || appliedToDate) {
       data = data.filter((row) => {
-        const hasSch = projectSchedules.some((sch: any) => {
-          const schProjId = sch.Project_Id ?? sch.project_id ?? sch.projectId;
-          if (!numEq(schProjId, row.Project_Id)) return false;
-          return isScheduleInDateRange(sch, appliedFromDate, appliedToDate);
-        });
-        if (hasSch) return true;
+        const pid = row.Project_Id != null ? Number(row.Project_Id) : null;
+        if (pid != null) {
+          const pSchs = schsByProj.get(pid) || [];
+          const hasSch = pSchs.some((sch: any) => isScheduleInDateRange(sch, appliedFromDate, appliedToDate));
+          if (hasSch) return true;
+        }
 
         const hasWork = row.workEntries?.some((w: any) => {
           const wDate = toYMD(w.Work_Dt);
@@ -3159,7 +3212,19 @@ const All = () => {
       });
     }
     return data;
-  }, [groupedData, appliedProjectId, appliedTaskTypeId, appliedTaskId, appliedEmployeeId, appliedFromDate, appliedToDate, taskTypes, tasks, projectSchedules, projectEmpSchedules]);
+  }, [
+    groupedData,
+    appliedProjectId,
+    appliedTaskTypeId,
+    appliedTaskId,
+    appliedEmployeeId,
+    appliedFromDate,
+    appliedToDate,
+    taskTypesByProj,
+    tasksByProj,
+    schsByProj,
+    projIdsWithTargetEmp,
+  ]);
 
   // ── Outer table columns ────────────────────────────────────────────────────
   const tableColumns: Column[] = [
@@ -3370,6 +3435,18 @@ const All = () => {
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+        {loading && (
+          <LinearProgress
+            sx={{
+              height: 3,
+              mb: 1,
+              borderRadius: 1,
+              backgroundColor: "#e3f2fd",
+              "& .MuiLinearProgress-bar": { backgroundColor: "#1976d2" },
+            }}
+          />
+        )}
+
         {/* Expandable Table with Filter button in Header */}
         <Box sx={{ mt: 0 }}>
           <FilterableTable
@@ -3441,6 +3518,9 @@ const All = () => {
                     projectSchedules={projectSchedules}
                     appliedFromDate={appliedFromDate}
                     appliedToDate={appliedToDate}
+                    allTaskTypes={taskTypes}
+                    allProjects={projects}
+                    allTasks={tasks}
                   />
                 </Box>
               );

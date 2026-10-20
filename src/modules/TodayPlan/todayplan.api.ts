@@ -344,12 +344,11 @@ export const getProjectScheduleMaster = async (
  */
 export const isScheduleCompletedForNextDate = (
     plan: any,
-    projectSchedules: any[],
-    _workItems: any[]
+    projectSchedules: any[]
 ): boolean => {
     if (!plan) return false;
 
-    const assignDate = getDateOnly(plan.Task_Assign_dt);
+    const assignDate = getDateOnly(plan.Task_Assign_dt || plan.Schedule_Sch_Date || plan.Sch_Date || plan.Schedule_Sch_Start_Date);
     if (!assignDate) return false;
 
     const schId = plan.Sch_Id != null && plan.Sch_Id !== "" && plan.Sch_Id !== "0" && plan.Sch_Id !== "null" && plan.Sch_Id !== "undefined"
@@ -505,6 +504,7 @@ export const getWorkMaster = async (
 // Get enriched Work Master data
 export const getEnrichedWorkMaster = async (
     params?: WorkMasterQueryParams,
+    companyId?: number | null,
     loadingOn?: () => void,
     loadingOff?: () => void
 ): Promise<{
@@ -517,10 +517,10 @@ export const getEnrichedWorkMaster = async (
         if (!response.success) return response;
         if (response.data.length === 0) return response;
 
-        // ✅ FIX: pass null so it uses the current company key already set in cache
+        // ✅ FIX: pass companyId so it uses the cached dropdown data already requested
         const [employees, projects] = await Promise.all([
-            getEmployeeDropdown(null),
-            getProjectDropdown(null).catch(() => [])
+            getEmployeeDropdown(companyId),
+            getProjectDropdown(companyId).catch(() => [])
         ]);
         const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
         const projectMap = new Map(projects.map(p => [String(p.Project_Id), p.Project_Name]));

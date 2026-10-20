@@ -5,6 +5,7 @@ import { useAuth } from "./auth/authContext";
 import { RequireAuth } from "./auth/requireAuth";
 import Login from "./auth/login";
 import AppLayout from "./Layout/layout";
+import ErrorBoundary from "./Components/ErrorBoundary";
 import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { CircularProgress } from "@mui/material";
 import { appRoutes } from "./routes/indexRouter";
@@ -144,38 +145,40 @@ function App() {
                     </Routes>
                 ) : (
                     <RequireAuth>
-                        <AppLayout
-                            loading={loading}
-                            loadingOn={loadingOn}
-                            loadingOff={loadingOff}
-                        >
-                            <Suspense
-                                fallback={
-                                    <div className="overlay">
-                                        <CircularProgress className="spinner" />
-                                    </div>
-                                }
+                        <ErrorBoundary>
+                            <AppLayout
+                                loading={loading}
+                                loadingOn={loadingOn}
+                                loadingOff={loadingOff}
                             >
-                                <Routes>
-                                    <Route path="/" element={<RootRedirect />} />
-                                    <Route path="/login" element={<Navigate to="/" replace />} />
-                                    {appRoutes.map(({ path, component: Component }) => (
-                                        <Route
-                                            key={path}
-                                            path={path}
-                                            element={
-                                                <Component
-                                                    loading={loading}
-                                                    loadingOn={loadingOn}
-                                                    loadingOff={loadingOff}
-                                                />
-                                            }
-                                        />
-                                    ))}
-                                    <Route path="*" element={<PageNotFound />} />
-                                </Routes>
-                            </Suspense>
-                        </AppLayout>
+                                <Suspense
+                                    fallback={
+                                        <div className="overlay">
+                                            <CircularProgress className="spinner" />
+                                        </div>
+                                    }
+                                >
+                                    <Routes>
+                                        <Route path="/" element={<RootRedirect />} />
+                                        <Route path="/login" element={<Navigate to="/" replace />} />
+                                        {appRoutes.map(({ path, component: Component }) => (
+                                            <Route
+                                                key={path}
+                                                path={path}
+                                                element={
+                                                    <Component
+                                                        loading={loading}
+                                                        loadingOn={loadingOn}
+                                                        loadingOff={loadingOff}
+                                                    />
+                                                }
+                                            />
+                                        ))}
+                                        <Route path="*" element={<PageNotFound />} />
+                                    </Routes>
+                                </Suspense>
+                            </AppLayout>
+                        </ErrorBoundary>
                     </RequireAuth>
                 )}
             </BrowserRouter>

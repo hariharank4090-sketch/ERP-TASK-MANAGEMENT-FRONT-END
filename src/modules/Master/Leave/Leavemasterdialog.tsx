@@ -86,7 +86,7 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
         fullWidth
         PaperProps={{
           sx: {
-            zoom: 0.75
+            zoom: 0.75,
           }
         }}
       >
@@ -138,7 +138,8 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
       maxWidth="md"
       PaperProps={{
         sx: {
-          zoom: 0.75
+          maxHeight: "90vh",
+          zoom: 0.75,
         }
       }}
     >
@@ -211,8 +212,12 @@ export const LeaveDialog: React.FC<LeaveDialogProps> = ({
                       name="session"
                       value={s}
                       checked={session === s}
-                      onChange={() => update({ session: s })}
-                      disabled={isLoading || (s !== "Full" && noOfDays >= 1)}
+                      onChange={() => {
+                        const isSameDay = !fromDate || !toDate || fromDate === toDate;
+                        const newDays = isSameDay ? (s === "Full" ? 1 : 0.5) : noOfDays;
+                        update({ session: s, noOfDays: newDays });
+                      }}
+                      disabled={isLoading || (s !== "Full" && noOfDays > 1)}
                     />
                     <Typography variant="body2">{s}</Typography>
                   </label>
