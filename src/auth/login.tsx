@@ -444,13 +444,19 @@ const Login: React.FC<LoginProps> = ({
             }
 
             try {
+                // Encrypt credentials so plaintext password and username are hidden in DevTools Network tab
+                const encryptedPayload = {
+                    username: CryptoJS.AES.encrypt(parsed.data.username, JWT_SECRET).toString(),
+                    password: CryptoJS.AES.encrypt(parsed.data.password, JWT_SECRET).toString(),
+                };
+
                 const response = await fetch(`${baseURL}configuration/login`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
                     },
-                    body: JSON.stringify(parsed.data),
+                    body: JSON.stringify(encryptedPayload),
                 });
 
                 const data: LoginResponse = await response.json();

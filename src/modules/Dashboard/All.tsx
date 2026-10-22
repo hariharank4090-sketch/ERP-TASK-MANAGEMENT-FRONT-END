@@ -538,7 +538,6 @@ const ScheduleCard: React.FC<{
 );
 
 // ─── ExpandedSchedulesComponent ───────────────────────────────────────────────
-const taskSchedulesMapCache = new Map<number, any[]>();
 
 const ExpandedSchedulesComponent: React.FC<{
   taskId: number;
@@ -623,20 +622,15 @@ const ExpandedSchedulesComponent: React.FC<{
     if (!taskId) return;
     setLoading(true);
     try {
-      let raw: any[] = [];
-      if (taskSchedulesMapCache.has(taskId)) {
-        raw = taskSchedulesMapCache.get(taskId)!;
-      } else {
-        raw = await getTaskSchedules(taskId);
-        if (raw && Array.isArray(raw)) {
-          taskSchedulesMapCache.set(taskId, raw);
-        }
-      }
+      const raw = await getTaskSchedules(taskId);
       if (!mountedRef.current) return;
 
       // Use pre-fetched project schedules if available, else fetch fallback
       let projectSchedulesList: any[] = projectSchedules && projectSchedules.length > 0 ? projectSchedules : [];
-      if (projectSchedulesList.length === 0) {
+      if (
+        projectSchedulesList.length === 0 ||
+        (raw && raw.some((s: any) => !projectSchedulesList.some((ps: any) => Number(ps.schId || ps.Sch_Id) === Number(s.Sch_Id || s.schId))))
+      ) {
         try {
           const psRes = await getprojectschedule(1, 1000, "Sch_Id", "DESC");
           projectSchedulesList = psRes?.data || [];
@@ -714,10 +708,14 @@ const ExpandedSchedulesComponent: React.FC<{
             pSch?.schType   ?? pSch?.Sch_Type ??
             s?.Sch_Type     ?? s?.schType     ??
             s?.Sch_Type_Id  ?? s?.schTypeId   ?? null;
-          const schType =
+          let schType =
             rawSchType != null && rawSchType !== "" && !isNaN(Number(rawSchType))
               ? Number(rawSchType)
               : undefined;
+          if (!schType) {
+            if (Number(planId) === 5 || Number(planId) === 0) schType = 1;
+            else if (planId > 0) schType = 2;
+          }
 
           // Normalise taskDates
           const normalisedTaskDates = (taskDates || []).map((td: any) => {
@@ -824,7 +822,7 @@ const ExpandedSchedulesComponent: React.FC<{
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [taskId, taskName, taskTypeName, getPlanTypeFromId, resolveProjectName, projectEmpSchedules]);
+  }, [taskId, taskName, taskTypeName, getPlanTypeFromId, resolveProjectName, projectEmpSchedules, projectSchedules]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1389,15 +1387,15 @@ const TaskExpandedComponent: React.FC<{
   }, []);
 
   // ── Fetch tasks filtered by task type ───────────────────────────────────────
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (forceRefresh?: boolean) => {
     try {
       setLoading(true);
       setError(null);
 
       const [tasksData, groupsData, schedulesResult, projectsData] = await Promise.all([
-        parentTasks && parentTasks.length > 0 ? Promise.resolve(parentTasks) : getTask().catch(() => []),
+        !forceRefresh && parentTasks && parentTasks.length > 0 ? Promise.resolve(parentTasks) : getTask().catch(() => []),
         taskGroupsCache ? Promise.resolve(taskGroupsCache) : getAllTaskGroups().then(res => { taskGroupsCache = res || []; return taskGroupsCache; }).catch(() => []),
-        projectSchedules && projectSchedules.length > 0
+        !forceRefresh && projectSchedules && projectSchedules.length > 0
           ? Promise.resolve({ data: projectSchedules })
           : getprojectschedule(1, 1000, "Sch_Id", "DESC").catch(() => ({ data: [] })),
         parentProjects && parentProjects.length > 0 ? Promise.resolve(parentProjects) : getTaskProjects().catch(() => []),
@@ -1918,10 +1916,15 @@ const TaskExpandedComponent: React.FC<{
       const oldTaskId = selectedTaskForSch;
       const newTaskId = Number(scheduleObj.Task_Id);
       closeAllDialogs();
-      await fetchTasks();
+      await onDataChange?.();
+      await fetchTasks(true);
       if (oldTaskId) refreshExpanded(oldTaskId);
       if (newTaskId && newTaskId !== oldTaskId) refreshExpanded(newTaskId);
-      await onDataChange?.();
+      setExpandedTasks(prev => ({
+        ...prev,
+        ...(oldTaskId ? { [oldTaskId]: true } : {}),
+        ...(newTaskId ? { [newTaskId]: true } : {}),
+      }));
     }
   }, [scheduleObj, selectedScheduleId, scheduleDialogType, selectedTaskForSch, closeAllDialogs, fetchTasks, refreshExpanded, onDataChange]);
 
@@ -1931,9 +1934,9 @@ const TaskExpandedComponent: React.FC<{
     if (success && isMounted.current) {
       const affectedTaskId = selectedTaskForSch || Number(scheduleObj.Task_Id);
       closeAllDialogs();
-      await fetchTasks();
-      if (affectedTaskId) refreshExpanded(affectedTaskId);
       await onDataChange?.();
+      await fetchTasks(true);
+      if (affectedTaskId) refreshExpanded(affectedTaskId);
     }
   }, [selectedScheduleId, scheduleObj.Task_Id, selectedTaskForSch, closeAllDialogs, fetchTasks, refreshExpanded, onDataChange]);
 
@@ -1946,9 +1949,9 @@ const TaskExpandedComponent: React.FC<{
     const taskIdVal = correctionData?.Task_Id || correctionData?.taskId;
     setAssignTaskOpen(false);
     setCorrectionData(null);
-    if (taskIdVal) refreshExpanded(Number(taskIdVal));
-    await fetchTasks();
     await onDataChange?.();
+    await fetchTasks(true);
+    if (taskIdVal) refreshExpanded(Number(taskIdVal));
   }, [correctionData, refreshExpanded, fetchTasks, onDataChange]);
 
   // ── Formatting helpers ────────────────────────────────────────────────────
