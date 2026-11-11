@@ -2765,6 +2765,11 @@ const All = () => {
 
   const isMounted = useRef(true);
   const { user } = useAuth(); // Destructure user from useAuth
+  const requestVersion = useRef(0);
+  const companyKey = user?.Company_Id ? `${user.Company_Id}:${user.DB_Name || ""}` : "";
+  const currentCompany = useRef(companyKey);
+  currentCompany.current = companyKey;
+  const [loadedCompany, setLoadedCompany] = useState<string | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
@@ -2772,62 +2777,60 @@ const All = () => {
   }, []);
 
   const loadAllData = useCallback(async (forceRefresh: boolean = false) => {
+    if (!companyKey) return;
+    const version = ++requestVersion.current;
+    const isCurrent = () => isMounted.current && version === requestVersion.current && currentCompany.current === companyKey;
     setLoading(true);
     setError("");
     try {
-      const [
-        tasksData,
-        employeesData,
-        projectsData,
-        psRes,
-        empData,
-        workResponse,
-        typesData
-      ] = await Promise.all([
-        getTaskDropdown(undefined, undefined, forceRefresh),
-        getEmployeeDropdown(undefined, undefined, forceRefresh),
-        getProjectDropdown(undefined, undefined, forceRefresh),
-        getDashboardProjectSchedules(forceRefresh),
-        getDashboardProjectScheduleEmp(forceRefresh),
-        getEnrichedWorkMaster({}, undefined, undefined, forceRefresh).catch(() => ({ success: false, data: [] })),
-        getDashboardTaskTypes(forceRefresh),
+      // Share this request with schedule enrichment instead of fetching its dropdown again.
+      const typesRequest = getDashboardTaskTypes(forceRefresh);
+      const publish = <T,>(request: Promise<T>, update: (data: T) => void) =>
+        request.then(data => { if (isCurrent()) update(data); });
+      await Promise.all([
+        publish(getTaskDropdown(undefined, undefined, forceRefresh), data => setTasks(data || [])),
+        publish(getEmployeeDropdown(undefined, undefined, forceRefresh), data => setEmployees(data || [])),
+        publish(getProjectDropdown(undefined, undefined, forceRefresh), projectsData => {
+          const formattedProjects = (projectsData || []).map((p: any) => {
+            const rawActive = p.IsActive ?? p.isActive ?? p.Status ?? p.status ?? p.Project_Status;
+            return {
+              ...p,
+              Project_Id: p.Project_Id ?? p.value ?? p.id,
+              Project_Name: p.Project_Name ?? p.label ?? p.name,
+              IsActive: rawActive !== undefined && rawActive !== null ? Number(rawActive) : 1,
+            };
+          });
+          setProjects(formattedProjects);
+          setLoadedCompany(companyKey);
+        }),
+        publish(getDashboardProjectSchedules(forceRefresh, typesRequest), data => setProjectSchedules(data?.data || [])),
+        publish(getDashboardProjectScheduleEmp(forceRefresh), data => setProjectEmpSchedules(data || [])),
+        publish(getEnrichedWorkMaster({}, undefined, undefined, forceRefresh).catch(() => ({ success: false, data: [] })), response => {
+          setWorkData(response?.success && Array.isArray(response.data) ? response.data : []);
+        }),
+        publish(typesRequest, data => setTaskTypes(data || [])),
       ]);
-
-      if (!isMounted.current) return;
-
-      const formattedProjects = (projectsData || []).map((p: any) => {
-        const rawActive = p.IsActive ?? p.isActive ?? p.Status ?? p.status ?? p.Project_Status;
-        return {
-          ...p,
-          Project_Id: p.Project_Id ?? p.value ?? p.id,
-          Project_Name: p.Project_Name ?? p.label ?? p.name,
-          IsActive: rawActive !== undefined && rawActive !== null ? Number(rawActive) : 1,
-        };
-      });
-
-      // Batch all state updates together into a single render pass
-      setTasks(tasksData || []);
-      setEmployees(employeesData || []);
-      setProjects(formattedProjects);
-      setProjectSchedules(psRes?.data || []);
-      setProjectEmpSchedules(empData || []);
-      if (workResponse?.success && Array.isArray(workResponse.data)) {
-        setWorkData(workResponse.data);
-      }
-      setTaskTypes(typesData || []);
     } catch (err) {
       console.error("Error loading dashboard data", err);
-      if (isMounted.current) setError("Error loading data");
+      if (isCurrent()) setError("Error loading data. Please refresh to try again.");
     } finally {
-      if (isMounted.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, []);
+  }, [companyKey]);
 
   useEffect(() => {
-    // Only load if we have a company ID so we don't fetch prematurely
-    if (user && !user.Company_Id) return;
+    const requestVersionRef = requestVersion;
+    setTasks([]);
+    setEmployees([]);
+    setProjects([]);
+    setProjectSchedules([]);
+    setProjectEmpSchedules([]);
+    setWorkData([]);
+    setTaskTypes([]);
+    setLoadedCompany(null);
     loadAllData(false);
-  }, [user?.Company_Id, loadAllData]);
+    return () => { requestVersionRef.current++; };
+  }, [loadAllData]);
 
   // ── refreshExpanded ───────────────────────────────────────────────────────
   const refreshExpanded = useCallback((projectName: string) => {
@@ -3438,20 +3441,10 @@ const All = () => {
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {loading && (
-          <LinearProgress
-            sx={{
-              height: 3,
-              mb: 1,
-              borderRadius: 1,
-              backgroundColor: "#e3f2fd",
-              "& .MuiLinearProgress-bar": { backgroundColor: "#1976d2" },
-            }}
-          />
-        )}
+        {error && <Button onClick={() => loadAllData(true)}>Retry</Button>}
 
         {/* Expandable Table with Filter button in Header */}
-        <Box sx={{ mt: 0 }}>
+        <Box aria-busy={loading} sx={{ mt: 0, display: !companyKey || loadedCompany !== companyKey ? "none" : "block" }}>
           <FilterableTable
             key={tableResetKey}
             dataArray={filteredGroupedData as unknown as TableRowData[]}

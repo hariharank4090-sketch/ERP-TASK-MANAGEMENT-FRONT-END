@@ -95,7 +95,8 @@ export const getprojectschedule = async (
     dateTo?: string;
   },
   loadingOn?: () => void,
-  loadingOff?: () => void
+  loadingOff?: () => void,
+  taskTypeMapSource?: Promise<Record<number, string>>
 ): Promise<{ data: projectscheduleData[]; totalPages: number }> => {
   try {
     if (typeof loadingOn === 'function') loadingOn();
@@ -116,7 +117,7 @@ export const getprojectschedule = async (
         address: url,
         method: "GET"
       }),
-      getTaskTypeMap()
+      taskTypeMapSource ?? getTaskTypeMap()
     ]);
 
     if (res && res.success) {

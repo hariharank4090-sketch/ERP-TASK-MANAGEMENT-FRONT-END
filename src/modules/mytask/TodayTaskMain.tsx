@@ -105,25 +105,22 @@ const extractSentinelTime = (
 const combineDateWithTime = (
   datePart: any,
   timePart: any
-): string | null => {
+): Date | null => {
   if (!datePart || !timePart) return null;
   try {
-    const base = new Date(datePart);
-    if (isNaN(base.getTime())) return null;
-    const dateOnly = getDateOnly(base.toISOString());
+    // Build a local Date from the displayed calendar date and clock time.
+    // Passing an ISO string without an offset can be reinterpreted by FullCalendar
+    // under a different timezone and shift the event away from its displayed time.
+    const dateOnly = getDateOnly(datePart);
+    if (!dateOnly) return null;
+    const [year, month, day] = dateOnly.split("-").map(Number);
     const t = extractSentinelTime(timePart);
     if (t) {
-      const hh = String(t.hours).padStart(2, "0");
-      const mm = String(t.minutes).padStart(2, "0");
-      const ss = String(t.seconds).padStart(2, "0");
-      return `${dateOnly}T${hh}:${mm}:${ss}`;
+      return new Date(year, month - 1, day, t.hours, t.minutes, t.seconds);
     }
-    if (typeof timePart === "string" && timePart.includes(":")) {
-      const parts = timePart.split(":");
-      const hh = (parts[0] ?? "00").padStart(2, "0");
-      const mm = (parts[1] ?? "00").padStart(2, "0");
-      const ss = (parts[2] ?? "00").padStart(2, "0");
-      return `${dateOnly}T${hh}:${mm}:${ss}`;
+    const clock = String(timePart).match(/(?:T|\s)?(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (clock) {
+      return new Date(year, month - 1, day, Number(clock[1]), Number(clock[2]), Number(clock[3] || 0));
     }
   } catch (e) {
     console.error("combineDateWithTime:", e);
@@ -970,8 +967,12 @@ const CreditListPage = () => {
       Task_Name: task.Task_Name || `Task ${task.Task_Id}`,
       Emp_Id: task.Emp_Id,
       Emp_Name: task.Emp_Name || "",
-      Sch_Time: task.Sch_Time || task.Start_Time,
-      EN_Time: task.EN_Time || task.End_Time,
+      Sch_Time: task.type === "executed"
+        ? task.Start_Time || task.Sch_Est_Start_Time
+        : task.Sch_Time || task.Start_Time,
+      EN_Time: task.type === "executed"
+        ? task.End_Time || task.Sch_Est_End_Time
+        : task.EN_Time || task.End_Time,
       Work_Dt: task.Work_Dt
         ? formatDate(task.Work_Dt)
         : task.Task_Assign_dt
@@ -988,6 +989,8 @@ const CreditListPage = () => {
       parameters: task.parameters,
       Parameters: (task as any).Parameters,
       Process_Id: task.Process_Id ?? task.Task_Process ?? task.process_id ?? 0,
+      Schedule_Sch_No: task.Schedule_Sch_No || task.Sch_No || "",
+      Sch_No: task.Sch_No || task.Schedule_Sch_No || "",
       type: task.type
     };
 
@@ -1483,6 +1486,7 @@ const CreditListPage = () => {
                 key={`assigned-${selectedEmployee}-${currentCompany?.companyId}`}
                 plugins={calendarPlugins}
                 initialView="timeGridDay"
+                timeZone="local"
                 initialDate={assignedInitialDate}
                 events={assignedEvents}
                 eventContent={renderAssignedEvent}
@@ -1735,6 +1739,7 @@ const CreditListPage = () => {
                 key={`executed-${selectedEmployee}-${currentCompany?.companyId}`}
                 plugins={calendarPlugins}
                 initialView="timeGridDay"
+                timeZone="local"
                 initialDate={executedInitialDate}
                 events={executedEvents}
                 eventContent={renderExecutedEvent}

@@ -13,6 +13,7 @@ import {
   useMediaQuery,
   useTheme,
   Badge,
+  Chip,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import {
@@ -49,7 +50,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
   loadingOn,
   loadingOff,
 }) => {
-  const { currentPage, navDetails, logout, user } = useAuth();
+  const { currentPage, navDetails, logout, user, currentCompany } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
   const [unreadCount, setUnreadCount] = React.useState<number>(0);
@@ -207,6 +208,7 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: { xs: 1, sm: 1.5 },
         }}
       >
         {/* LEFT – Today Plan Toggle */}
@@ -268,6 +270,40 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
 
         {/* RIGHT – User Info + Actions */}
         <RightSection>
+          {currentCompany?.companyName && (
+            <Chip
+              icon={
+                <Box
+                  component="span"
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    bgcolor: "#bce7cf",
+                    boxShadow: "0 0 0 3px rgba(188, 231, 207, 0.14)",
+                  }}
+                />
+              }
+              label={currentCompany.companyName}
+              size="small"
+              variant="outlined"
+              title={currentCompany.companyName}
+              sx={{
+                maxWidth: { xs: 110, sm: 180, lg: 220 },
+                height: { xs: 28, sm: 32 },
+                background: "linear-gradient(135deg, #244c43 0%, #173a35 100%)",
+                color: "#ffffff",
+                borderColor: "rgba(255, 255, 255, 0.35)",
+                borderRadius: "999px",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.16), 0 2px 5px rgba(23,58,53,0.18)",
+                fontWeight: 700,
+                fontSize: { xs: 11, sm: 12 },
+                letterSpacing: "0.2px",
+                "& .MuiChip-icon": { ml: 1.5, mr: 0, flexShrink: 0 },
+                "& .MuiChip-label": { pl: 1, pr: { xs: 1.25, sm: 1.75 } },
+              }}
+            />
+          )}
           {/* Settings icon */}
           {/* <IconButton
             size="small"
@@ -295,8 +331,8 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
             alignItems="center" 
             justifyContent="center"
             sx={{ 
-              ml: { xs: 1.5, sm: 3 },
-              mr: { xs: 1, sm: 1.5 },
+              mx: 0,
+              minWidth: { xs: 30, sm: 64 },
               position: "relative",
               height: "100%"
             }}
@@ -410,9 +446,10 @@ const RightSection = styled(Box)(({ theme }) => ({
   alignItems: "center",
   justifyContent: "flex-end",
   height: "100%",
-  gap: 4,
+  gap: theme.spacing(1),
+  flexShrink: 0,
   minWidth: 40,
-  [theme.breakpoints.up("sm")]: { gap: 6, minWidth: 120 },
+  [theme.breakpoints.up("sm")]: { gap: theme.spacing(1.5), minWidth: 120 },
   [theme.breakpoints.up("md")]: { minWidth: 160 },
 }));
 

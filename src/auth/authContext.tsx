@@ -412,6 +412,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
     }, []);
 
+    // ─── Auto-login via URL params (?Auth=...&company_id=...&username=...) ───
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        const authFromUrl = params.get("Auth");
+        if (!authFromUrl) return;
+
+        const companyIdFromUrl = params.get("company_id");
+
+        const verifyAndLogin = async () => {
+            try {
+                const headers: Record<string, string> = {
+                    Authorization: `Bearer ${authFromUrl}`,
+                };
+                if (companyIdFromUrl) {
+                    headers["X-Company-Id"] = companyIdFromUrl;
+                    headers["Db"] = companyIdFromUrl;
+                }
+
+                const res = await fetch(`${baseURL}configuration/login/verify`, {
+                    method: "GET",
+                    headers,
+                });
+
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data?.status === "success" && data?.data?.user) {
+                    const verifiedUser = data.data.user;
+                    const companiesList: CompanyInfo[] = Array.isArray(data.data.currentCompany)
+                        ? data.data.currentCompany.map((c: Record<string, unknown>) => ({
+                              companyId: Number(c.companyId),
+                              companyName: (c.companyName as string) ?? null,
+                              dbName: (c.dbName as string) ?? null,
+                              token: (c.token as string) || authFromUrl,
+                              UserTypeId: c.UserTypeId !== undefined ? Number(c.UserTypeId) : verifiedUser.UserTypeId,
+                              Local_User_ID: c.Local_User_ID !== undefined ? Number(c.Local_User_ID) : verifiedUser.Local_User_ID,
+                              Global_User_ID: c.Global_User_ID !== undefined ? Number(c.Global_User_ID) : verifiedUser.Global_User_ID,
+                          }))
+                        : [];
+
+                    const targetCompId = companyIdFromUrl ? Number(companyIdFromUrl) : undefined;
+                    const selectedComp =
+                        (targetCompId ? companiesList.find(c => c.companyId === targetCompId) : undefined) ||
+                        companiesList.find(c => c.token === authFromUrl) ||
+                        companiesList[0];
+
+                    const finalToken = selectedComp?.token || authFromUrl;
+                    const userObj: User = {
+                        Global_User_ID: selectedComp?.Global_User_ID ?? verifiedUser.Global_User_ID,
+                        Local_User_ID: selectedComp?.Local_User_ID ?? verifiedUser.Local_User_ID ?? null,
+                        UserTypeId: selectedComp?.UserTypeId ?? verifiedUser.UserTypeId ?? 0,
+                        Name: verifiedUser.Name,
+                        UserName: verifiedUser.UserName,
+                        Company_Id: selectedComp?.companyId ?? targetCompId ?? null,
+                        Company_Name: selectedComp?.companyName ?? null,
+                        DB_Name: selectedComp?.dbName ?? null,
+                        id: selectedComp?.Global_User_ID ?? verifiedUser.Global_User_ID,
+                        name: verifiedUser.Name,
+                        uniqueName: verifiedUser.UserName,
+                        userType: selectedComp?.UserTypeId ?? verifiedUser.UserTypeId ?? 0,
+                    };
+
+                    login(finalToken, userObj, companiesList, data.data);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            } catch (err) {
+                console.error("URL Auth auto-login failed:", err);
+            }
+        };
+
+        void verifyAndLogin();
+    }, [login]);
+
     // ─── Listen for auth expiration events ───
     useEffect(() => {
         const handleAuthExpired = () => {

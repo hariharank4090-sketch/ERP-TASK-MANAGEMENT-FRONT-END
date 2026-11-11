@@ -11,6 +11,7 @@ import { CircularProgress } from "@mui/material";
 import { appRoutes } from "./routes/indexRouter";
 import type { MenuRow } from "./modules/configuration/types";
 import { getAppMenuData } from "./modules/configuration/api";
+import { prefetchDashboardData } from "./modules/Dashboard/All.api";
 import PageNotFound from "./Components/404page";
 import { buildMenuTree } from "./utils/menuManagement";
 import { ToastContainer } from "react-toastify";
@@ -78,6 +79,14 @@ function App() {
     const fetchMenuData = useCallback(async () => {
         try {
             const res = await getAppMenuData(loadingOn, loadingOff);
+            if (getFirstMenuPath(buildMenuTree(res)) === "/all") {
+                void import("./modules/Dashboard/All").catch(error => {
+                    console.error("Dashboard preload failed", error);
+                });
+                void prefetchDashboardData().catch(error => {
+                    console.error("Dashboard prefetch failed", error);
+                });
+            }
             setMenuData(res);
         } catch (e) {
             console.error("Failed to fetch menu data:", e);

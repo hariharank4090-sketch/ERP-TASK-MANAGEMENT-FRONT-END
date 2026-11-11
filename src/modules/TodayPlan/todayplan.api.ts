@@ -513,15 +513,15 @@ export const getEnrichedWorkMaster = async (
     data: WorkMasterData[];
 }> => {
     try {
-        const response = await getWorkMaster(params, loadingOn, loadingOff);
+        const [response, employees, projects] = await Promise.all([
+            getWorkMaster(params, loadingOn, loadingOff),
+            getEmployeeDropdown(companyId),
+            getProjectDropdown(companyId).catch(() => [])
+        ]);
         if (!response.success) return response;
         if (response.data.length === 0) return response;
 
         // ✅ FIX: pass companyId so it uses the cached dropdown data already requested
-        const [employees, projects] = await Promise.all([
-            getEmployeeDropdown(companyId),
-            getProjectDropdown(companyId).catch(() => [])
-        ]);
         const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
         const projectMap = new Map(projects.map(p => [String(p.Project_Id), p.Project_Name]));
 
@@ -556,12 +556,16 @@ export const getEnrichedTodayPlan = async (
     try {
         const queryString = buildQueryString(params);
         const url = `${todayplanAPI}${queryString}`;
-        const res = await fetchLink<BasicApiResponse>({
-            address: url,
-            method: "GET",
-            loadingOn,
-            loadingOff
-        });
+        const [res, employees, projects] = await Promise.all([
+            fetchLink<BasicApiResponse>({
+                address: url,
+                method: "GET",
+                loadingOn,
+                loadingOff
+            }),
+            getEmployeeDropdown(companyId),
+            getProjectDropdown(companyId)
+        ]);
 
         if (res && res.success) {
             const responseData = res.data as any;
@@ -609,12 +613,6 @@ export const getEnrichedTodayPlan = async (
                 Sch_Type_Id: item.Sch_Type_Id ?? item.schTypeId ?? item.Sch_Type ?? item.schType ?? null,
                 Sch_Plan_Id: item.Sch_Plan_Id ?? item.schPlanId ?? item.Schedule_Sch_Plan_Id ?? null
             }));
-
-            // ✅ FIX: pass companyId so the correct company's cached data is used
-            const [employees, projects] = await Promise.all([
-                getEmployeeDropdown(companyId),
-                getProjectDropdown(companyId)
-            ]);
 
             const employeeMap = new Map(employees.map(e => [String(e.Emp_Id), e.Emp_Name]));
             const projectMap = new Map(projects.map(p => [String(p.Project_Id), p.Project_Name]));

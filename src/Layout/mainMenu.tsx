@@ -27,7 +27,15 @@ interface MenuItemProps {
     title: string;
     /** Exact navigable path — tUrl wins, slug-chain is fallback */
     path: string;
+    isExternal?: boolean;
 }
+
+const STATIC_TICKETING_MENU: MenuItemProps = {
+    title: "Ticketing Tool",
+    // path: "https://ticketing.pukalerp.in/login",
+    path: "https://testticket.pukaltechnologies.in/login",
+    isExternal: true,
+};
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -133,7 +141,7 @@ const MobileMenuDrawer: React.FC<{
     open: boolean;
     onClose: () => void;
     currentPath: string;
-    onNavigate: (path: string) => void;
+    onNavigate: (path: string, isExternal?: boolean) => void;
     onToggleTodayPlan?: () => void;
 }> = ({ menus, open, onClose, currentPath, onNavigate, onToggleTodayPlan }) => (
     <Drawer
@@ -188,9 +196,9 @@ const MobileMenuDrawer: React.FC<{
             {menus.map((menu) => (
                 <ListItem key={menu.path} disablePadding>
                     <ListItemButton
-                        selected={isActive(menu.path, currentPath)}
+                        selected={!menu.isExternal && isActive(menu.path, currentPath)}
                         onClick={() => {
-                            if (menu.path) onNavigate(menu.path);
+                            if (menu.path) onNavigate(menu.path, menu.isExternal);
                             onClose();
                         }}
                         sx={{
@@ -226,7 +234,7 @@ interface MainMenuProps extends PageProps {
 }
 
 const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPlan }) => {
-    const { navDetails } = useAuth();
+    const { navDetails, token, user, currentCompany } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const theme = useTheme();
@@ -236,14 +244,53 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
 
     const [drawerOpen, setDrawerOpen] = useState(false);
 
-    const handleNavigation = (path: string) => {
+    const buildExternalSsoUrl = (baseUrl: string): string => {
+        try {
+            const url = new URL(baseUrl);
+            const activeToken =
+                currentCompany?.token ||
+                token ||
+                localStorage.getItem("token") ||
+                "";
+            const activeCompanyId =
+                currentCompany?.companyId ??
+                user?.Company_Id ??
+                localStorage.getItem("companyId") ??
+                "";
+            const activeUsername =
+                user?.UserName ||
+                user?.uniqueName ||
+                "";
+
+            if (activeToken) {
+                url.searchParams.set("Auth", activeToken);
+            }
+            if (activeCompanyId !== "" && activeCompanyId !== null && activeCompanyId !== undefined) {
+                url.searchParams.set("company_id", String(activeCompanyId));
+            }
+            if (activeUsername) {
+                url.searchParams.set("username", activeUsername);
+            }
+            return url.toString();
+        } catch {
+            return baseUrl;
+        }
+    };
+
+    const handleNavigation = (path: string, isExternal?: boolean) => {
+        if (isExternal || /^https?:\/\//i.test(path)) {
+            const targetUrl = buildExternalSsoUrl(path);
+            window.open(targetUrl, "_blank", "noopener,noreferrer");
+            setDrawerOpen(false);
+            return;
+        }
         navigate(path);
         setDrawerOpen(false); // Close drawer on mobile navigation
     };
 
     // Flatten the entire tree then filter menuType === 2 (main menu nodes).
     // Sorting ascending by sortOrder then title.
-    const menus: MenuItemProps[] = flattenTree(
+    const dynamicMenus: MenuItemProps[] = flattenTree(
         (navDetails as MenuTreeNode[] | undefined) ?? []
     )
         .filter((m) => m.menuType === 2)
@@ -254,15 +301,17 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
         })
         .map(convertMenuTreeNodeToItem);
 
+    const menus: MenuItemProps[] = [...dynamicMenus, STATIC_TICKETING_MENU];
+
     const currentPath = normalizePath(location.pathname);
     const MAX_TABLET_ITEMS = 4;
 
     // Automatically navigate to the first menu button page when on root path "/"
     useEffect(() => {
-        if (currentPath === "/" && menus.length > 0 && menus[0]?.path) {
-            navigate(menus[0].path, { replace: true });
+        if (currentPath === "/" && dynamicMenus.length > 0 && dynamicMenus[0]?.path) {
+            navigate(dynamicMenus[0].path, { replace: true });
         }
-    }, [currentPath, menus, navigate]);
+    }, [currentPath, dynamicMenus, navigate]);
 
 
     // ── Mobile ────────────────────────────────────────────────────────────────
@@ -311,8 +360,8 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
                     {visibleMenus.map((menu) => (
                         <MenuButton
                             key={menu.path}
-                            onClick={() => menu.path && handleNavigation(menu.path)}
-                            className={isActive(menu.path, currentPath) ? "active" : ""}
+                            onClick={() => menu.path && handleNavigation(menu.path, menu.isExternal)}
+                            className={!menu.isExternal && isActive(menu.path, currentPath) ? "active" : ""}
                         >
                             {menu.title}
                         </MenuButton>
@@ -343,8 +392,8 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
                 {menus.map((menu) => (
                     <MenuButton
                         key={menu.path}
-                        onClick={() => menu.path && handleNavigation(menu.path)}
-                        className={isActive(menu.path, currentPath) ? "active" : ""}
+                        onClick={() => menu.path && handleNavigation(menu.path, menu.isExternal)}
+                        className={!menu.isExternal && isActive(menu.path, currentPath) ? "active" : ""}
                     >
                         {menu.title}
                     </MenuButton>

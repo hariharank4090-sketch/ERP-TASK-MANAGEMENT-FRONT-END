@@ -78,32 +78,8 @@ export function LoadingScreen({
         };
     }, [tone]);
 
-    const [internalLoading, setInternalLoading] = React.useState(loading);
-    const startTimeRef = React.useRef<number | null>(null);
-
-    useEffect(() => {
-        if (loading) {
-            setInternalLoading(true);
-            startTimeRef.current = Date.now();
-        } else {
-            if (startTimeRef.current) {
-                const elapsed = Date.now() - startTimeRef.current;
-                const minTime = 2200; // Exact 2 spins at 1.1s each
-                if (elapsed < minTime) {
-                    const timer = setTimeout(() => {
-                        setInternalLoading(false);
-                        startTimeRef.current = null;
-                    }, minTime - elapsed);
-                    return () => clearTimeout(timer);
-                } else {
-                    setInternalLoading(false);
-                    startTimeRef.current = null;
-                }
-            } else {
-                setInternalLoading(false);
-            }
-        }
-    }, [loading]);
+    // Release the overlay as soon as the request finishes.
+    const internalLoading = loading;
 
     useEffect(() => {
         if (!internalLoading || typeof window === "undefined" || typeof document === "undefined") return;

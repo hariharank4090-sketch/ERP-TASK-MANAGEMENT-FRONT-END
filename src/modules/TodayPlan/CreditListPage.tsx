@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -327,8 +328,10 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
   title = "Today's Tasks",
 }) => {
   const { token, currentCompany, isSwitchingCompany } = useAuth();
+  const location = useLocation();
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapseState, setCollapseState] = useState<{ navigationKey: string; collapsed: boolean } | null>(null);
+  const collapsed = collapseState?.navigationKey === location.key ? collapseState.collapsed : false;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -707,9 +710,6 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
             <TodayIcon color="primary" fontSize="small" />
             <Typography fontWeight={700} fontSize="0.95rem">{title}</Typography>
             <Chip label={todayDateForDisplay} size="small" color="primary" variant="outlined" />
-            {currentCompany && (
-              <Chip label={currentCompany.companyName} size="small" color="secondary" variant="outlined" />
-            )}
           </Box>
 
           <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
@@ -753,9 +753,16 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
               </IconButton>
             </Tooltip>
 
-            <IconButton size="small" onClick={() => setCollapsed(!collapsed)} sx={{ bgcolor: "#fff" }}>
-              {collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-            </IconButton>
+            <Button
+              size="small"
+              aria-label={collapsed ? "View more" : "View less"}
+              aria-expanded={!collapsed}
+              onClick={() => setCollapseState({ navigationKey: location.key, collapsed: !collapsed })}
+              endIcon={collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+              sx={{ bgcolor: "#fff", textTransform: "none", whiteSpace: "nowrap" }}
+            >
+              {collapsed ? "View more" : "View less"}
+            </Button>
           </Box>
         </Box>
 

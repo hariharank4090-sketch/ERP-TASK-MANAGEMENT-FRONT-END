@@ -40,9 +40,11 @@ let workMasterPromise: Promise<{
 let projectSchedulesPromise: Promise<any> | null = null;
 let taskTypesPromise: Promise<tasktypeData[]> | null = null;
 let scheduleEmpPromise: Promise<any[]> | null = null;
+let cacheGeneration = 0;
 
 // Clear caches (called on login/logout/company switch/CRUD actions)
 export const clearDashboardCaches = () => {
+    cacheGeneration++;
     tasksCache = [];
     employeesCache = [];
     projectsCache = [];
@@ -171,6 +173,7 @@ export const getTaskDropdown = async (
         return tasksPromise;
     }
 
+    const generation = cacheGeneration;
     tasksPromise = (async () => {
         try {
             const res = await fetchLink<BasicApiResponse>({
@@ -181,17 +184,18 @@ export const getTaskDropdown = async (
             });
 
             if (res && res.success) {
-                tasksCache = (res.data as unknown as TaskDropdown[]) || [];
-                return tasksCache;
+                const data = (res.data as unknown as TaskDropdown[]) || [];
+                if (generation === cacheGeneration) tasksCache = data;
+                return data;
             } else {
                 toast.error(res?.message || "Failed to load Tasks");
-                tasksPromise = null;
+                if (generation === cacheGeneration) tasksPromise = null;
                 return [];
             }
         } catch (e: unknown) {
             console.error("getTaskDropdown Error:", e);
             toast.error("Network error loading Tasks");
-            tasksPromise = null;
+            if (generation === cacheGeneration) tasksPromise = null;
             return [];
         }
     })();
@@ -216,6 +220,7 @@ export const getEmployeeDropdown = async (
         return employeesPromise;
     }
 
+    const generation = cacheGeneration;
     employeesPromise = (async () => {
         try {
             const res = await fetchLink<BasicApiResponse>({
@@ -226,17 +231,18 @@ export const getEmployeeDropdown = async (
             });
 
             if (res && res.success) {
-                employeesCache = (res.data as unknown as EmployeeDropdown[]) || [];
-                return employeesCache;
+                const data = (res.data as unknown as EmployeeDropdown[]) || [];
+                if (generation === cacheGeneration) employeesCache = data;
+                return data;
             } else {
                 toast.error(res?.message || "Failed to load Employees");
-                employeesPromise = null;
+                if (generation === cacheGeneration) employeesPromise = null;
                 return [];
             }
         } catch (e: unknown) {
             console.error("getEmployeeDropdown Error:", e);
             toast.error("Network error loading Employees");
-            employeesPromise = null;
+            if (generation === cacheGeneration) employeesPromise = null;
             return [];
         }
     })();
@@ -262,6 +268,7 @@ export const getProjectDropdown = async (
         return projectsPromise;
     }
 
+    const generation = cacheGeneration;
     projectsPromise = (async () => {
         try {
             const res = await fetchLink<BasicApiResponse>({
@@ -275,7 +282,7 @@ export const getProjectDropdown = async (
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const rawData = (res.data as unknown as any[]) || [];
                 // Map the full API response into ProjectDropdown, preserving IsActive and all fields
-                projectsCache = rawData.map((item) => ({
+                const data = rawData.map((item) => ({
                     Project_Id: item.Project_Id != null ? Number(item.Project_Id) : null,
                     Project_Name: item.Project_Name || '',
                     Project_Desc: item.Project_Desc || '',
@@ -292,15 +299,16 @@ export const getProjectDropdown = async (
                     statusText: item.statusText || undefined,
                     projectStatusText: item.projectStatusText || undefined,
                 }));
-                return projectsCache;
+                if (generation === cacheGeneration) projectsCache = data;
+                return data;
             } else {
                 toast.error(res?.message || "Failed to load Projects");
-                projectsPromise = null;
+                if (generation === cacheGeneration) projectsPromise = null;
                 return [];
             }
         } catch (e: unknown) {
             console.error("getProjectDropdown Error:", e);
-            projectsPromise = null;
+            if (generation === cacheGeneration) projectsPromise = null;
             return [];
         }
     })();
@@ -397,6 +405,7 @@ export const getEnrichedWorkMaster = async (
         return workMasterPromise;
     }
 
+    const generation = cacheGeneration;
     const promise = (async () => {
         try {
             // Fetch main data and employees in parallel
@@ -406,7 +415,7 @@ export const getEnrichedWorkMaster = async (
             ]);
 
             if (!response.success) {
-                if (isDefaultQuery) workMasterPromise = null;
+                if (isDefaultQuery && generation === cacheGeneration) workMasterPromise = null;
                 return response;
             }
 
@@ -424,7 +433,7 @@ export const getEnrichedWorkMaster = async (
                 };
             });
 
-            if (isDefaultQuery) {
+            if (isDefaultQuery && generation === cacheGeneration) {
                 workMasterCache = enrichedData;
             }
 
@@ -434,7 +443,7 @@ export const getEnrichedWorkMaster = async (
             };
         } catch (e: unknown) {
             console.error("getEnrichedWorkMaster Error:", e);
-            if (isDefaultQuery) workMasterPromise = null;
+            if (isDefaultQuery && generation === cacheGeneration) workMasterPromise = null;
             return {
                 success: false,
                 message: "Error enriching Work Master data",
@@ -452,7 +461,8 @@ export const getEnrichedWorkMaster = async (
 
 // Cached Project Schedules for Dashboard
 export const getDashboardProjectSchedules = async (
-    forceRefresh: boolean = false
+    forceRefresh: boolean = false,
+    taskTypesSource?: Promise<tasktypeData[]>
 ): Promise<any> => {
     if (forceRefresh) {
         projectSchedulesCache = null;
@@ -464,9 +474,21 @@ export const getDashboardProjectSchedules = async (
     if (projectSchedulesPromise) {
         return projectSchedulesPromise;
     }
-    projectSchedulesPromise = getprojectschedule(1, 1000, "Sch_Id", "DESC")
+    const generation = cacheGeneration;
+    const taskTypeMapSource = taskTypesSource?.then(types => {
+        const map: Record<number, string> = {};
+        types.forEach(type => {
+            if (type.Task_Type_Id && type.Task_Type) {
+                map[Number(type.Task_Type_Id)] = type.Task_Type;
+            }
+        });
+        return map;
+    });
+    projectSchedulesPromise = getprojectschedule(
+        1, 1000, "Sch_Id", "DESC", undefined, undefined, undefined, taskTypeMapSource
+    )
         .then(res => {
-            projectSchedulesCache = res;
+            if (generation === cacheGeneration) projectSchedulesCache = res;
             return res;
         })
         .catch(() => ({ data: [] }));
@@ -487,10 +509,12 @@ export const getDashboardTaskTypes = async (
     if (taskTypesPromise) {
         return taskTypesPromise;
     }
+    const generation = cacheGeneration;
     taskTypesPromise = gettasktype()
         .then(res => {
-            taskTypesCache = res || [];
-            return taskTypesCache;
+            const data = res || [];
+            if (generation === cacheGeneration) taskTypesCache = data;
+            return data;
         })
         .catch(() => []);
     return taskTypesPromise;
@@ -510,12 +534,13 @@ export const getDashboardProjectScheduleEmp = async (
     if (scheduleEmpPromise) {
         return scheduleEmpPromise;
     }
+    const generation = cacheGeneration;
     scheduleEmpPromise = fetchLink<BasicApiResponse>({
         address: "masters/projectScheduleEmp/list",
         method: "GET"
     }).then(res => {
         if (res && res.success && Array.isArray(res.data)) {
-            scheduleEmpCache = res.data;
+            if (generation === cacheGeneration) scheduleEmpCache = res.data;
             return res.data;
         }
         return [];
@@ -524,4 +549,18 @@ export const getDashboardProjectScheduleEmp = async (
         return [];
     });
     return scheduleEmpPromise;
+};
+
+// Warm the same caches used by All while its route code is still loading.
+export const prefetchDashboardData = async (): Promise<void> => {
+    const types = getDashboardTaskTypes();
+    await Promise.all([
+        getProjectDropdown(),
+        getTaskDropdown(),
+        getEmployeeDropdown(),
+        getDashboardProjectSchedules(false, types),
+        getDashboardProjectScheduleEmp(),
+        getEnrichedWorkMaster(),
+        types,
+    ]);
 };

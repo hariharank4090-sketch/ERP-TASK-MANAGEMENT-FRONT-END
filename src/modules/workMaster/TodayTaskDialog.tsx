@@ -187,6 +187,19 @@ const TodayTaskDialog: React.FC<Props> = ({
     Record<string, string>
   >({});
   const [matchedWorkRecord, setMatchedWorkRecord] = useState<any>(null);
+  const [isTicketSchedule, setIsTicketSchedule] = useState<boolean>(false);
+  const [ticketInfo, setTicketInfo] = useState<any>(null);
+  const [ticketStatus, setTicketStatus] = useState<string>("Assigned");
+
+  const normalizeTicketStatus = (raw: any): string => {
+    if (!raw) return "Assigned";
+    const s = String(raw).toLowerCase().trim();
+    if (s === "assigned") return "Assigned";
+    if (s === "new") return "New";
+    if (s === "pending") return "Pending";
+    if (s === "closed") return "Closed";
+    return "Assigned";
+  };
 
   const [formData, setFormData] = useState<any>({
     SNo: "",
@@ -360,6 +373,83 @@ const TodayTaskDialog: React.FC<Props> = ({
       });
     }
   }, [sourceData, loggedEmpId, todayDate, open, isEditMode]);
+
+  // ==========================================================
+  // 2B. DETECT TICKET SCHEDULE & FETCH TICKET STATUS
+  // ==========================================================
+  useEffect(() => {
+    if (!isOpen || !sourceData) {
+      setIsTicketSchedule(false);
+      setTicketInfo(null);
+      setTicketStatus("Assigned");
+      return;
+    }
+
+    let active = true;
+    const schNo = String(selectedPlan?.Schedule_Sch_No || selectedPlan?.Sch_No || sourceData.Schedule_Sch_No || sourceData.Sch_No || "");
+    const taskName = String(sourceData.Task_Name || selectedPlan?.Task_Name || "");
+    const tckMatch = schNo.match(/TCK-0*(\d+)/i);
+
+    if (tckMatch && tckMatch[1]) {
+      setIsTicketSchedule(true);
+      setTicketInfo((prev: any) => ({
+        ...(prev || {}),
+        Ticket_Id: Number(tckMatch[1])
+      }));
+    } else {
+      setIsTicketSchedule(false);
+      setTicketInfo(null);
+    }
+
+    const fetchTicketDetails = async () => {
+      const taskId = sourceData.Task_Id || "";
+      const schId = sourceData.Sch_Id || "";
+      if (!taskId && !schId && !schNo) return;
+
+      try {
+        const res: any = await fetchLink<any>({
+          address: `masters/tickets/by-task?taskId=${encodeURIComponent(String(taskId))}&schId=${encodeURIComponent(String(schId))}&schNo=${encodeURIComponent(schNo)}&taskName=${encodeURIComponent(taskName)}`,
+          method: "GET"
+        });
+
+        if (!active) return;
+
+        if (res?.success && res?.data?.isTicketSchedule) {
+          setIsTicketSchedule(true);
+          setTicketInfo(res.data);
+          setTicketStatus(normalizeTicketStatus(res.data.Status));
+          return;
+        }
+
+        if (taskId) {
+          const ttRes: any = await fetchLink<any>({
+            address: `masters/ticketTasks?Task_Id=${encodeURIComponent(String(taskId))}`,
+            method: "GET"
+          });
+
+          if (!active) return;
+
+          if (ttRes?.success && Array.isArray(ttRes?.data) && ttRes.data.length > 0) {
+            const mapping = ttRes.data[0];
+            setIsTicketSchedule(true);
+            setTicketInfo({
+              Ticket_Id: mapping.Ticket_Id,
+              From_CompanyId: mapping.From_CompanyId,
+              To_CompanyId: mapping.To_CompanyId
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error checking ticket schedule info:", err);
+      }
+    };
+
+    fetchTicketDetails();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, sourceData?.Task_Id, sourceData?.Sch_Id, sourceData?.Schedule_Sch_No, sourceData?.Sch_No]);
 
   // ==========================================================
   // 3. RESTORE TIMER useEffect
@@ -619,6 +709,13 @@ const TodayTaskDialog: React.FC<Props> = ({
       Entry_By: parseInt(loggedEmpId || "1")
     };
 
+    if (isTicketSchedule) {
+      if (ticketInfo?.Ticket_Id) payload.Ticket_Id = Number(ticketInfo.Ticket_Id);
+      if (ticketStatus) payload.Ticket_Status = ticketStatus;
+      if (ticketInfo?.From_CompanyId) payload.From_CompanyId = Number(ticketInfo.From_CompanyId);
+      if (ticketInfo?.To_CompanyId) payload.To_CompanyId = Number(ticketInfo.To_CompanyId);
+    }
+
     setLoading(true);
     setSubmitError(null);
 
@@ -861,6 +958,13 @@ const TodayTaskDialog: React.FC<Props> = ({
         Parameters: parameters
       };
 
+      if (isTicketSchedule) {
+        if (ticketInfo?.Ticket_Id) payload.Ticket_Id = Number(ticketInfo.Ticket_Id);
+        if (ticketStatus) payload.Ticket_Status = ticketStatus;
+        if (ticketInfo?.From_CompanyId) payload.From_CompanyId = Number(ticketInfo.From_CompanyId);
+        if (ticketInfo?.To_CompanyId) payload.To_CompanyId = Number(ticketInfo.To_CompanyId);
+      }
+
       const originalDate = formatDateForInput(sourceData?.Work_Dt);
       const isDateChanged = (isEditMode || formData.SNo) && formData.Work_Dt !== originalDate;
 
@@ -885,6 +989,30 @@ const TodayTaskDialog: React.FC<Props> = ({
       });
 
       if (res?.success) {
+        if (isTicketSchedule) {
+          try {
+            await fetchLink<any>({
+              address: "masters/tickets",
+              method: "PUT",
+              bodyData: {
+                Id: ticketInfo?.Ticket_Id ? Number(ticketInfo.Ticket_Id) : undefined,
+                Task_Id: formData.Task_Id && !isNaN(Number(formData.Task_Id)) ? Number(formData.Task_Id) : undefined,
+                Sch_Id: formData.Sch_Id && !isNaN(Number(formData.Sch_Id)) ? Number(formData.Sch_Id) : undefined,
+                Task_Name: formData.Task_Name || sourceData?.Task_Name || selectedPlan?.Task_Name || undefined,
+                Sch_No: selectedPlan?.Schedule_Sch_No || selectedPlan?.Sch_No || sourceData?.Schedule_Sch_No || sourceData?.Sch_No || undefined,
+                Status: ticketStatus,
+                Ticket_Status: ticketStatus,
+                Work_Status: formData.Work_Status,
+                Work_Done: formData.Work_Done,
+                From_CompanyId: ticketInfo?.From_CompanyId ? Number(ticketInfo.From_CompanyId) : undefined,
+                To_CompanyId: ticketInfo?.To_CompanyId ? Number(ticketInfo.To_CompanyId) : undefined
+              }
+            });
+          } catch (ticketErr) {
+            console.error("Error syncing ticket status:", ticketErr);
+          }
+        }
+
         toast.success(
           isPut
             ? "Work updated successfully!"
@@ -1154,6 +1282,45 @@ const TodayTaskDialog: React.FC<Props> = ({
               </MenuItem>
             </TextField>
           </Grid>
+
+          {isTicketSchedule && (
+            <Grid size={{ xs: 12 }}>
+              <Typography
+                fontWeight={600}
+                gutterBottom
+              >
+                Ticket Status{" "}
+                <span style={{ color: "red" }}>
+                  *
+                </span>
+              </Typography>
+
+              <TextField
+                select
+                fullWidth
+                value={ticketStatus}
+                onChange={(e) => setTicketStatus(e.target.value)}
+                size="small"
+                required
+              >
+                <MenuItem value="Assigned">
+                  Assigned
+                </MenuItem>
+
+                <MenuItem value="New">
+                  New
+                </MenuItem>
+
+                <MenuItem value="Pending">
+                  Pending
+                </MenuItem>
+
+                <MenuItem value="Closed">
+                  Closed
+                </MenuItem>
+              </TextField>
+            </Grid>
+          )}
 
           <Grid size={{ xs: 6 }}>
             <Typography

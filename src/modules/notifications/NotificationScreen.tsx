@@ -22,7 +22,7 @@ import {
   CircularProgress,
 } from "@mui/material";
 import TicketDetailsDialog from "./TicketDetailsDialog";
-import ImagePreviewDialog from "../../Components/imagePreview";
+import ImagePreviewDialog, { isVideoUrl, resolveMediaUrl } from "../../Components/imagePreview";
 import { useAuth } from "../../auth/authContext";
 import { fetchLink } from "../../Components/customFetch";
 import {
@@ -158,6 +158,18 @@ const NotificationScreen: React.FC = () => {
             };
 
             const uniqueKey = ticket.T_Sch_Id ? `${ticket.Id}_${ticket.T_Sch_Id}` : String(ticket.Id);
+            const rawAttachment =
+              ticket.Image_Url ||
+              ticket.image_url ||
+              ticket.Video_Url ||
+              ticket.video_url ||
+              ticket.Attachment_Url ||
+              ticket.attachment_url ||
+              ticket.Attachment ||
+              ticket.attachment ||
+              (Array.isArray(ticket.Attachments) && ticket.Attachments.length > 0
+                ? ticket.Attachments[0]?.Image_Url || ticket.Attachments[0]?.url || ticket.Attachments[0]
+                : undefined);
 
             return {
               id: uniqueKey,
@@ -180,7 +192,7 @@ const NotificationScreen: React.FC = () => {
               status: ticket.Status || "New",
               createdDate: formatDate(ticket.Created_At),
               description: ticket.Description || "No Description",
-              imageUrl: ticket.Image_Url || undefined,
+              imageUrl: resolveMediaUrl(rawAttachment),
               estSchStartDate: formatDate(ticket.Est_Sch_Start_Date),
               estSchEndDate: formatDate(ticket.Est_Sch_End_Date),
               T_Sch_Id: ticket.T_Sch_Id ? String(ticket.T_Sch_Id) : undefined,
@@ -581,10 +593,23 @@ const NotificationScreen: React.FC = () => {
                         {notif.imageUrl ? (
                           <span onClick={(e) => e.stopPropagation()}>
                             <ImagePreviewDialog url={notif.imageUrl}>
-                              <Avatar
-                                src={notif.imageUrl}
-                                sx={{ bgcolor: getCategoryColor(notif.category), width: 40, height: 40 }}
-                              />
+                              {isVideoUrl(notif.imageUrl) ? (
+                                <Avatar
+                                  sx={{ bgcolor: getCategoryColor(notif.category), width: 40, height: 40, overflow: "hidden" }}
+                                >
+                                  <video
+                                    src={notif.imageUrl}
+                                    muted
+                                    preload="metadata"
+                                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                  />
+                                </Avatar>
+                              ) : (
+                                <Avatar
+                                  src={notif.imageUrl}
+                                  sx={{ bgcolor: getCategoryColor(notif.category), width: 40, height: 40 }}
+                                />
+                              )}
                             </ImagePreviewDialog>
                           </span>
                         ) : (

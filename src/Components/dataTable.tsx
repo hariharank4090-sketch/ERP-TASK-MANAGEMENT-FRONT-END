@@ -33,9 +33,6 @@ import {
   Search,
   Add,
 } from "@mui/icons-material";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
-import * as XLSX from "xlsx";
 import { isEqualNumber, ddmmyyyy, hhmm, NumberFormat } from "../utils/helper";
 
 declare module "jspdf" {
@@ -169,8 +166,13 @@ const preprocessDataForExport = (data: TableRowData[], columns: Column[]) => {
   });
 };
 
-const generatePDF = (dataArray: TableRowData[], columns: Column[]) => {
+const generatePDF = async (dataArray: TableRowData[], columns: Column[]) => {
   try {
+    const [{ default: jsPDF }, { applyPlugin }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+    applyPlugin(jsPDF);
     const doc = new jsPDF();
     const processedData = preprocessDataForExport(dataArray, columns);
     const headers: string[] = columns
@@ -191,8 +193,9 @@ const generatePDF = (dataArray: TableRowData[], columns: Column[]) => {
   }
 };
 
-const exportToExcel = (dataArray: TableRowData[], columns: Column[]) => {
+const exportToExcel = async (dataArray: TableRowData[], columns: Column[]) => {
   try {
+    const XLSX = await import("xlsx");
     const processedData = preprocessDataForExport(dataArray, columns);
     const worksheet = XLSX.utils.json_to_sheet(processedData);
     const workbook = XLSX.utils.book_new();
@@ -373,18 +376,16 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
     }
   };
 
-  const sortData = (data: TableRowData[]) => {
-    if (!sortCriteria.length) return data;
-    return [...data].sort((a, b) => {
+  const sortedData = React.useMemo(() => {
+    if (!sortCriteria.length) return dataArray;
+    return [...dataArray].sort((a, b) => {
       for (const { columnId, direction } of sortCriteria) {
         const aVal = a[columnId], bVal = b[columnId];
         if (aVal !== bVal) return direction === "asc" ? (String(aVal) > String(bVal) ? 1 : -1) : (String(aVal) < String(bVal) ? 1 : -1);
       }
       return 0;
     });
-  };
-
-  const sortedData = sortData(dataArray);
+  }, [dataArray, sortCriteria]);
   const paginatedData = sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const [openRows, setOpenRows] = useState<Record<number, boolean>>({});
@@ -453,9 +454,9 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
             };
 
             if (isColumnVisible && isCommonValue) {
-              const foundEntry = column.Field_Name
-                ? Object.entries(row).find(([key]) => key === column.Field_Name)
-                : undefined;
+              const hasField = column.Field_Name
+                ? Object.prototype.propertyIsEnumerable.call(row, column.Field_Name)
+                : false;
               return (
                 <TableCell
                   key={columnInd}
@@ -464,7 +465,7 @@ const FilterableTable: React.FC<FilterableTableProps> = ({
                   sx={cellSx}
                   onClick={() => onClickFun ? onClickFun(row) : null}
                 >
-                  {foundEntry ? formatString(foundEntry[1], column?.Field_Data ?? column?.Fied_Data) : "-"}
+                  {hasField ? formatString(row[column.Field_Name!], column?.Field_Data ?? column?.Fied_Data) : "-"}
                 </TableCell>
               );
             }
