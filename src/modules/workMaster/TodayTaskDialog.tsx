@@ -1011,6 +1011,39 @@ const TodayTaskDialog: React.FC<Props> = ({
           } catch (ticketErr) {
             console.error("Error syncing ticket status:", ticketErr);
           }
+
+          const normalizedTicketStatus = ticketStatus?.trim().toLowerCase();
+          const mappedScheduleStatus =
+            normalizedTicketStatus === "closed"
+              ? 3
+              : normalizedTicketStatus === "pending"
+                ? 2
+                : normalizedTicketStatus === "new" || normalizedTicketStatus === "assigned"
+                  ? 1
+                  : null;
+
+          if (mappedScheduleStatus !== null) {
+            const targetSchId =
+              formData.Sch_Id ||
+              selectedPlan?.Sch_Id ||
+              sourceData?.Sch_Id ||
+              ticketInfo?.T_Sch_Id;
+            if (targetSchId && !isNaN(Number(targetSchId))) {
+              try {
+                await fetchLink<any>({
+                  address: `masters/projectSchedule/${Number(targetSchId)}/status`,
+                  method: "PATCH",
+                  bodyData: {
+                    status: mappedScheduleStatus,
+                    Update_By: parseInt(loggedEmpId || "1")
+                  }
+                });
+                window.dispatchEvent(new Event("refreshSchedules"));
+              } catch (schErr) {
+                console.error("Error updating ticket schedule status:", schErr);
+              }
+            }
+          }
         }
 
         toast.success(

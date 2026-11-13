@@ -15,6 +15,7 @@ import {
 import { styled, useTheme } from "@mui/material/styles";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
+import baseURL from "../config/baseURL";
 import type { MenuTreeNode } from "../utils/menuManagement";
 import { flattenTree } from "../utils/menuManagement";
 import type { PageProps } from "../routes/indexRouter";
@@ -32,8 +33,8 @@ interface MenuItemProps {
 
 const STATIC_TICKETING_MENU: MenuItemProps = {
     title: "Ticketing Tool",
-    // path: "https://ticketing.pukalerp.in/login",
-    path: "https://testticket.pukaltechnologies.in/login",
+    path: "https://ticketing.pukalerp.in/login",
+    // path: "https://testticket.pukaltechnologies.in/login",
     isExternal: true,
 };
 
@@ -234,7 +235,7 @@ interface MainMenuProps extends PageProps {
 }
 
 const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPlan }) => {
-    const { navDetails, token, user, currentCompany } = useAuth();
+    const { navDetails, token, user, currentCompany, availableCompanies } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const theme = useTheme();
@@ -243,23 +244,81 @@ const MainMenuList: React.FC<MainMenuProps> = ({ mobileLeftMode, onToggleTodayPl
     const isTablet = useMediaQuery(theme.breakpoints.between("sm", "md"));
 
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [verifiedTokens, setVerifiedTokens] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const rawAuth = (
+            currentCompany?.token ||
+            token ||
+            (typeof localStorage !== "undefined" ? localStorage.getItem("token") : "") ||
+            ""
+        )
+            .replace(/^Bearer\s+/i, "")
+            .trim();
+
+        if (!rawAuth || typeof fetch !== "function") return;
+
+        const compId = currentCompany?.companyId ?? user?.Company_Id;
+        const headers: Record<string, string> = {
+            Authorization: `Bearer ${rawAuth}`,
+        };
+        if (compId !== undefined && compId !== null) {
+            headers["X-Company-Id"] = String(compId);
+            headers["Db"] = String(compId);
+        }
+
+        let cancelled = false;
+        fetch(`${baseURL}configuration/login/verify`, {
+            method: "GET",
+            headers,
+        })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json) => {
+                if (cancelled || !json?.data?.currentCompany) return;
+                const list = Array.isArray(json.data.currentCompany) ? json.data.currentCompany : [];
+                const nextMap: Record<string, string> = {};
+                for (const item of list) {
+                    if (item?.companyId != null && item?.token) {
+                        nextMap[String(item.companyId)] = String(item.token)
+                            .replace(/^Bearer\s+/i, "")
+                            .trim();
+                    }
+                }
+                if (Object.keys(nextMap).length > 0) {
+                    setVerifiedTokens(nextMap);
+                }
+            })
+            .catch(() => {});
+
+        return () => {
+            cancelled = true;
+        };
+    }, [token, currentCompany?.token, currentCompany?.companyId, user?.Company_Id]);
 
     const buildExternalSsoUrl = (baseUrl: string): string => {
         try {
             const url = new URL(baseUrl);
-            const activeToken =
-                currentCompany?.token ||
-                token ||
-                localStorage.getItem("token") ||
-                "";
             const activeCompanyId =
                 currentCompany?.companyId ??
                 user?.Company_Id ??
                 localStorage.getItem("companyId") ??
                 "";
+            const matchedCompany = Array.isArray(availableCompanies)
+                ? availableCompanies.find((c) => String(c.companyId) === String(activeCompanyId))
+                : undefined;
+            const rawToken =
+                (activeCompanyId !== "" ? verifiedTokens[String(activeCompanyId)] : "") ||
+                currentCompany?.token ||
+                matchedCompany?.token ||
+                token ||
+                localStorage.getItem("token") ||
+                "";
+            const activeToken = rawToken.replace(/^Bearer\s+/i, "").trim();
             const activeUsername =
                 user?.UserName ||
                 user?.uniqueName ||
+                user?.Name ||
+                user?.name ||
                 "";
 
             if (activeToken) {
