@@ -77,6 +77,18 @@ interface FormData {
   Invovled_Stat: string;
 }
 
+interface EmployeeSchedule {
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+}
+
+interface EmployeeSchedulePopupState extends EmployeeSchedule {
+  empId: number;
+  empName: string;
+}
+
 interface PageProps {
   loading: boolean;
   loadingOn: () => void;
@@ -128,6 +140,74 @@ const firstString = (...candidates: any[]): string => {
     if (s !== "") return s;
   }
   return "";
+};
+
+const toYMD = (value: any): string => {
+  const s = safeString(value);
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("-");
+    return `${y}-${m}-${d}`;
+  }
+  const dt = new Date(s);
+  if (isNaN(dt.getTime())) return "";
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+};
+
+const toHM = (value: any): string => {
+  const s = safeString(value);
+  if (!s) return "";
+  const ampmMatch = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = ampmMatch[2];
+    const mod = ampmMatch[3].toUpperCase();
+    if (mod === "PM" && h < 12) h += 12;
+    if (mod === "AM" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${m}`;
+  }
+  const hmMatch = s.match(/^(\d{1,2}):(\d{2})/);
+  if (hmMatch) {
+    return `${hmMatch[1].padStart(2, "0")}:${hmMatch[2]}`;
+  }
+  return "";
+};
+
+const formatDisplayDate = (ymd: string): string => {
+  if (!ymd) return "";
+  const parts = ymd.split("-");
+  return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : ymd;
+};
+
+const formatDisplayTime = (hm: string): string => {
+  if (!hm) return "";
+  const [hStr, mStr] = hm.split(":");
+  if (!hStr || !mStr) return hm;
+  let h = parseInt(hStr, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${String(h).padStart(2, "0")}:${mStr} ${ampm}`;
+};
+
+const buildDateRange = (startYMD: string, endYMD: string): string[] => {
+  if (!startYMD) return [];
+  const endStr = endYMD || startYMD;
+  const start = new Date(`${startYMD}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+    return [startYMD];
+  }
+  const dates: string[] = [];
+  const curr = new Date(start);
+  while (curr <= end) {
+    const y = curr.getFullYear();
+    const m = String(curr.getMonth() + 1).padStart(2, "0");
+    const d = String(curr.getDate()).padStart(2, "0");
+    dates.push(`${y}-${m}-${d}`);
+    curr.setDate(curr.getDate() + 1);
+  }
+  return dates;
 };
 
 /**
@@ -211,7 +291,7 @@ const AssignTask: React.FC<PageProps> = ({
 }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
-  const [selectedEmployeeNames, setSelectedEmployeeNames] = useState<string[]>([]);
+  const [, setSelectedEmployeeNames] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -220,6 +300,8 @@ const AssignTask: React.FC<PageProps> = ({
   const [originalAssignments, setOriginalAssignments] = useState<any[]>([]);
   
   const [scheduleTaskDates, setScheduleTaskDates] = useState<any[]>([]);
+  const [employeeSchedules, setEmployeeSchedules] = useState<Record<number, EmployeeSchedule>>({});
+  const [employeeSchedulePopup, setEmployeeSchedulePopup] = useState<EmployeeSchedulePopupState | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     Project_Id: null,
@@ -322,6 +404,35 @@ const AssignTask: React.FC<PageProps> = ({
         const uniqueIds = Array.from(new Set(assignedIds));
         if (uniqueIds.length > 0) {
           setSelectedEmployeeIds(uniqueIds);
+
+          const defaultSched = getDefaultScheduleForEmployee();
+          const loadedSchedules: Record<number, EmployeeSchedule> = {};
+          uniqueIds.forEach((empId) => {
+            const empRows = filteredData.filter(
+              (item: any) => Number(item.Emp_Id || item.empId) === empId
+            );
+            const dates = empRows
+              .map((r: any) => toYMD(r.Task_Assign_dt || r.taskAssignDt))
+              .filter(Boolean)
+              .sort();
+            const firstRow = empRows[0] || {};
+            const startDate =
+              dates[0] ||
+              toYMD(firstRow.Schedule_Sch_Start_Date || firstRow.Sch_Start_Date) ||
+              defaultSched.startDate;
+            const endDate =
+              dates[dates.length - 1] ||
+              toYMD(firstRow.Schedule_Sch_End_Date || firstRow.Sch_End_Date) ||
+              defaultSched.endDate ||
+              startDate;
+            const startTime =
+              toHM(firstRow.Sch_Time || firstRow.Start_Time) || defaultSched.startTime;
+            const endTime =
+              toHM(firstRow.EN_Time || firstRow.End_Time) || defaultSched.endTime;
+
+            loadedSchedules[empId] = { startDate, endDate, startTime, endTime };
+          });
+          setEmployeeSchedules((prev) => ({ ...loadedSchedules, ...prev }));
         }
       }
     } catch (e) {
@@ -335,6 +446,13 @@ const AssignTask: React.FC<PageProps> = ({
       fetchAllEmployees();
       setErrors({});
       setSubmitError(null);
+      setEmployeeSchedulePopup(null);
+      setEmployeeSchedules({});
+      if (mode === "create") {
+        setSelectedEmployeeIds([]);
+        setSelectedEmployeeNames([]);
+        setOriginalAssignments([]);
+      }
 
       const schId = firstPositiveInt(
         scheduleData?.Sch_Id,
@@ -397,22 +515,104 @@ const AssignTask: React.FC<PageProps> = ({
     }
   };
 
-  const handleEmployeeSelect = (empId: number) => {
-    const emp = employees.find((e) => e.Emp_Id === empId);
-    const name = emp?.Emp_Name ? safeString(emp.Emp_Name) : "";
+  const getDefaultScheduleForEmployee = (empId?: number): EmployeeSchedule => {
+    if (empId && employeeSchedules[empId]) {
+      return employeeSchedules[empId];
+    }
+
+    const todayStr = toYMD(new Date());
+    const taskDateStart =
+      scheduleTaskDates.length > 0
+        ? toYMD(scheduleTaskDates[0]?.taskWorkDate || scheduleTaskDates[0])
+        : "";
+    const taskDateEnd =
+      scheduleTaskDates.length > 0
+        ? toYMD(
+            scheduleTaskDates[scheduleTaskDates.length - 1]?.taskWorkDate ||
+              scheduleTaskDates[scheduleTaskDates.length - 1]
+          )
+        : "";
+
+    const startDate =
+      toYMD(
+        scheduleData?.Task_From_dt ||
+          scheduleData?.schStartDate ||
+          scheduleData?.Sch_Start_Date ||
+          initialData?.Task_Assign_dt ||
+          initialData?.Schedule_Sch_Start_Date ||
+          taskDateStart
+      ) || todayStr;
+
+    const endDate =
+      toYMD(
+        scheduleData?.Task_To_dt ||
+          scheduleData?.schEndDate ||
+          scheduleData?.Sch_End_Date ||
+          initialData?.Schedule_Sch_End_Date ||
+          taskDateEnd
+      ) || startDate;
+
+    const startTime =
+      toHM(
+        scheduleData?.schEstStartTime ||
+          scheduleData?.Sch_Est_Start_Time ||
+          scheduleTaskDates[0]?.taskStartTime ||
+          initialData?.Sch_Time
+      ) || "09:30";
+
+    const endTime =
+      toHM(
+        scheduleData?.schEstEndTime ||
+          scheduleData?.Sch_Est_End_Time ||
+          scheduleTaskDates[0]?.taskEndTime ||
+          initialData?.EN_Time
+      ) || "18:30";
+
+    return { startDate, endDate, startTime, endTime };
+  };
+
+  const openEmployeeSchedule = (emp: Employee) => {
+    if (!emp.Emp_Id) return;
+    const defaults = getDefaultScheduleForEmployee(emp.Emp_Id);
+    setEmployeeSchedulePopup({
+      empId: emp.Emp_Id,
+      empName: emp.Emp_Name ? safeString(emp.Emp_Name) : `Employee ${emp.Emp_Id}`,
+      startDate: defaults.startDate,
+      endDate: defaults.endDate,
+      startTime: defaults.startTime,
+      endTime: defaults.endTime,
+    });
+  };
+
+  const saveEmployeeSpecificSchedule = () => {
+    if (!employeeSchedulePopup) return;
+    const { empId, empName, startDate, endDate, startTime, endTime } =
+      employeeSchedulePopup;
+
+    if (!startDate || !endDate) {
+      toast.warning("Please select Start Date and End Date");
+      return;
+    }
+    if (endDate < startDate) {
+      toast.warning("End Date cannot be before Start Date");
+      return;
+    }
+
+    setEmployeeSchedules((prev) => ({
+      ...prev,
+      [empId]: { startDate, endDate, startTime, endTime },
+    }));
 
     if (mode === "edit") {
       setSelectedEmployeeIds([empId]);
-      setSelectedEmployeeNames(name ? [name] : []);
+      setSelectedEmployeeNames(empName ? [empName] : []);
     } else {
-      setSelectedEmployeeIds((prev) => {
-        if (prev.includes(empId)) {
-          setSelectedEmployeeNames((pn) => pn.filter((n) => n !== name));
-          return prev.filter((x) => x !== empId);
-        }
-        if (name) setSelectedEmployeeNames((pn) => [...pn, name]);
-        return [...prev, empId];
-      });
+      setSelectedEmployeeIds((prev) =>
+        prev.includes(empId) ? prev : [...prev, empId]
+      );
+      setSelectedEmployeeNames((prev) =>
+        empName && !prev.includes(empName) ? [...prev, empName] : prev
+      );
     }
 
     if (errors.employee) {
@@ -422,6 +622,8 @@ const AssignTask: React.FC<PageProps> = ({
         return n;
       });
     }
+
+    setEmployeeSchedulePopup(null);
   };
 
   const handleRemoveEmployee = (empId: number) => {
@@ -433,6 +635,11 @@ const AssignTask: React.FC<PageProps> = ({
         (n) => n !== (emp?.Emp_Name ? safeString(emp.Emp_Name) : "")
       )
     );
+    setEmployeeSchedules((prev) => {
+      const next = { ...prev };
+      delete next[empId];
+      return next;
+    });
   };
 
   const handleSelectChange = (e: SelectChangeEvent, field: keyof FormData) => {
@@ -507,7 +714,7 @@ const AssignTask: React.FC<PageProps> = ({
       // Delete unselected employees
       if (originalAssignments.length > 0) {
         const removedAssignments = originalAssignments.filter(
-          (orig) => !selectedEmployeeIds.includes(Number(orig.Emp_Id))
+          (orig) => !selectedEmployeeIds.includes(Number(orig.Emp_Id || orig.empId))
         );
 
         if (removedAssignments.length > 0) {
@@ -547,11 +754,22 @@ const AssignTask: React.FC<PageProps> = ({
         return;
       }
 
-      let payload: Record<string, unknown>;
-      let endpoint: string;
-
       if (mode === "create") {
-        payload = {
+        // Compute per-employee date ranges and their union so a single create call
+        // includes all selected employees (preserving existing ones on the backend).
+        const allowedDatesByEmp = new Map<number, Set<string>>();
+        const unionDateSet = new Set<string>();
+
+        for (const empId of selectedEmployeeIds) {
+          const empSchedule = employeeSchedules[empId] || getDefaultScheduleForEmployee(empId);
+          const empTaskDates = buildDateRange(empSchedule.startDate, empSchedule.endDate);
+          allowedDatesByEmp.set(empId, new Set(empTaskDates));
+          empTaskDates.forEach((d) => unionDateSet.add(d));
+        }
+
+        const unionTaskDates = Array.from(unionDateSet).sort();
+
+        const payload: Record<string, unknown> = {
           Project_Id: formData.Project_Id,
           Sch_Id: formData.Sch_Id,
           Task_Id: formData.Task_Id,
@@ -559,41 +777,71 @@ const AssignTask: React.FC<PageProps> = ({
           Invovled_Stat: formData.Invovled_Stat
             ? Number(formData.Invovled_Stat)
             : null,
+          ...(unionTaskDates.length > 0 ? { taskDates: unionTaskDates } : {}),
         };
-        endpoint = `${TASK_DETAIL_API}create`;
-      } else {
-        payload = {
-          Project_Id: formData.Project_Id,
-          Sch_Id: formData.Sch_Id,
-          Task_Id: formData.Task_Id,
-          Emp_Id: selectedEmployeeIds[0],
-          Invovled_Stat: formData.Invovled_Stat
-            ? Number(formData.Invovled_Stat)
-            : null,
-        };
-        endpoint = `${TASK_DETAIL_API}${initialData?.Id}`;
-      }
 
-      const res = await fetchLink<ApiResponse<TaskDetailResponseData>>({
-        address: endpoint,
-        method: mode === "create" ? "POST" : "PUT",
-        bodyData: payload,
-      });
+        const res = await fetchLink<ApiResponse<TaskDetailResponseData>>({
+          address: `${TASK_DETAIL_API}create`,
+          method: "POST",
+          bodyData: payload,
+        });
 
-      if (res?.success) {
+        if (!res?.success) {
+          throw new Error(res?.message || "Failed to assign task");
+        }
         const responseData = res.data;
+
+        // If employees have different date ranges, remove any out-of-range date rows
+        // created by the union taskDates call.
+        const needsPerEmployeeTrim =
+          unionTaskDates.length > 0 &&
+          Array.from(allowedDatesByEmp.values()).some(
+            (set) => set.size !== unionTaskDates.length
+          );
+
+        if (needsPerEmployeeTrim && formData.Sch_Id) {
+          try {
+            const listRes = await fetchLink<any>({
+              address: `masters/projectScheduleEmp/list?schId=${formData.Sch_Id}`,
+              method: "GET",
+            });
+            let dataArray: any[] = [];
+            if (listRes?.data && Array.isArray(listRes.data)) dataArray = listRes.data;
+            else if (listRes?.data && Array.isArray((listRes.data as any).data)) dataArray = (listRes.data as any).data;
+            else if (listRes?.data && Array.isArray((listRes.data as any).items)) dataArray = (listRes.data as any).items;
+            else if (Array.isArray(listRes)) dataArray = listRes;
+
+            for (const row of dataArray) {
+              const rowSchId = Number(row.Sch_Id || row.schId || row.Schedule_SchId);
+              if (rowSchId !== formData.Sch_Id) continue;
+
+              const rowEmpId = Number(row.Emp_Id || row.empId);
+              const allowedSet = allowedDatesByEmp.get(rowEmpId);
+              if (!allowedSet) continue;
+
+              const rowDate = toYMD(row.Task_Assign_dt || row.taskAssignDt);
+              const rowId = row.Id || row.id;
+              if (rowDate && rowId && !allowedSet.has(rowDate)) {
+                await fetchLink<any>({
+                  address: `masters/projectScheduleEmp/${rowId}`,
+                  method: "DELETE",
+                });
+              }
+            }
+          } catch (trimErr) {
+            console.error("Failed to trim out-of-range assignment dates:", trimErr);
+          }
+        }
+
         toast.success(
           <div>
-            <strong>
-              Task {mode === "create" ? "assigned" : "updated"} successfully!
-            </strong>
-            {mode === "create" &&
-              responseData &&
+            <strong>Task assigned successfully!</strong>
+            {responseData &&
               Array.isArray(responseData) &&
               responseData.length > 0 && (
                 <>
                   <br />
-                  {selectedEmployeeNames.length} employee(s) ×{" "}
+                  {selectedEmployeeIds.length} employee(s) ×{" "}
                   {responseData[0]?.scheduleTaskCount || "N/A"} schedule day(s){" "}
                   = {responseData[0]?.totalRecords || "N/A"} records
                 </>
@@ -603,7 +851,34 @@ const AssignTask: React.FC<PageProps> = ({
         await onSuccess?.(responseData);
         onClose?.();
       } else {
-        throw new Error(res?.message || `Failed to ${mode} task`);
+        const empId = selectedEmployeeIds[0];
+        const payload: Record<string, unknown> = {
+          Project_Id: formData.Project_Id,
+          Sch_Id: formData.Sch_Id,
+          Task_Id: formData.Task_Id,
+          Emp_Id: empId,
+          Invovled_Stat: formData.Invovled_Stat
+            ? Number(formData.Invovled_Stat)
+            : null,
+        };
+
+        const res = await fetchLink<ApiResponse<TaskDetailResponseData>>({
+          address: `${TASK_DETAIL_API}${initialData?.Id}`,
+          method: "PUT",
+          bodyData: payload,
+        });
+
+        if (res?.success) {
+          toast.success(
+            <div>
+              <strong>Task updated successfully!</strong>
+            </div>
+          );
+          await onSuccess?.(res.data);
+          onClose?.();
+        } else {
+          throw new Error(res?.message || "Failed to update task");
+        }
       }
      
     } catch (err: any) {
@@ -639,6 +914,7 @@ const AssignTask: React.FC<PageProps> = ({
   const totalRecords = selectedEmployeeIds.length * scheduleTaskDates.length;
 
   return (
+    <>
     <Dialog
       open={isOpen}
       onClose={onClose}
@@ -808,18 +1084,46 @@ const AssignTask: React.FC<PageProps> = ({
               <Grid container spacing={2}>
                 {filteredEmployees.map((emp) => {
                   if (!emp.Emp_Id) return null;
+                  const isSelected = selectedEmployeeIds.includes(emp.Emp_Id);
+                  const empSched = employeeSchedules[emp.Emp_Id] || getDefaultScheduleForEmployee(emp.Emp_Id);
                   return (
-                    <SelectUserCard
-                      key={emp.Emp_Id}
-                      name={
-                        emp.Emp_Name
-                          ? safeString(emp.Emp_Name)
-                          : `Employee ${emp.Emp_Id}`
-                      }
-                      selected={selectedEmployeeIds.includes(emp.Emp_Id)}
-                      onSelect={() => handleEmployeeSelect(emp.Emp_Id!)}
-                      company={getEmployeeCompany(emp)}
-                    />
+                    <Box key={emp.Emp_Id} sx={{ display: "flex", flexDirection: "column", gap: 0.5, width: "150px" }}>
+                      <SelectUserCard
+                        name={
+                          emp.Emp_Name
+                            ? safeString(emp.Emp_Name)
+                            : `Employee ${emp.Emp_Id}`
+                        }
+                        selected={isSelected}
+                        onSelect={() => openEmployeeSchedule(emp)}
+                        onIconClick={
+                          isSelected && mode !== "edit"
+                            ? () => handleRemoveEmployee(emp.Emp_Id!)
+                            : undefined
+                        }
+                        company={getEmployeeCompany(emp)}
+                      />
+                      {isSelected && (
+                        <Box
+                          sx={{
+                            fontSize: "10px",
+                            color: "#555",
+                            textAlign: "center",
+                            bgcolor: "#f9f9f9",
+                            p: "4px",
+                            borderRadius: "4px",
+                            border: "1px solid #e0e0e0",
+                          }}
+                        >
+                          <Typography variant="caption" display="block" fontSize="10px" lineHeight={1.3}>
+                            {formatDisplayDate(empSched.startDate)} to {formatDisplayDate(empSched.endDate)}
+                          </Typography>
+                          <Typography variant="caption" display="block" fontSize="10px" lineHeight={1.3}>
+                            {formatDisplayTime(empSched.startTime)} - {formatDisplayTime(empSched.endTime)}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
                   );
                 })}
               </Grid>
@@ -874,6 +1178,97 @@ const AssignTask: React.FC<PageProps> = ({
         </Button>
       </DialogActions>
     </Dialog>
+
+    <Dialog
+      open={Boolean(employeeSchedulePopup)}
+      onClose={() => setEmployeeSchedulePopup(null)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6" fontSize="1rem" fontWeight={600}>
+            Set Schedule for {employeeSchedulePopup?.empName}
+          </Typography>
+          <IconButton onClick={() => setEmployeeSchedulePopup(null)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Grid container spacing={2} sx={{ mt: 0.5 }}>
+          <Grid size={{ xs: 6 }}>
+            <TextField
+              label="Start Date"
+              type="date"
+              size="small"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={employeeSchedulePopup?.startDate || ""}
+              onChange={(e) =>
+                setEmployeeSchedulePopup((prev) =>
+                  prev ? { ...prev, startDate: e.target.value } : null
+                )
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 6 }}>
+            <TextField
+              label="End Date"
+              type="date"
+              size="small"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={employeeSchedulePopup?.endDate || ""}
+              onChange={(e) =>
+                setEmployeeSchedulePopup((prev) =>
+                  prev ? { ...prev, endDate: e.target.value } : null
+                )
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 6 }}>
+            <TextField
+              label="Start Time"
+              type="time"
+              size="small"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={employeeSchedulePopup?.startTime || ""}
+              onChange={(e) =>
+                setEmployeeSchedulePopup((prev) =>
+                  prev ? { ...prev, startTime: e.target.value } : null
+                )
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 6 }}>
+            <TextField
+              label="End Time"
+              type="time"
+              size="small"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={employeeSchedulePopup?.endTime || ""}
+              onChange={(e) =>
+                setEmployeeSchedulePopup((prev) =>
+                  prev ? { ...prev, endTime: e.target.value } : null
+                )
+              }
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={() => setEmployeeSchedulePopup(null)} variant="outlined">
+          Cancel
+        </Button>
+        <Button onClick={saveEmployeeSpecificSchedule} variant="contained">
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 };
 

@@ -36,6 +36,7 @@ interface Props {
   selectedPlan?: any;
   existingWork?: any;
   isEditMode?: boolean;
+  readOnly?: boolean;
   // ✅ NEW PROP: called when timer starts, so parent can highlight the row
   onTimerStart?: () => void;
   // ✅ NEW PROP: called when timer stops, so parent can revert all row colors
@@ -163,6 +164,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   selectedPlan,
   existingWork,
   isEditMode = false,
+  readOnly = false,
   onTimerStart,
   onTimerStop
 }) => {
@@ -378,7 +380,9 @@ const TodayTaskDialog: React.FC<Props> = ({
   // 2B. DETECT TICKET SCHEDULE & FETCH TICKET STATUS
   // ==========================================================
   useEffect(() => {
-    if (!isOpen || !sourceData) {
+    const isUnassignedWork =
+      String(sourceData?.Task_Name || selectedPlan?.Task_Name || "").trim().toUpperCase() === "UN ASSIGNED WORK";
+    if (!isOpen || !sourceData || isUnassignedWork) {
       setIsTicketSchedule(false);
       setTicketInfo(null);
       setTicketStatus("Assigned");
@@ -449,7 +453,7 @@ const TodayTaskDialog: React.FC<Props> = ({
     return () => {
       active = false;
     };
-  }, [isOpen, sourceData?.Task_Id, sourceData?.Sch_Id, sourceData?.Schedule_Sch_No, sourceData?.Sch_No]);
+  }, [isOpen, sourceData?.Task_Id, sourceData?.Sch_Id, sourceData?.Schedule_Sch_No, sourceData?.Sch_No, sourceData?.Task_Name, selectedPlan?.Task_Name]);
 
   // ==========================================================
   // 3. RESTORE TIMER useEffect
@@ -681,7 +685,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   // ==========================================================
 
   const handleStart = async () => {
-    if (isRunning) return;
+    if (isRunning || readOnly) return;
 
     const now = new Date();
     const startTimeISO = now.toISOString();
@@ -915,6 +919,7 @@ const TodayTaskDialog: React.FC<Props> = ({
   };
 
   const handleSubmit = async () => {
+    if (readOnly) return;
     if (!validateForm()) {
       toast.error(
         "Please fix validation errors before saving"
@@ -1198,9 +1203,11 @@ const TodayTaskDialog: React.FC<Props> = ({
               </Box>
               <Box sx={{ display: "flex", alignItems: "center", mt: 3 }}>
                 <FormControlLabel
+                  disabled={readOnly}
                   control={
                     <Checkbox
                       checked={Number(formData.Process_Id) === 1}
+                      disabled={readOnly}
                       onChange={(e) =>
                         handleInputChange("Process_Id", e.target.checked ? 1 : 0)
                       }
@@ -1227,6 +1234,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               fullWidth
               multiline
               rows={3}
+              disabled={readOnly}
               value={formData.Work_Done}
               onChange={(e) =>
                 handleInputChange(
@@ -1257,6 +1265,7 @@ const TodayTaskDialog: React.FC<Props> = ({
             <TextField
               type="date"
               fullWidth
+              disabled={readOnly}
               value={formData.Work_Dt}
               onChange={(e) =>
                 handleInputChange(
@@ -1290,6 +1299,7 @@ const TodayTaskDialog: React.FC<Props> = ({
             <TextField
               select
               fullWidth
+              disabled={readOnly}
               value={formData.Work_Status}
               onChange={(e) =>
                 handleInputChange(
@@ -1316,7 +1326,7 @@ const TodayTaskDialog: React.FC<Props> = ({
             </TextField>
           </Grid>
 
-          {isTicketSchedule && (
+          {isTicketSchedule && String(formData.Task_Name || "").trim().toUpperCase() !== "UN ASSIGNED WORK" && (
             <Grid size={{ xs: 12 }}>
               <Typography
                 fontWeight={600}
@@ -1331,6 +1341,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               <TextField
                 select
                 fullWidth
+                disabled={readOnly}
                 value={ticketStatus}
                 onChange={(e) => setTicketStatus(e.target.value)}
                 size="small"
@@ -1367,6 +1378,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               type="time"
               fullWidth
               size="small"
+              disabled={readOnly}
               value={extractTimeForInput(formData.Start_Time)}
               onChange={(e) => handleInputChange("Start_Time", e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
@@ -1391,6 +1403,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               type="time"
               fullWidth
               size="small"
+              disabled={readOnly}
               value={extractTimeForInput(formData.End_Time)}
               onChange={(e) => handleInputChange("End_Time", e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
@@ -1444,6 +1457,7 @@ const TodayTaskDialog: React.FC<Props> = ({
                   <TextField
                     fullWidth
                     size="small"
+                    disabled={readOnly}
                     type={inputType}
                     value={
                       inputType === "date" &&
@@ -1522,6 +1536,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               {!isRunning ? (
                 <Button
                   onClick={handleStart}
+                  disabled={readOnly}
                   variant="contained"
                   sx={{
                     width: 120,
@@ -1541,6 +1556,7 @@ const TodayTaskDialog: React.FC<Props> = ({
               ) : (
                 <Button
                   onClick={handleStop}
+                  disabled={readOnly}
                   variant="contained"
                   sx={{
                     width: 120,
@@ -1577,6 +1593,7 @@ const TodayTaskDialog: React.FC<Props> = ({
           onClick={handleSubmit}
           variant="contained"
           disabled={
+            readOnly ||
             loading ||
             (isTimerBased && isRunning)
           }

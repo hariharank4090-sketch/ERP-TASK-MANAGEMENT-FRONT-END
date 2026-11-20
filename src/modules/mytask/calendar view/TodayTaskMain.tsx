@@ -40,20 +40,20 @@ import {
   getWorkMaster,
   getProjectScheduleMaster,
   isScheduleCompletedForNextDate,
-} from "../TodayPlan/todayplan.api";
+} from "../../TodayPlan/todayplan.api";
 
-import { getProjectMaster } from "../Master/Projects/Projects.api";
-import type { projectData } from "../Master/Projects/Projects.variables";
+import { getProjectMaster } from "../../Master/Projects/Projects.api";
+import type { projectData } from "../../Master/Projects/Projects.variables";
 
-import TodayTaskDialog from "../workMaster/TodayTaskDialog";
-import { useAuth } from "../../auth/authContext";
-import SearchableSelect from "../../Components/SearchableSelect";
+import TodayTaskDialog from "../../workMaster/TodayTaskDialog";
+import { useAuth } from "../../../auth/authContext";
+import SearchableSelect from "../../../Components/SearchableSelect";
 
 /* ================================================================
    DATE / TIME HELPERS
 ================================================================ */
 
-const getDateOnly = (dateInput: string | Date): string => {
+const getDateOnly = (dateInput?: string | Date | null): string => {
   if (!dateInput) return "";
   if (typeof dateInput === "string") {
     const s = dateInput.trim();
@@ -164,6 +164,48 @@ const formatTime = (timeStr: any): string => {
   return "--:--";
 };
 
+const getTimeInSeconds = (timeStr: any): number => {
+  if (!timeStr) return Number.MAX_SAFE_INTEGER;
+  try {
+    const t = extractSentinelTime(timeStr);
+    if (t) {
+      return t.hours * 3600 + t.minutes * 60 + t.seconds;
+    }
+
+    const trimmed = String(timeStr).trim();
+    const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (ampmMatch) {
+      let hours = parseInt(ampmMatch[1], 10);
+      const minutes = parseInt(ampmMatch[2], 10);
+      const seconds = parseInt(ampmMatch[3] || "0", 10);
+      const period = ampmMatch[4].toUpperCase();
+      if (period === "PM" && hours < 12) hours += 12;
+      if (period === "AM" && hours === 12) hours = 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const [h, m, s] = trimmed.split(":");
+      const hours = parseInt(h, 10);
+      const minutes = parseInt(m || "0", 10);
+      const seconds = parseInt(s || "0", 10);
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    let normalized = trimmed;
+    if (normalized.includes(" ") && !normalized.includes("T")) {
+      normalized = normalized.replace(" ", "T");
+    }
+    const d = new Date(normalized);
+    if (!isNaN(d.getTime())) {
+      return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    }
+  } catch (e) {
+    console.error("getTimeInSeconds:", e);
+  }
+  return Number.MAX_SAFE_INTEGER;
+};
+
 const formatDate = (dateStr: any): string => {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -189,9 +231,12 @@ const removeDuplicates = <
   for (const item of items) {
     let key = "";
     if (type === "assigned") {
-      const assignDate = item.Task_Assign_dt
-        ? getDateOnly(item.Task_Assign_dt)
-        : "";
+      const assignDate = getDateOnly(
+        item.Task_Assign_dt ||
+        (item as any).Schedule_Sch_Date ||
+        (item as any).Sch_Date ||
+        (item as any).Schedule_Sch_Start_Date
+      );
       key =
         (item as any).Id ||
         `${item.Task_Id}_${item.Emp_Id}_${assignDate}`;
@@ -256,6 +301,7 @@ interface AssignedTask {
   Schedule_Task_Sch_Timer_Based: number;
   Schedule_Sch_No?: string;
   Schedule_Sch_Date?: string;
+  Sch_Date?: string;
   Schedule_Task_Type_Id?: number;
   Schedule_Sch_Plan_Id?: number;
   Schedule_Sch_Start_Date?: string;
@@ -322,7 +368,13 @@ const getExecutedBadge = (
    ASSIGNED TASK ROW KEY HELPER
 ================================================================ */
 const getAssignedTaskKey = (task: AssignedTask): string =>
-  task.Id || `${task.Task_Id}_${task.Emp_Id}_${getDateOnly(task.Task_Assign_dt)}`;
+  task.Id ||
+  `${task.Task_Id}_${task.Emp_Id}_${getDateOnly(
+    task.Task_Assign_dt ||
+    task.Schedule_Sch_Date ||
+    task.Sch_Date ||
+    task.Schedule_Sch_Start_Date
+  )}`;
 
 /* ================================================================
    MAIN PAGE
@@ -382,7 +434,8 @@ const WorkDoneBox = ({ lines, isMobile, isCompactView }: { lines: string[]; isli
 };
 
 const CreditListPage = () => {
-  const { token, currentCompany, isSwitchingCompany } = useAuth();
+  const { user, token, currentCompany, isSwitchingCompany } = useAuth();
+  const isAdmin = Number(user?.UserTypeId) === 0 || Number(user?.UserTypeId) === 1;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -436,7 +489,12 @@ const CreditListPage = () => {
 
     tasks.forEach((plan) => {
       const planRowKey = getAssignedTaskKey(plan);
-      const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+      const planDate = getDateOnly(
+        plan.Task_Assign_dt ||
+        plan.Schedule_Sch_Date ||
+        plan.Sch_Date ||
+        plan.Schedule_Sch_Start_Date
+      );
 
       workList.forEach((work: any) => {
         const sameSch = work.Sch_Id && String(work.Sch_Id) === String(plan.Sch_Id);
@@ -483,7 +541,12 @@ const CreditListPage = () => {
       if (workMasterResponse.success && workMasterResponse.data.length > 0) {
         tasks.forEach((plan) => {
           const planRowKey = getAssignedTaskKey(plan);
-          const planDate = plan.Task_Assign_dt ? getDateOnly(plan.Task_Assign_dt) : "";
+          const planDate = getDateOnly(
+            plan.Task_Assign_dt ||
+            plan.Schedule_Sch_Date ||
+            plan.Sch_Date ||
+            plan.Schedule_Sch_Start_Date
+          );
 
           workMasterResponse.data.forEach((work: any) => {
             const sameSch = work.Sch_Id && String(work.Sch_Id) === String(plan.Sch_Id);
@@ -783,7 +846,16 @@ const CreditListPage = () => {
     : scopedAssigned
   )
     .filter(isProjectActive)
-    .filter((plan) => !isScheduleCompletedForNextDate(plan, projectSchedules));
+    .filter((plan) => !isScheduleCompletedForNextDate(plan, projectSchedules, assignedViewStart, scopedExecuted))
+    .sort((a, b) => {
+      const aStart = a.Sch_Time || (a as any).Sch_Est_Start_Time || (a as any).Schedule_Sch_Est_Start_Time;
+      const bStart = b.Sch_Time || (b as any).Sch_Est_Start_Time || (b as any).Schedule_Sch_Est_Start_Time;
+      const startDiff = getTimeInSeconds(aStart) - getTimeInSeconds(bStart);
+      if (startDiff !== 0) return startDiff;
+      const aEnd = a.EN_Time || (a as any).Sch_Est_End_Time || (a as any).Schedule_Sch_Est_End_Time;
+      const bEnd = b.EN_Time || (b as any).Sch_Est_End_Time || (b as any).Schedule_Sch_Est_End_Time;
+      return getTimeInSeconds(aEnd) - getTimeInSeconds(bEnd);
+    });
 
   const filteredExecuted = selectedEmployee
     ? scopedExecuted.filter((t) => t.Emp_Id === Number(selectedEmployee))
@@ -816,14 +888,47 @@ const CreditListPage = () => {
   // ✅ assignedEvents recomputes when timerRunningKeys or hasWorkKeys changes
   //    — NO key-based remount of FullCalendar needed
   const assignedEvents: EventInput[] = filteredAssigned
-    .map((task) => {
-      const start = combineDateWithTime(task.Task_Assign_dt, task.Sch_Time);
-      const end = combineDateWithTime(task.Task_Assign_dt, task.EN_Time);
+    .map((task, index) => {
+      const schId = task.Sch_Id != null && task.Sch_Id !== "" && task.Sch_Id !== "0" && task.Sch_Id !== "null"
+        ? String(task.Sch_Id).trim()
+        : "";
+      const masterSch = schId
+        ? (projectSchedules || []).find((s: any) => String(s?.schId ?? s?.Sch_Id ?? s?.id ?? "").trim() === schId)
+        : null;
+
+      const startTimeRaw =
+        task.Sch_Time ||
+        (task as any).Sch_Est_Start_Time ||
+        (task as any).Schedule_Sch_Est_Start_Time ||
+        masterSch?.schEstStartTime ||
+        masterSch?.Sch_Est_Start_Time ||
+        null;
+
+      const endTimeRaw =
+        task.EN_Time ||
+        (task as any).Sch_Est_End_Time ||
+        (task as any).Schedule_Sch_Est_End_Time ||
+        masterSch?.schEstEndTime ||
+        masterSch?.Sch_Est_End_Time ||
+        null;
+
+      const taskDate = getDateOnly(
+        task.Task_Assign_dt ||
+        (task as any).Schedule_Sch_Date ||
+        (task as any).Sch_Date ||
+        (task as any).Schedule_Sch_Start_Date
+      );
+
+      const start = (taskDate && startTimeRaw) ? combineDateWithTime(taskDate, startTimeRaw) : null;
+      const end = (taskDate && endTimeRaw) ? combineDateWithTime(taskDate, endTimeRaw) : null;
+
+      const displayStartTime = formatTime(startTimeRaw);
+      const displayEndTime = formatTime(endTimeRaw);
 
       const key = getAssignedTaskKey(task);
-      const taskDate = getDateOnly(task.Task_Assign_dt);
       const isRunning = timerRunningKeys.has(key) || dbRunningKeys.has(key);
       const hasWork = hasWorkKeys.has(key);
+      const isCompleted = Number(task.Schedule_Sch_Status) === 3 || hasWork;
 
       // ✅ Color computed from state — updates instantly when timer starts/stops
       let bgColor = "#1976d2";
@@ -832,7 +937,7 @@ const CreditListPage = () => {
       if (isRunning) {
         bgColor = "#e65100";
         borderColor = "#bf360c";
-      } else if (hasWork) {
+      } else if (isCompleted) {
         bgColor = "#2e7d32";
         borderColor = "#1b5e20";
       }
@@ -849,12 +954,13 @@ const CreditListPage = () => {
           extendedProps: {
             ...task,
             type: "assigned",
-            displayStartTime: formatTime(task.Sch_Time),
-            displayEndTime: formatTime(task.EN_Time),
+            displayStartTime,
+            displayEndTime,
             _rowKey: key,
-            _hasWork: hasWork,
+            _hasWork: isCompleted,
             // ✅ store the task date so count filtering can match it
             _taskDate: taskDate,
+            _sortOrder: index,
           },
         };
       }
@@ -869,19 +975,25 @@ const CreditListPage = () => {
         extendedProps: {
           ...task,
           type: "assigned",
-          displayStartTime: "--:--",
-          displayEndTime: "--:--",
+          displayStartTime,
+          displayEndTime,
           _rowKey: key,
-          _hasWork: hasWork,
+          _hasWork: isCompleted,
           // ✅ store the task date so count filtering can match it
           _taskDate: taskDate,
+          _sortOrder: index,
         },
       };
     });
 
   const executedEvents: EventInput[] = filteredExecuted.map((task) => {
     const startRaw = task.Start_Time || task.Sch_Est_Start_Time || null;
-    const endRaw = task.End_Time || task.Sch_Est_End_Time || null;
+    const isTimerRunning =
+      !task.End_Time &&
+      (task.Work_Status === "In Progress" ||
+        String(task.Work_Status) === "2" ||
+        Boolean(task.Start_Time));
+    const endRaw = isTimerRunning ? null : (task.End_Time || task.Sch_Est_End_Time || null);
 
     const start = startRaw ? combineDateWithTime(task.Work_Dt, startRaw) : null;
     const end = endRaw ? combineDateWithTime(task.Work_Dt, endRaw) : null;
@@ -900,12 +1012,12 @@ const CreditListPage = () => {
     const workDate = getDateOnly(task.Work_Dt);
     const exKey = task.Work_Id || `${task.Task_Id}_${task.Emp_Id}_${workDate}`;
 
-    if (start && end) {
+    if (start) {
       return {
         id: `executed-${exKey}`,
         title: task.Task_Name || `Task ${task.Task_Id}`,
         start,
-        end,
+        ...(end ? { end } : {}),
         allDay: false,
         backgroundColor: bgColor,
         borderColor: bgColor,
@@ -913,7 +1025,7 @@ const CreditListPage = () => {
           ...task,
           type: "executed",
           displayStartTime: formatTime(startRaw),
-          displayEndTime: formatTime(endRaw),
+          displayEndTime: end ? formatTime(endRaw) : "",
           // ✅ store the work date so count filtering can match it
           _workDate: workDate,
         },
@@ -969,10 +1081,10 @@ const CreditListPage = () => {
       Emp_Name: task.Emp_Name || "",
       Sch_Time: task.type === "executed"
         ? task.Start_Time || task.Sch_Est_Start_Time
-        : task.Sch_Time || task.Start_Time,
+        : task.Sch_Time || task.Sch_Est_Start_Time || task.Schedule_Sch_Est_Start_Time || task.Start_Time,
       EN_Time: task.type === "executed"
         ? task.End_Time || task.Sch_Est_End_Time
-        : task.EN_Time || task.End_Time,
+        : task.EN_Time || task.Sch_Est_End_Time || task.Schedule_Sch_Est_End_Time || task.End_Time,
       Work_Dt: task.Work_Dt
         ? formatDate(task.Work_Dt)
         : task.Task_Assign_dt
@@ -991,6 +1103,7 @@ const CreditListPage = () => {
       Process_Id: task.Process_Id ?? task.Task_Process ?? task.process_id ?? 0,
       Schedule_Sch_No: task.Schedule_Sch_No || task.Sch_No || "",
       Sch_No: task.Sch_No || task.Schedule_Sch_No || "",
+      _taskDate: task._taskDate || getDateOnly(task.Task_Assign_dt || task.Work_Dt),
       type: task.type
     };
 
@@ -1077,7 +1190,7 @@ const CreditListPage = () => {
             </span>
           )}
         </div>
-        {!isAllDay && (
+        {(!isAllDay || (start !== "--:--" && end !== "--:--")) && (
           <div
             style={{
               fontSize: isCompact
@@ -1105,7 +1218,7 @@ const CreditListPage = () => {
     const task = info.event.extendedProps;
     const badge = getExecutedBadge(task.Work_Status);
     const start = task.displayStartTime || "--:--";
-    const end = task.displayEndTime || "--:--";
+    const end = task.displayEndTime || "";
     const isAllDay = info.event.allDay;
     const workDoneLines = parseWorkDone(task.Work_Done);
     const hasWorkDone = workDoneLines.length > 0;
@@ -1156,7 +1269,7 @@ const CreditListPage = () => {
             {badge.label}
           </span>
         </div>
-        {!isAllDay && (
+        {(!isAllDay || (start !== "--:--" && end !== "")) && (
           <div
             style={{
               fontSize: isCompact
@@ -1169,10 +1282,12 @@ const CreditListPage = () => {
             {isCompact ? (
               <>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{start}</div>
-                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{end}</div>
+                {end && (
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{end}</div>
+                )}
               </>
             ) : (
-              `${start} – ${end}`
+              end ? `${start} – ${end}` : start
             )}
           </div>
         )}
@@ -1485,10 +1600,11 @@ const CreditListPage = () => {
               <FullCalendar
                 key={`assigned-${selectedEmployee}-${currentCompany?.companyId}`}
                 plugins={calendarPlugins}
-                initialView="timeGridDay"
+                initialView="listDay"
                 timeZone="local"
                 initialDate={assignedInitialDate}
                 events={assignedEvents}
+                eventOrder="_sortOrder"
                 eventContent={renderAssignedEvent}
                 headerToolbar={{
                   left: "prev,next today",
@@ -1738,7 +1854,7 @@ const CreditListPage = () => {
               <FullCalendar
                 key={`executed-${selectedEmployee}-${currentCompany?.companyId}`}
                 plugins={calendarPlugins}
-                initialView="timeGridDay"
+                initialView="listDay"
                 timeZone="local"
                 initialDate={executedInitialDate}
                 events={executedEvents}
@@ -1802,6 +1918,14 @@ const CreditListPage = () => {
         }}
         selectedPlan={selectedPlan}
         isEditMode={selectedPlan?.type === "executed"}
+        readOnly={
+          !isAdmin &&
+          selectedPlan?.type === "assigned" &&
+          Boolean(
+            (selectedPlan?._taskDate || getDateOnly(selectedPlan?.Work_Dt || "")) &&
+            (selectedPlan?._taskDate || getDateOnly(selectedPlan?.Work_Dt || "")) < getCurrentDateFormatted()
+          )
+        }
         existingWork={selectedPlan}
         onTimerStart={handleTimerStart}
         onTimerStop={handleTimerStop}

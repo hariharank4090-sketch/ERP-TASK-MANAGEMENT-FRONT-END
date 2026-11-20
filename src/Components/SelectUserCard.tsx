@@ -15,6 +15,7 @@ interface SelectUserCardProps {
   company: string;
   selected?: boolean;
   onSelect: () => void;
+  onIconClick?: (e: React.MouseEvent) => void;
   isMultiSelect?: boolean;
 }
 
@@ -23,6 +24,7 @@ const SelectUserCard: React.FC<SelectUserCardProps> = ({
   company,
   selected,
   onSelect,
+  onIconClick,
   isMultiSelect = false,
 }) => {
   // Get initials from name
@@ -77,6 +79,14 @@ const SelectUserCard: React.FC<SelectUserCardProps> = ({
           position="absolute" 
           top={8} 
           right={8}
+          onClick={
+            onIconClick
+              ? (e) => {
+                  e.stopPropagation();
+                  onIconClick(e);
+                }
+              : undefined
+          }
           sx={{
             zIndex: 1,
           }}

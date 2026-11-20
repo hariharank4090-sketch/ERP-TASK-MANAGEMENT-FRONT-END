@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import DataTable from "../../../Components/dataTable";
-import { isScheduleCompletedForNextDate } from "../../TodayPlan/todayplan.api";
+import { isScheduleCompletedForNextDate, getDateOnly } from "../../TodayPlan/todayplan.api";
 
 interface TaskComparisonTableProps {
   data: Record<string, unknown>[];
@@ -20,9 +20,18 @@ export const TaskComparisonTable: React.FC<TaskComparisonTableProps> = ({
     if (!projectSchedules || projectSchedules.length === 0) {
       return data;
     }
-    return data.filter(
-      (item) => !isScheduleCompletedForNextDate(item, projectSchedules)
-    );
+    return data.filter((item) => {
+      const itemDate = getDateOnly(
+        (item.dateStr as string) ||
+        (item.date as string) ||
+        (item.Work_Dt as string) ||
+        (item.rawWorkDate as string) ||
+        (item.Task_Assign_dt as string) ||
+        (item.Schedule_Sch_Date as string) ||
+        (item.rawAssignedDate as string)
+      );
+      return !isScheduleCompletedForNextDate(item, projectSchedules, itemDate);
+    });
   }, [data, projectSchedules]);
 
   return (

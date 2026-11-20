@@ -77,7 +77,7 @@ export const resolveMediaUrl = (rawUrl?: string | null): string | undefined => {
       normalized.includes('localhost:5173/') &&
       !normalized.includes('localhost:5173/api/')
     ) {
-      return normalized.replace('localhost:5173/', 'localhost:5001/');
+      return normalized.replace('localhost:5173/', 'localhost:9001/');
     }
     return normalized;
   }
@@ -97,7 +97,7 @@ export const resolveMediaUrl = (rawUrl?: string | null): string | undefined => {
     window.location.port === '5173' &&
     !normalized.startsWith('/api/')
   ) {
-    return `${window.location.protocol}//${window.location.hostname}:5001${
+    return `${window.location.protocol}//${window.location.hostname}:9001${
       normalized.startsWith('/') ? '' : '/'
     }${normalized}`;
   }
@@ -152,13 +152,25 @@ const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = (props) => {
       <Dialog 
         open={open} 
         onClose={handleClose} 
-        fullWidth 
-        maxWidth="lg"
+        fullScreen
         aria-labelledby="image-preview-dialog-title"
+        PaperProps={{
+          sx: {
+            bgcolor: '#111',
+            color: '#fff',
+          },
+        }}
       >
         <DialogTitle 
-          className="bg-dark text-white d-flex justify-content-between"
           id="image-preview-dialog-title"
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            bgcolor: '#111',
+            color: '#fff',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          }}
         >
           <span>{resolvedTitle}</span>
           <IconButton 
@@ -170,7 +182,15 @@ const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = (props) => {
           </IconButton>
         </DialogTitle>
 
-        <DialogContent className="bg-dark pb-4 d-flex align-items-center justify-content-center">
+        <DialogContent
+          sx={{
+            bgcolor: '#111',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 2,
+          }}
+        >
           {isVideo ? (
             <video
               src={mediaUrl}
@@ -178,7 +198,7 @@ const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = (props) => {
               autoPlay
               style={{
                 maxWidth: '100%',
-                maxHeight: '70vh',
+                maxHeight: 'calc(100vh - 96px)',
                 objectFit: 'contain'
               }}
             />
@@ -198,7 +218,7 @@ const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = (props) => {
               title="Attachment Preview"
               style={{
                 width: '100%',
-                height: '70vh',
+                height: 'calc(100vh - 96px)',
                 border: 'none',
                 backgroundColor: '#fff',
                 borderRadius: 6
@@ -210,7 +230,7 @@ const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = (props) => {
               alt="Preview" 
               style={{ 
                 maxWidth: '100%', 
-                maxHeight: '70vh',
+                maxHeight: 'calc(100vh - 96px)',
                 objectFit: 'contain'
               }} 
               loading="lazy"

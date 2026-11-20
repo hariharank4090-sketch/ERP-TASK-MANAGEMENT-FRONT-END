@@ -62,10 +62,17 @@ const reports: componentRoute[] = reportsRoutePath.map(
     })
 );
 
+const mytask: componentRoute[] = MytaskRoutePath.map(
+    route => ({  
+        ...route, 
+        path: `/mytask/${route.path}` 
+    })
+);
+
 // All routes - these are already full paths or don't need prefix
 // Remove the map since allRoutePath already has correct paths
 const all: componentRoute[] = [...allRoutePath]; // Just use as-is
-const Mytask: componentRoute[] = [...MytaskRoutePath];
+
 const Todayactivity: componentRoute[] = [...todayactivityRoutePath];
 const leave: componentRoute[] = [...leaveRoutePath];
 // const discussion: componentRoute[] = [...discussionRoutePath]; // Just use as-is
@@ -78,7 +85,7 @@ export const appRoutes = ([] as componentRoute[]).concat(
     creation,
     attendances,
     all,
-    Mytask,
+    mytask,
     Todayactivity,
     leave,
     reports

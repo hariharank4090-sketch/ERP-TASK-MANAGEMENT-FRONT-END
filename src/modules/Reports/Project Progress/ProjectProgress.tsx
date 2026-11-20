@@ -503,8 +503,8 @@ const getRowStats = (items: any[]) => {
     let earnedWeight = 0;
 
 
-    // Check if Process_Id 1 was saved for any item in this set, or if schedule is completed
-    const hasProcessId1 = items.some(it => Boolean(it.hasProcess1) || Boolean(it.rawActualCompletedDate));
+    // Check if Process_Id 1 was saved for all items in this set, or if schedule is completed
+    const allHasProcessId1 = items.length > 0 && items.every(it => Boolean(it.hasProcess1) || Boolean(it.rawActualCompletedDate));
     const isScheduleCompleted = items.some(it => 
       Boolean(it.isScheduleCompleted) ||
       Number(it.Sch_Status) === 3 ||
@@ -531,7 +531,7 @@ const getRowStats = (items: any[]) => {
 
       const statStr = String(it.executedStatus || '').toLowerCase();
       const assignStatStr = String(it.assignedStatus || '').toLowerCase();
-      const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || hasProcessId1 || Boolean(it.hasProcess1) || isScheduleCompleted || Boolean(it.isScheduleCompleted);
+      const isCompleted = statStr === 'completed' || statStr === '3' || assignStatStr === 'completed' || assignStatStr === '3' || Boolean(it.hasProcess1) || Boolean(it.rawActualCompletedDate) || isScheduleCompleted || Boolean(it.isScheduleCompleted);
 
       const weight = assMin > 0 ? assMin : (execMin > 0 ? execMin : 60);
       totalWeight += weight;
@@ -552,7 +552,7 @@ const getRowStats = (items: any[]) => {
     });
 
     let progress = 0;
-    if (hasProcessId1 || isScheduleCompleted) {
+    if (allHasProcessId1 || isScheduleCompleted) {
       progress = 100;
     } else if (totalWeight > 0) {
       progress = Math.min(100, Math.round((earnedWeight / totalWeight) * 100));
@@ -832,14 +832,12 @@ export default function Projectprogress() {
 
         if (schId && taskId && empId) process1Set.add(`${schId}_${taskId}_${empId}`);
         if (taskId && empId) process1Set.add(`${taskId}_${empId}`);
-        if (taskId) process1Set.add(`task_${taskId}`);
 
         if (task.Work_Dt) {
           const workDate = getDateOnly(task.Work_Dt);
           if (workDate) {
             if (schId && taskId && empId) completedDateMap.set(`${schId}_${taskId}_${empId}`, workDate);
             if (taskId && empId) completedDateMap.set(`${taskId}_${empId}`, workDate);
-            if (taskId && !completedDateMap.has(`task_${taskId}`)) completedDateMap.set(`task_${taskId}`, workDate);
           }
         }
       }
@@ -975,12 +973,10 @@ export default function Projectprogress() {
 
       const actualCompDt = completedDateMap.get(`${schIdStr}_${taskIdStr}_${empIdStr}`) 
         || completedDateMap.get(`${taskIdStr}_${empIdStr}`) 
-        || completedDateMap.get(`task_${taskIdStr}`)
         || null;
 
       const hasProc1 = process1Set.has(`${schIdStr}_${taskIdStr}_${empIdStr}`)
         || process1Set.has(`${taskIdStr}_${empIdStr}`)
-        || process1Set.has(`task_${taskIdStr}`)
         || Boolean(actualCompDt);
 
       const activeProj = checkIsProjectActive(task);
@@ -1028,13 +1024,11 @@ export default function Projectprogress() {
 
       const actualCompDt = completedDateMap.get(`${schIdStr}_${taskIdStr}_${empIdStr}`) 
         || completedDateMap.get(`${taskIdStr}_${empIdStr}`) 
-        || completedDateMap.get(`task_${taskIdStr}`)
         || null;
 
       const hasProc1 = procId === 1
         || process1Set.has(`${schIdStr}_${taskIdStr}_${empIdStr}`)
         || process1Set.has(`${taskIdStr}_${empIdStr}`)
-        || process1Set.has(`task_${taskIdStr}`)
         || Boolean(actualCompDt);
 
       const activeProj = checkIsProjectActive(task);

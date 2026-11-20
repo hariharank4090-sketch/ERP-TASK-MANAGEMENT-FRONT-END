@@ -76,10 +76,16 @@ const LayoutHeader: React.FC<LayoutHeaderProps> = ({
         const seenTicketIds = new Set<string>();
 
         const filtered = res.data.filter((ticket: any) => {
-          const ticketCompanyId = (ticket.To_CompanyId === null || String(ticket.To_CompanyId) === "null" || !ticket.To_CompanyId)
-            ? ticket.From_CompanyId 
-            : ticket.To_CompanyId;
-          if (String(ticketCompanyId) !== String(companyId)) return false;
+          const toCompanyId = ticket.To_CompanyId ?? ticket.To_Company_Id;
+          if (
+            toCompanyId === null ||
+            toCompanyId === undefined ||
+            String(toCompanyId) === "null" ||
+            String(toCompanyId).trim() === "" ||
+            String(toCompanyId) !== String(companyId)
+          ) {
+            return false;
+          }
 
           const uniqueKey = ticket.T_Sch_Id ? `${ticket.Id}_${ticket.T_Sch_Id}` : String(ticket.Id);
           if (localDeletedIds.includes(uniqueKey)) return false;

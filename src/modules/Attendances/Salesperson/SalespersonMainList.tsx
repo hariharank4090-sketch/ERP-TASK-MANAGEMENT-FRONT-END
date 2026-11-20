@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Box,
   FormControl,
@@ -21,6 +21,8 @@ import {
   Close,
   LocationOn,
   Image as ImageIcon,
+  TableView as TableViewIcon,
+  PictureAsPdf as PictureAsPdfIcon,
 } from "@mui/icons-material";
 import SearchableSelect from "../../../Components/SearchableSelect";
 
@@ -29,6 +31,9 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 import FilterableTable, { createCol } from "../../../Components/dataTable";
 import type { Column } from "../../../Components/dataTable";
@@ -199,6 +204,182 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
     );
   };
 
+  // ================= EXPORT HANDLERS =================
+  const handleDownloadExcel = useCallback(() => {
+    if (filteredAttendance.length === 0) return;
+
+    const empName =
+      selectedUserId !== "" && selectedUserId !== 0
+        ? salesPersons.find((p) => Number(p.value) === Number(selectedUserId))?.label || "All Sales Persons"
+        : "All Sales Persons";
+
+    const sheetRows: any[][] = [
+      ["Sales Team Attendance Report"],
+      [
+        "Sales Person:",
+        empName,
+        "From Date:",
+        fromDate ? LocalDate(fromDate) : fromDate,
+        "To Date:",
+        toDate ? LocalDate(toDate) : toDate,
+        "Total Records:",
+        filteredAttendance.length,
+      ],
+      [],
+      [
+        "S.No",
+        "Sales Person",
+        "Date",
+        "Start KM",
+        "End KM",
+        "Distance (KM)",
+        "Start Time",
+        "End Time",
+        "Location",
+      ],
+      ...filteredAttendance.map((row, index) => {
+        const distance =
+          row.End_KM && row.Start_KM
+            ? subtraction(Number(row.End_KM), Number(row.Start_KM))
+            : "--";
+        const location =
+          row.Latitude && row.Longitude
+            ? `${row.Latitude}, ${row.Longitude}`
+            : "--";
+        return [
+          index + 1,
+          row.User_Name || "--",
+          row.Start_Date ? LocalDate(row.Start_Date) : "--",
+          row.Start_KM ?? "--",
+          row.End_KM ?? "--",
+          distance,
+          row.Start_Date ? LocalTime(row.Start_Date) || "--" : "--",
+          row.End_Date ? LocalTime(row.End_Date) || "--" : "--",
+          location,
+        ];
+      }),
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    worksheet["!cols"] = [
+      { wch: 8 },  // S.No
+      { wch: 24 }, // Sales Person
+      { wch: 14 }, // Date
+      { wch: 14 }, // Start KM
+      { wch: 14 }, // End KM
+      { wch: 16 }, // Distance (KM)
+      { wch: 14 }, // Start Time
+      { wch: 14 }, // End Time
+      { wch: 28 }, // Location
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Sales_Attendance");
+    XLSX.writeFile(
+      workbook,
+      `Sales_Team_Attendance_${fromDate}_to_${toDate}.xlsx`
+    );
+  }, [filteredAttendance, fromDate, toDate, selectedUserId, salesPersons]);
+
+  const handleDownloadPDF = useCallback(() => {
+    if (filteredAttendance.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "landscape" });
+    const marginX = 14;
+
+    // Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(201, 159, 101); // Header theme color #c99f65
+    doc.text("Sales Team Attendance Report", marginX, 15);
+
+    // Filters & Metadata
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    const empName =
+      selectedUserId !== "" && selectedUserId !== 0
+        ? salesPersons.find((p) => Number(p.value) === Number(selectedUserId))?.label || "All Sales Persons"
+        : "All Sales Persons";
+    const fromStr = fromDate ? LocalDate(fromDate) : fromDate;
+    const toStr = toDate ? LocalDate(toDate) : toDate;
+    doc.text(
+      `Sales Person: ${empName}  |  From Date: ${fromStr}  |  To Date: ${toStr}  |  Total Records: ${filteredAttendance.length}`,
+      marginX,
+      22
+    );
+
+    const headers = [
+      [
+        "S.No",
+        "Sales Person",
+        "Date",
+        "Start KM",
+        "End KM",
+        "Distance (KM)",
+        "Start Time",
+        "End Time",
+        "Location",
+      ],
+    ];
+
+    const body = filteredAttendance.map((row, index) => {
+      const distance =
+        row.End_KM && row.Start_KM
+          ? subtraction(Number(row.End_KM), Number(row.Start_KM))
+          : "--";
+      const location =
+        row.Latitude && row.Longitude
+          ? `${row.Latitude}, ${row.Longitude}`
+          : "--";
+      return [
+        index + 1,
+        row.User_Name || "--",
+        row.Start_Date ? LocalDate(row.Start_Date) : "--",
+        row.Start_KM ?? "--",
+        row.End_KM ?? "--",
+        distance,
+        row.Start_Date ? LocalTime(row.Start_Date) || "--" : "--",
+        row.End_Date ? LocalTime(row.End_Date) || "--" : "--",
+        location,
+      ];
+    });
+
+    autoTable(doc, {
+      head: headers,
+      body: body,
+      startY: 26,
+      theme: "grid",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: 3,
+        valign: "middle",
+        lineColor: [224, 224, 224],
+        lineWidth: 0.2,
+      },
+      headStyles: {
+        fillColor: [201, 159, 101],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        halign: "center",
+      },
+      columnStyles: {
+        0: { halign: "center", cellWidth: 15 },
+        1: { halign: "left", cellWidth: 45 },
+        2: { halign: "center", cellWidth: 25 },
+        3: { halign: "center", cellWidth: 22 },
+        4: { halign: "center", cellWidth: 22 },
+        5: { halign: "center", cellWidth: 25 },
+        6: { halign: "center", cellWidth: 25 },
+        7: { halign: "center", cellWidth: 25 },
+        8: { halign: "center", cellWidth: 65 },
+      },
+      margin: { left: marginX, right: marginX, bottom: 12 },
+    });
+
+    doc.save(`Sales_Team_Attendance_${fromDate}_to_${toDate}.pdf`);
+  }, [filteredAttendance, fromDate, toDate, selectedUserId, salesPersons]);
+
   // ================= HEADER =================
   const HeaderActions = (
     <Paper
@@ -216,6 +397,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
             gap={1}
             alignItems="center"
             color="white"
+            whiteSpace="nowrap"
           >
             <TableChart fontSize="small" />
             Sales Team Attendance
@@ -223,7 +405,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
         </Grid>
 
         {/* Sales Person Dropdown */}
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
           <FormControl fullWidth size="small">
             <SearchableSelect
               value={selectedUserId}
@@ -244,7 +426,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
         </Grid>
 
         {/* Date Range */}
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, sm: 12, md: 3.5 }}>
           <Box display="flex" alignItems="center" gap={1}>
             <DateRange sx={{ color: "white" }} />
             <TextField
@@ -274,7 +456,7 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
         </Grid>
 
         {/* Display Mode */}
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
           <FormControl fullWidth size="small">
             <SearchableSelect
               value={displayMode}
@@ -292,6 +474,53 @@ const SalesTeamAttendancePage = ({ loadingOn, loadingOff }: any) => {
               searchPlaceholder="Search view mode..."
             />
           </FormControl>
+        </Grid>
+
+        {/* Excel & PDF Download Buttons */}
+        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent={{ xs: "flex-start", md: "flex-end" }}
+            gap={1}
+          >
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<TableViewIcon />}
+              onClick={handleDownloadExcel}
+              disabled={filteredAttendance.length === 0}
+              sx={{
+                borderRadius: "20px",
+                textTransform: "none",
+                backgroundColor: "#28a745",
+                height: INPUT_HEIGHT,
+                whiteSpace: "nowrap",
+                fontWeight: 600,
+                "&:hover": { backgroundColor: "#218838" },
+              }}
+            >
+              Excel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleDownloadPDF}
+              disabled={filteredAttendance.length === 0}
+              sx={{
+                borderRadius: "20px",
+                textTransform: "none",
+                backgroundColor: "#dc3545",
+                height: INPUT_HEIGHT,
+                whiteSpace: "nowrap",
+                fontWeight: 600,
+                "&:hover": { backgroundColor: "#bb2d3b" },
+              }}
+            >
+              PDF
+            </Button>
+          </Box>
         </Grid>
       </Grid>
     </Paper>

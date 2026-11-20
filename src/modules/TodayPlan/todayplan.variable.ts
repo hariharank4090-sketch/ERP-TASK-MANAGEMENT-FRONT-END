@@ -25,6 +25,12 @@ export type todayplanData = {
     Schedule_Sch_End_Date: string | null;    // Changed to allow null
     Schedule_Task_Sch_Duaration: string | null; // Changed to allow null
     Schedule_Sch_Status: number;
+    Schedule_Sch_Comp_Date?: string | null;
+    Schedule_Sch_Est_Start_Time?: string | null;
+    Schedule_Sch_Est_End_Time?: string | null;
+    Sch_Est_Start_Time?: string | null;
+    Sch_Est_End_Time?: string | null;
+    Ticket_Id?: string | number | null;
     Task_Name: string | null;
     Task_Desc: string | null;
     Task_Type_Id: number | null;

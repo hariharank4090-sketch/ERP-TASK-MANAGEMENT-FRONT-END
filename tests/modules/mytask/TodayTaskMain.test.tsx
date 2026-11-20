@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
-import TodayTaskMain from '../../../src/modules/mytask/TodayTaskMain';
+import TodayTaskMain from '../../../src/modules/mytask/calendar view/TodayTaskMain';
 import { renderWithProviders } from '../../../src/test/test-utils';
 
 vi.mock('@fullcalendar/react', () => ({

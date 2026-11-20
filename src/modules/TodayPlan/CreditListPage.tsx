@@ -125,6 +125,48 @@ const formatTime = (timeStr: any): string => {
   return "--:--";
 };
 
+const getTimeInSeconds = (timeStr: any): number => {
+  if (!timeStr) return Number.MAX_SAFE_INTEGER;
+  try {
+    const t = extractSentinelTime(timeStr);
+    if (t) {
+      return t.hours * 3600 + t.minutes * 60 + t.seconds;
+    }
+
+    const trimmed = String(timeStr).trim();
+    const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (ampmMatch) {
+      let hours = parseInt(ampmMatch[1], 10);
+      const minutes = parseInt(ampmMatch[2], 10);
+      const seconds = parseInt(ampmMatch[3] || "0", 10);
+      const period = ampmMatch[4].toUpperCase();
+      if (period === "PM" && hours < 12) hours += 12;
+      if (period === "AM" && hours === 12) hours = 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const [h, m, s] = trimmed.split(":");
+      const hours = parseInt(h, 10);
+      const minutes = parseInt(m || "0", 10);
+      const seconds = parseInt(s || "0", 10);
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    let normalized = trimmed;
+    if (normalized.includes(" ") && !normalized.includes("T")) {
+      normalized = normalized.replace(" ", "T");
+    }
+    const d = new Date(normalized);
+    if (!isNaN(d.getTime())) {
+      return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    }
+  } catch (e) {
+    console.error("getTimeInSeconds:", e);
+  }
+  return Number.MAX_SAFE_INTEGER;
+};
+
 
 const removeDuplicates = <T extends {
   Id?: string;
@@ -239,7 +281,7 @@ const getTaskBgColor = (
 ): string => {
   if (timerRunningKeys.has(planRowKey)) return "#e65100";
   const workKey = getWorkExistenceKey(plan);
-  if (workKey && hasWorkKeys.has(workKey)) return "#2e7d32";
+  if ((workKey && hasWorkKeys.has(workKey)) || Number(plan.Schedule_Sch_Status) === 3) return "#2e7d32";
   return "#ffffff";
 };
 
@@ -580,9 +622,15 @@ const CreditListPage: React.FC<CreditListPageProps> = ({
     if (selectedEmployee) {
       filtered = filtered.filter((plan) => plan.Emp_Id === Number(selectedEmployee));
     }
+    const todayStr = getCurrentDateFormatted();
     filtered = filtered.filter(
-      (plan) => !isScheduleCompletedForNextDate(plan, projectSchedules)
+      (plan) => !isScheduleCompletedForNextDate(plan, projectSchedules, todayStr, scopedExecuted)
     );
+    filtered = [...filtered].sort((a, b) => {
+      const startDiff = getTimeInSeconds(a.Sch_Time) - getTimeInSeconds(b.Sch_Time);
+      if (startDiff !== 0) return startDiff;
+      return getTimeInSeconds(a.EN_Time) - getTimeInSeconds(b.EN_Time);
+    });
     setFilteredPlans(filtered);
   }, [selectedEmployee, scopedAssigned, isProjectActive, projectSchedules, scopedExecuted]);
 

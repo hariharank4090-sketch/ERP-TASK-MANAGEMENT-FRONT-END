@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
 import {
   Typography,
@@ -32,10 +33,12 @@ export interface TicketDetailsData {
   T_Sch_Id?: string;
   Employee_Involved_Id?: string;
   ticketId?: string;
+  Ticket_Id?: string | number;
   From_CompanyId?: string;
   To_CompanyId?: string;
   rawEstSchStartDate?: string;
   rawEstSchEndDate?: string;
+  involvedUserName?: string;
 }
 
 interface TicketDetailsDialogProps {
@@ -137,13 +140,13 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
             address: `masters/tasks/project/${unassignedProjectId}`,
             method: "GET",
           });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
           const taskList = Array.isArray(allTasksRes?.data)
             ? allTasksRes.data
             : (allTasksRes?.data as any)?.data || [];
           if (Array.isArray(taskList)) {
             const existing = taskList.find(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
               (t: any) =>
                 t.Task_Name &&
                 t.Task_Name.trim().toLowerCase() === taskName.toLowerCase() &&
@@ -177,7 +180,7 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
             address: `masters/ticketTasks/getEmpId/${targetUserId}`,
             method: "GET",
           });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        
           const empData = empMappingRes.data as any;
           const mapped = Array.isArray(empData)
             ? (empData[0]?.Emp_Id || empData[0]?.emp_id)
@@ -195,13 +198,13 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
             address: "masters/employees/active",
             method: "GET",
           });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
           const empList = Array.isArray(empListRes?.data)
             ? empListRes.data
             : (empListRes?.data as any)?.data || empListRes;
           if (Array.isArray(empList) && empList.length > 0) {
             const match = empList.find(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              
               (e: any) =>
                 (targetUserId &&
                   (Number(e.Emp_Id) === Number(targetUserId) ||
@@ -257,13 +260,19 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
       }
 
       // 6. Save the Ticket Task mapping
+      const resolvedTicketId = ticket.ticketId && !isNaN(Number(ticket.ticketId))
+        ? Number(ticket.ticketId)
+        : ticket.Ticket_Id && !isNaN(Number(ticket.Ticket_Id))
+        ? Number(ticket.Ticket_Id)
+        : ticket.id && !isNaN(Number(ticket.id))
+        ? Number(ticket.id)
+        : ticket.id && ticket.id.includes("_") && !isNaN(Number(ticket.id.split("_")[0]))
+        ? Number(ticket.id.split("_")[0])
+        : null;
+
       const ticketTaskPayload = {
         project_id: unassignedProjectId,
-        Ticket_Id: ticket.ticketId
-          ? Number(ticket.ticketId)
-          : ticket.id && !isNaN(Number(ticket.id))
-          ? Number(ticket.id)
-          : null,
+        Ticket_Id: resolvedTicketId,
         Est_Sch_Start_Date: startYMD,
         Est_Sch_End_Date: endYMD,
         From_CompanyId: ticket.From_CompanyId ? Number(ticket.From_CompanyId) : null,
@@ -295,13 +304,18 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
         Sch_Type: 1, // 1 = One-Time
         Sch_Start_Date: startYMD,
         Sch_End_Date: endYMD,
+        Sch_First_Start_Date: startYMD,
+        Sch_First_End_Date: endYMD,
+        schFirstStartDate: startYMD,
+        schFirstEndDate: endYMD,
         Task_Sch_Timer_Based: false,
-        Sch_Est_Start_Time: "09:00",
-        Sch_Est_End_Time: "18:00",
+        Sch_Est_Start_Time: "09:30",
+        Sch_Est_End_Time: "18:30",
         Task_Sch_Duaration: 8,
         Sch_Status: 1, // 1 = Inprocess
         Entry_By: Number(user?.Global_User_ID || user?.id || 1),
         Project_Id: Number(unassignedProjectId),
+        Ticket_Id: resolvedTicketId,
         specificDates: dates,
       };
 
@@ -311,7 +325,7 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
         bodyData: schedulePayload,
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
       const schData = Array.isArray(scheduleRes?.data)
         ? scheduleRes.data[0]
         : (scheduleRes?.data as any)?.data || scheduleRes?.data;
@@ -341,14 +355,39 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
 
       const finalSchId = createdSchId || (ticket.T_Sch_Id ? Number(ticket.T_Sch_Id) : null);
 
+      if (finalSchId && resolvedTicketId) {
+        try {
+          await fetchLink({
+            address: `masters/projectSchedule/${finalSchId}`,
+            method: "PUT",
+            bodyData: {
+              schId: finalSchId,
+              Ticket_Id: resolvedTicketId,
+              Sch_Start_Date: startYMD,
+              Sch_End_Date: endYMD,
+              Sch_First_Start_Date: startYMD,
+              Sch_First_End_Date: endYMD,
+              schFirstStartDate: startYMD,
+              schFirstEndDate: endYMD,
+              Sch_Est_Start_Time: "09:30",
+              Sch_Est_End_Time: "18:30",
+              Update_By: Number(user?.Global_User_ID || user?.id || 1),
+            },
+          });
+        } catch (updateSchErr) {
+          console.warn("Could not patch Ticket_Id into schedule:", updateSchErr);
+        }
+      }
+
       // 8. Assign task to employee in tbl_Task_Details (masters/projectScheduleEmp/create)
       if (finalSchId && resolvedEmpId) {
-        const taskDetailsPayload = {
+        const taskDetailsPayload: Record<string, unknown> = {
           Project_Id: Number(unassignedProjectId),
           Sch_Id: Number(finalSchId),
           Task_Id: Number(taskId),
           Emp_Ids: [Number(resolvedEmpId)],
-          taskDates: dates.length > 0 ? dates : undefined,
+          Invovled_Stat: 1,
+          ...(dates.length > 0 ? { taskDates: dates } : {}),
         };
 
         const detailsRes = await fetchLink({
@@ -359,14 +398,16 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
 
         if (!detailsRes || !detailsRes.success) {
           console.error("TicketDetailsDialog: Failed to assign task details:", detailsRes);
-          toast.warning(detailsRes?.message || "Task scheduled, but employee assignment had a warning");
+          toast.error(detailsRes?.message || "Failed to assign task to employee");
+          return;
         }
       } else {
         console.warn("TicketDetailsDialog: Missing schedule ID or employee ID for assignment", {
           finalSchId,
           resolvedEmpId,
         });
-        toast.warning("Task created, but schedule or employee ID was not available for assignment");
+        toast.error("Schedule or employee ID was not available for assignment");
+        return;
       }
 
       // 9. Update the Ticket status in backend to "in progress"
@@ -557,12 +598,14 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
                   fontSize: "0.75rem",
                   bgcolor:
                     String(ticket.priority).toLowerCase() === "high" ||
-                    String(ticket.priority).toLowerCase() === "critical"
+                    String(ticket.priority).toLowerCase() === "critical" ||
+                    String(ticket.priority).toLowerCase() === "emergency"
                       ? "#fce8e6"
                       : "#e3f2fd",
                   color:
                     String(ticket.priority).toLowerCase() === "high" ||
-                    String(ticket.priority).toLowerCase() === "critical"
+                    String(ticket.priority).toLowerCase() === "critical" ||
+                    String(ticket.priority).toLowerCase() === "emergency"
                       ? "#c53929"
                       : "#1976d2",
                   border: "none",
@@ -610,8 +653,19 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
               </Typography>
             </Grid>
 
-            {/* Placeholder to push EST. START DATE and EST. END DATE to a new row together */}
-            <Grid item xs={12} sm={6} />
+            <Grid item xs={12} sm={6}>
+              <Typography
+                variant="caption"
+                color="#8c7b6c"
+                fontWeight={800}
+                sx={{ letterSpacing: 0.5, display: "block", mb: 0.5, fontSize: "0.75rem" }}
+              >
+                INVOLVED USER
+              </Typography>
+              <Typography variant="body1" fontWeight={700} color="#4a3b2c" sx={{ fontSize: "0.95rem" }}>
+                {ticket.involvedUserName || "N/A"}
+              </Typography>
+            </Grid>
 
             {ticket.estSchStartDate && ticket.estSchStartDate !== "N/A" && (
               <Grid item xs={12} sm={6}>

@@ -12,6 +12,7 @@ describe('TicketDetailsDialog Component', () => {
     priority: 'High',
     status: 'Open',
     description: 'Scheduled server maintenance for Sunday midnight.',
+    involvedUserName: 'Jane Staff',
   };
 
   it('renders ticket details when open', () => {
@@ -27,5 +28,7 @@ describe('TicketDetailsDialog Component', () => {
     expect(screen.getByText('Server Maintenance Notice')).toBeInTheDocument();
     expect(screen.getByText('TCK-1001')).toBeInTheDocument();
     expect(screen.getByText(/scheduled server maintenance/i)).toBeInTheDocument();
+    expect(screen.getByText('INVOLVED USER')).toBeInTheDocument();
+    expect(screen.getByText('Jane Staff')).toBeInTheDocument();
   });
 });

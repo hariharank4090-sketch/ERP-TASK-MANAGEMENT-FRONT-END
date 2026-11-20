@@ -8,11 +8,15 @@ import {
   getProjectScheduleMaster,
   isScheduleCompletedForNextDate,
 } from "../../TodayPlan/todayplan.api";
+import { getProjectMaster } from "../../Master/Projects/Projects.api";
 import { fetchLink } from "../../../Components/customFetch";
-import { Box, Typography, LinearProgress, Stack, Chip, TextField, IconButton, Tooltip } from "@mui/material";
+import { Box, Typography, LinearProgress, Stack, Chip, TextField, IconButton, Tooltip, Button } from "@mui/material";
 import SearchableSelect from "../../../Components/SearchableSelect";
 import DashboardTopFilterBar from "../../../Components/TopFilterBar";
-import { Refresh } from "@mui/icons-material";
+import { Refresh, TableView as TableViewIcon, PictureAsPdf as PictureAsPdfIcon } from "@mui/icons-material";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // --- CSS ---
 const STYLES = `
@@ -420,6 +424,9 @@ const removeDuplicates = <
     Task_Id?: string | number;
     Emp_Id?: number;
     Task_Assign_dt?: string;
+    Schedule_Sch_Date?: string;
+    Sch_Date?: string;
+    Schedule_Sch_Start_Date?: string;
     Work_Dt?: string;
   }
 >(
@@ -430,13 +437,27 @@ const removeDuplicates = <
   for (const item of items) {
     let key = "";
     if (type === "assigned") {
-      const assignDate = item.Task_Assign_dt
-        ? getDateOnly(item.Task_Assign_dt)
-        : "";
-      key =
-        ((item as any).Id && String((item as any).Id).trim() !== "")
-          ? String((item as any).Id).trim()
-          : `${item.Task_Id}_${item.Emp_Id}_${assignDate}`;
+      const assignDate =
+        item.Task_Assign_dt ||
+        (item as any).Schedule_Sch_Date ||
+        (item as any).Sch_Date ||
+        (item as any).Schedule_Sch_Start_Date
+          ? getDateOnly(
+              item.Task_Assign_dt ||
+              (item as any).Schedule_Sch_Date ||
+              (item as any).Sch_Date ||
+              (item as any).Schedule_Sch_Start_Date
+            )
+          : "";
+      const schId = item.Sch_Id != null ? String(item.Sch_Id).trim() : "";
+      const taskId = item.Task_Id != null ? String(item.Task_Id).trim() : "";
+      const empId = item.Emp_Id != null ? String(item.Emp_Id).trim() : "";
+      const schTime = (item as any).Sch_Time != null ? String((item as any).Sch_Time).trim() : "";
+      const hasValidSchId = schId !== "" && schId !== "0" && schId !== "null" && schId !== "undefined";
+
+      key = hasValidSchId
+        ? `${schId}_${taskId}_${empId}_${assignDate}`
+        : `${taskId}_${empId}_${assignDate}_${schTime}`;
     } else {
       key =
         (item as any).Work_Id?.toString() ||
@@ -492,16 +513,74 @@ const formatTime = (timeStr: any): string => {
   return "--:--";
 };
 
+const extractTime = (
+  timeStr: string | null | undefined
+): { hours: number; minutes: number } | null => {
+  if (!timeStr || timeStr === "-" || timeStr === "--:--" || timeStr === "—" || timeStr === "--") return null;
+  try {
+    const s = String(timeStr).trim();
+    const match12 = s.match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(AM|PM)$/i);
+    if (match12) {
+      let h = parseInt(match12[1], 10);
+      const m = match12[2] ? parseInt(match12[2], 10) : 0;
+      const period = match12[3].toUpperCase();
+      if (period === "PM" && h < 12) h += 12;
+      if (period === "AM" && h === 12) h = 0;
+      return { hours: h, minutes: m };
+    }
+    let match = s.match(/T(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) match = s.match(/(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) match = s.match(/(\d{1,2}):(\d{2})/);
+    if (match && match[1] && match[2]) {
+      return { hours: parseInt(match[1], 10), minutes: parseInt(match[2], 10) };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 const timeToMinutes = (timeStr: string): number => {
-  if (!timeStr || timeStr === "-" || timeStr === "--:--") return 9999;
-  const match = timeStr.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
-  if (!match) return 9999;
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const ampm = match[3].toUpperCase();
-  if (ampm === "PM" && hours < 12) hours += 12;
-  if (ampm === "AM" && hours === 12) hours = 0;
-  return hours * 60 + minutes;
+  const t = extractTime(timeStr);
+  return t ? t.hours * 60 + t.minutes : 9999;
+};
+
+const getTimeInterval = (
+  startTime: string | null | undefined,
+  endTime: string | null | undefined
+): { start: number; end: number } | null => {
+  const start = extractTime(startTime);
+  const end = extractTime(endTime);
+  if (!start || !end) return null;
+  const startMins = start.hours * 60 + start.minutes;
+  let endMins = end.hours * 60 + end.minutes;
+  if (endMins < startMins) endMins += 24 * 60;
+  if (endMins <= startMins) return null;
+  return { start: startMins, end: endMins };
+};
+
+const mergeTimeIntervals = (
+  intervals: { start: number; end: number }[]
+): { start: number; end: number }[] => {
+  if (intervals.length <= 1) return intervals;
+  const sorted = [...intervals].sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: { start: number; end: number }[] = [];
+  let current = sorted[0];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i];
+    if (next.start <= current.end) {
+      current = {
+        start: current.start,
+        end: Math.max(current.end, next.end),
+      };
+    } else {
+      merged.push(current);
+      current = next;
+    }
+  }
+  merged.push(current);
+  return merged;
 };
 
 const numEq = (a: any, b: any) => {
@@ -510,23 +589,31 @@ const numEq = (a: any, b: any) => {
   return Number(a) === Number(b);
 };
 
-const calculateDuration = (startTime: string, endTime: string): string => {
-  if (!startTime || startTime === "-" || startTime === "--:--" ||
-      !endTime || endTime === "-" || endTime === "--:--") {
+const getDurationMinutes = (
+  startTime: string | null | undefined,
+  endTime: string | null | undefined
+): number => {
+  const interval = getTimeInterval(startTime, endTime);
+  return interval ? interval.end - interval.start : 0;
+};
+
+const calculateDuration = (
+  startTime: string | null | undefined,
+  endTime: string | null | undefined
+): string => {
+  if (!startTime || !endTime || startTime === "-" || endTime === "-" || startTime === "--:--" || endTime === "--:--" || startTime === "—" || endTime === "—") {
     return "-";
   }
-  const startMins = timeToMinutes(startTime);
-  const endMins = timeToMinutes(endTime);
-  if (startMins === 9999 || endMins === 9999 || endMins < startMins) {
+  try {
+    const diff = getDurationMinutes(startTime, endTime);
+    if (diff === 0) return "-";
+    const h = Math.floor(diff / 60);
+    const m = diff % 60;
+    if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
+    return `${m}m`;
+  } catch {
     return "-";
   }
-  const diff = endMins - startMins;
-  const hours = Math.floor(diff / 60);
-  const mins = diff % 60;
-  if (hours > 0) {
-    return `${hours} hr${hours > 1 ? "s" : ""} ${mins > 0 ? `${mins} min${mins > 1 ? "s" : ""}` : ""}`.trim();
-  }
-  return `${mins} min${mins > 1 ? "s" : ""}`;
 };
 
 // --- Status Helpers ---
@@ -568,6 +655,7 @@ interface CombinedTaskRow {
   
   assignedStartTime: string;
   assignedEndTime: string;
+  assignedDuration: string;
   assignedStatus: string;
   assignedStatusClass: string;
   
@@ -580,11 +668,17 @@ interface CombinedTaskRow {
   taskTypeId?: number | string | null;
   taskTypeName?: string;
   projectId?: number | string | null;
+  rawStartTime?: string | null;
+  rawEndTime?: string | null;
+  rawWorkDate?: string | null;
+  rawAssignedStartTime?: string | null;
+  rawAssignedEndTime?: string | null;
+  rawAssignedDate?: string | null;
 }
 
 let cachedTaskTypePromise: Promise<any> | null = null;
 
-const ProjectTaskComparison = () => {
+const MyList = () => {
   const { token, currentCompany, isSwitchingCompany } = useAuth();
   
   const [loading, setLoading] = useState(true);
@@ -616,6 +710,55 @@ const ProjectTaskComparison = () => {
   const [modalDate, setModalDate] = useState("");
   const [modalRows, setModalRows] = useState<CombinedTaskRow[]>([]);
   const [scheduleData, setScheduleData] = useState<any[]>([]);
+  const [projectsList, setProjectsList] = useState<any[]>([]);
+
+  /** Helper to check if project associated with task is active - same as TodayTaskMain */
+  const isProjectActive = useCallback((item: any) => {
+    if (!projectsList || projectsList.length === 0) return true;
+    const projId = item?.Project_Id 
+      ?? item?.project_id 
+      ?? item?.Project_ID 
+      ?? item?.Sch_Project_Id 
+      ?? item?.sch_project_id 
+      ?? item?.taskDetails?.Project_Id 
+      ?? item?.projectDetails?.Project_Id;
+    if (projId != null && projId !== 0 && projId !== "" && projId !== "0") {
+      const proj = projectsList.find(p => Number(p.Project_Id) === Number(projId));
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    const projName = item?.Project_Name 
+      ?? item?.project_name 
+      ?? item?.Project_NAME 
+      ?? item?.Sch_Project_Name 
+      ?? item?.sch_project_name 
+      ?? item?.taskDetails?.Project_Name 
+      ?? item?.projectDetails?.Project_Name;
+    if (projName) {
+      const cleanName = String(projName).trim().toLowerCase();
+      const proj = projectsList.find(p => p.Project_Name && p.Project_Name.trim().toLowerCase() === cleanName);
+      if (proj) {
+        const projStatus = proj.Project_Status !== undefined ? proj.Project_Status : proj.IsActive;
+        if (projStatus !== undefined && projStatus !== null) {
+          return Number(projStatus) === 1;
+        }
+      }
+    }
+    if (item?.Project_Status !== undefined && item?.Project_Status !== null) {
+      return Number(item.Project_Status) === 1;
+    }
+    if (item?.Project_IsActive !== undefined && item?.Project_IsActive !== null) {
+      return Number(item.Project_IsActive) === 1;
+    }
+    if (item?.IsActive !== undefined && item?.IsActive !== null) {
+      return Number(item.IsActive) === 1;
+    }
+    return true;
+  }, [projectsList]);
 
   const [filterDialogOpen, setFilterDialogOpen] = useState<boolean>(false);
 
@@ -688,12 +831,13 @@ const ProjectTaskComparison = () => {
       if (apiFrom) workQueryParams.fromDate = apiFrom;
       if (apiTo) workQueryParams.toDate = apiTo;
 
-      const [todayRes, workRes, scheduleRes, empRes, taskTypeRes] = await Promise.all([
+      const [todayRes, workRes, scheduleRes, empRes, taskTypeRes, projectsRes] = await Promise.all([
         getEnrichedTodayPlan(todayQueryParams, currentCompany.companyId),
-        getEnrichedWorkMaster(workQueryParams),
+        getEnrichedWorkMaster(workQueryParams, currentCompany.companyId),
         getProjectScheduleMaster().catch(() => fetchLink({ address: "masters/projectSchedule/", method: "GET" })),
         getEmployeeDropdown(currentCompany.companyId),
-        cachedTaskTypePromise
+        cachedTaskTypePromise,
+        getProjectMaster().catch(() => [])
       ]);
 
       let todayItems: any[] = [];
@@ -749,6 +893,7 @@ const ProjectTaskComparison = () => {
       setAssignedTasks(scopedA);
       setExecutedTasks(scopedE);
       setScheduleData(scheduleItems);
+      setProjectsList(projectsRes || []);
     } catch (error) {
       console.error("Error loading task comparison data:", error);
     } finally {
@@ -802,102 +947,169 @@ const ProjectTaskComparison = () => {
   }, [loadData, isSwitchingCompany]);
 
   const combinedRows = useMemo(() => {
-    const map = new Map<string, CombinedTaskRow>();
+    const isSingleDayView = appliedViewFilter === 'Day' || (appliedViewFilter === 'List' && (!appliedToDateFilter || appliedFromDateFilter === appliedToDateFilter));
+    const targetCheckDate = isSingleDayView ? appliedFromDateFilter : undefined;
+    const viewDayDate = targetCheckDate ? getDateOnly(targetCheckDate) : undefined;
 
-    const filteredAssignedTasks = assignedTasks.filter((plan) =>
-      !isScheduleCompletedForNextDate(plan, scheduleData)
-    );
-
-    filteredAssignedTasks.forEach(task => {
-      const date = getDateOnly(task.Task_Assign_dt || task.Schedule_Sch_Date || task.Sch_Date || task.Schedule_Sch_Start_Date);
-      if(!date) return;
-      const schId = String(task.Sch_Id || "");
-      const taskId = String(task.Task_Id || "");
-      const empId = Number(task.Emp_Id);
-      const key = `${date}_${taskId}_${schId}_${empId}`;
-      
-      const stat = assignedStatusConfig[Number(task.Invovled_Stat ?? 0)] ?? assignedStatusConfig[0];
-      
-      map.set(key, {
-        key,
-        dateStr: formatDateDisplay(date),
-        dateObj: createLocalDate(date),
-        taskId: task.Task_Id,
-        schId: task.Sch_Id,
-        taskName: task.taskDetails?.Task_Name || task.Task_Name || `Task ${task.Task_Id}`,
-        empId: task.Emp_Id,
-        empName: task.Emp_Name || "",
-        projectName: task.Project_Name || "",
-        taskTypeId: task.Task_Type_Id || task.taskDetails?.Task_Type_Id || null,
-        taskTypeName: task.Task_Type || task.taskDetails?.Task_Type || "",
-        projectId: task.Project_Id || task.taskDetails?.Project_Id || null,
-        
-        assignedStartTime: formatTime(task.Sch_Time),
-        assignedEndTime: formatTime(task.EN_Time),
-        assignedStatus: stat.label,
-        assignedStatusClass: stat.class,
-        
-        executedStartTime: "-",
-        executedEndTime: "-",
-        executedDuration: "-",
-        executedStatus: "-",
-        executedStatusClass: "",
-        workDetails: "-"
+    const rawFilteredAssignedTasks = assignedTasks
+      .filter(isProjectActive)
+      .filter((plan) => {
+        const taskDate = getDateOnly(
+          plan.Task_Assign_dt ||
+          plan.Schedule_Sch_Date ||
+          plan.Sch_Date ||
+          plan.Schedule_Sch_Start_Date
+        );
+        const checkDate = targetCheckDate || taskDate;
+        return !isScheduleCompletedForNextDate(plan, scheduleData, checkDate);
       });
+
+    const filteredAssignedTasks = (() => {
+      if (!viewDayDate) return rawFilteredAssignedTasks;
+      const seenDay = new Map<string, any>();
+      rawFilteredAssignedTasks.forEach((plan) => {
+        const rawDate = getDateOnly(
+          plan.Task_Assign_dt ||
+          plan.Schedule_Sch_Date ||
+          plan.Sch_Date ||
+          plan.Schedule_Sch_Start_Date
+        );
+        const resolvedDate = (!rawDate || rawDate <= viewDayDate) ? viewDayDate : rawDate;
+        const schId = plan.Sch_Id != null ? String(plan.Sch_Id).trim() : "";
+        const taskId = plan.Task_Id != null ? String(plan.Task_Id).trim() : "";
+        const empId = plan.Emp_Id != null ? String(plan.Emp_Id).trim() : "";
+        const schTime = plan.Sch_Time != null ? String(plan.Sch_Time).trim() : "";
+        const hasValidSchId = schId !== "" && schId !== "0" && schId !== "null" && schId !== "undefined";
+        const key = hasValidSchId
+          ? `${resolvedDate}_${schId}_${taskId}_${empId}`
+          : `${resolvedDate}_${taskId}_${empId}_${schTime}`;
+        const existing = seenDay.get(key);
+        if (!existing || rawDate === viewDayDate) {
+          seenDay.set(key, plan);
+        }
+      });
+      return Array.from(seenDay.values());
+    })();
+
+    const activeExecutedTasks = executedTasks.filter(isProjectActive);
+
+    const assignedExecutions = new Map<any, any[]>();
+    filteredAssignedTasks.forEach((aTask) => {
+      assignedExecutions.set(aTask, []);
     });
 
-    executedTasks.forEach(task => {
-      const date = getDateOnly(task.Work_Dt || task.workDate || task.Work_Date);
-      if(!date) return;
-      const exSchId = String(task.Sch_Id || "");
-      const exTaskId = String(task.Task_Id || "");
-      const exEmpId = Number(task.Emp_Id);
+    const matchedExecutedSet = new Set<any>();
 
-      const stat = getExecutedBadge(task.Work_Status);
-      const start = formatTime(task.Start_Time || task.Sch_Est_Start_Time);
-      const end = formatTime(task.End_Time || task.Sch_Est_End_Time);
-      const details = parseWorkDone(task.Work_Done);
+    // Pass 1: Exact match on date, empId, taskId, and schId
+    activeExecutedTasks.forEach((exTask) => {
+      const exDate = getDateOnly(exTask.Work_Dt || exTask.workDate || exTask.Work_Date);
+      if (!exDate) return;
+      const exSchId = String(exTask.Sch_Id || "");
+      const exTaskId = String(exTask.Task_Id || "");
+      const exEmpId = Number(exTask.Emp_Id);
 
-      // Find matching assigned task: same date, same employee, and (sameSch || sameTask)
-      let matchKey: string | null = null;
-      const exactKey = `${date}_${exTaskId}_${exSchId}_${exEmpId}`;
-      if (map.has(exactKey)) {
-        matchKey = exactKey;
-      } else {
-        for (const [k, row] of map.entries()) {
-          const rowDate = getDateOnly(row.dateObj);
-          if (rowDate === date && Number(row.empId) === exEmpId) {
-            const sameSch = exSchId && row.schId && exSchId === String(row.schId);
-            const sameTask = exTaskId && row.taskId && exTaskId === String(row.taskId);
-            if (sameSch || sameTask) {
-              matchKey = k;
-              break;
-            }
-          }
+      if (exSchId) {
+        const matchedAssigned = filteredAssignedTasks.find((aTask) => {
+          const rawADate = getDateOnly(aTask.Task_Assign_dt || aTask.Schedule_Sch_Date || aTask.Sch_Date || aTask.Schedule_Sch_Start_Date);
+          const aDate = (viewDayDate && (!rawADate || rawADate <= viewDayDate)) ? viewDayDate : rawADate;
+          const aSchId = String(aTask.Sch_Id || "");
+          const aTaskId = String(aTask.Task_Id || "");
+          const aEmpId = Number(aTask.Emp_Id);
+          return aDate === exDate && aEmpId === exEmpId && aTaskId === exTaskId && aSchId === exSchId;
+        });
+
+        if (matchedAssigned) {
+          assignedExecutions.get(matchedAssigned)!.push(exTask);
+          matchedExecutedSet.add(exTask);
         }
       }
+    });
 
-      if (matchKey && map.has(matchKey)) {
-        const existing = map.get(matchKey)!;
-        existing.executedStartTime = start;
-        existing.executedEndTime = end;
-        existing.executedDuration = calculateDuration(start, end);
-        existing.executedStatus = stat.label;
-        existing.executedStatusClass = stat.class;
-        existing.workDetails = details;
-        if (!existing.taskTypeId) {
-          existing.taskTypeId = task.Task_Type_Id || task.taskDetails?.Task_Type_Id || null;
-        }
-        if (!existing.taskTypeName) {
-          existing.taskTypeName = task.Task_Type || task.taskDetails?.Task_Type || "";
-        }
-        if (!existing.projectId) {
-          existing.projectId = task.Project_Id || task.taskDetails?.Project_Id || null;
-        }
-      } else {
-        const exKey = `exec_${date}_${exTaskId}_${exSchId}_${exEmpId}_${task.Work_Id || Math.random()}`;
-        map.set(exKey, {
-          key: exKey,
+    // Pass 2: Fallback match on same date, empId, and taskId
+    activeExecutedTasks.forEach((exTask) => {
+      if (matchedExecutedSet.has(exTask)) return;
+      const exDate = getDateOnly(exTask.Work_Dt || exTask.workDate || exTask.Work_Date);
+      if (!exDate) return;
+      const exTaskId = String(exTask.Task_Id || "");
+      const exEmpId = Number(exTask.Emp_Id);
+
+      const matchedAssigned = filteredAssignedTasks.find((aTask) => {
+        const rawADate = getDateOnly(aTask.Task_Assign_dt || aTask.Schedule_Sch_Date || aTask.Sch_Date || aTask.Schedule_Sch_Start_Date);
+        const aDate = (viewDayDate && (!rawADate || rawADate <= viewDayDate)) ? viewDayDate : rawADate;
+        const aTaskId = String(aTask.Task_Id || "");
+        const aEmpId = Number(aTask.Emp_Id);
+        return aDate === exDate && aEmpId === exEmpId && aTaskId === exTaskId;
+      });
+
+      if (matchedAssigned) {
+        assignedExecutions.get(matchedAssigned)!.push(exTask);
+        matchedExecutedSet.add(exTask);
+      }
+    });
+
+    // Pass 3: Fallback match on same date, empId, and schId
+    activeExecutedTasks.forEach((exTask) => {
+      if (matchedExecutedSet.has(exTask)) return;
+      const exDate = getDateOnly(exTask.Work_Dt || exTask.workDate || exTask.Work_Date);
+      if (!exDate) return;
+      const exSchId = String(exTask.Sch_Id || "");
+      const exEmpId = Number(exTask.Emp_Id);
+      if (!exSchId) return;
+
+      const matchedAssigned = filteredAssignedTasks.find((aTask) => {
+        const rawADate = getDateOnly(aTask.Task_Assign_dt || aTask.Schedule_Sch_Date || aTask.Sch_Date || aTask.Schedule_Sch_Start_Date);
+        const aDate = (viewDayDate && (!rawADate || rawADate <= viewDayDate)) ? viewDayDate : rawADate;
+        const aSchId = String(aTask.Sch_Id || "");
+        const aEmpId = Number(aTask.Emp_Id);
+        return aDate === exDate && aEmpId === exEmpId && aSchId === exSchId;
+      });
+
+      if (matchedAssigned) {
+        assignedExecutions.get(matchedAssigned)!.push(exTask);
+        matchedExecutedSet.add(exTask);
+      }
+    });
+
+    const rows: CombinedTaskRow[] = [];
+
+    // 1. Process assigned tasks and their matched executed tasks
+    filteredAssignedTasks.forEach((task, aIdx) => {
+      const schId = task.Sch_Id != null && task.Sch_Id !== "" && task.Sch_Id !== "0" && task.Sch_Id !== "null"
+        ? String(task.Sch_Id).trim()
+        : "";
+      const masterSch = schId
+        ? (scheduleData || []).find((s: any) => String(s?.schId ?? s?.Sch_Id ?? s?.id ?? "").trim() === schId)
+        : null;
+
+      const startTimeRaw =
+        task.Sch_Time ||
+        (task as any).Sch_Est_Start_Time ||
+        (task as any).Schedule_Sch_Est_Start_Time ||
+        masterSch?.schEstStartTime ||
+        masterSch?.Sch_Est_Start_Time ||
+        null;
+
+      const endTimeRaw =
+        task.EN_Time ||
+        (task as any).Sch_Est_End_Time ||
+        (task as any).Schedule_Sch_Est_End_Time ||
+        masterSch?.schEstEndTime ||
+        masterSch?.Sch_Est_End_Time ||
+        null;
+
+      const rawDate = getDateOnly(task.Task_Assign_dt || task.Schedule_Sch_Date || task.Sch_Date || task.Schedule_Sch_Start_Date);
+      const date = (viewDayDate && (!rawDate || rawDate <= viewDayDate)) ? viewDayDate : rawDate;
+      if (!date) return;
+      const taskId = String(task.Task_Id || "");
+      const empId = Number(task.Emp_Id);
+      const stat = assignedStatusConfig[Number(task.Invovled_Stat ?? 0)] ?? assignedStatusConfig[0];
+      const execs = assignedExecutions.get(task) || [];
+      const assignedDuration = calculateDuration(startTimeRaw, endTimeRaw);
+
+      if (execs.length === 0) {
+        const key = `assign_${date}_${taskId}_${schId}_${empId}_${task.Id || aIdx}`;
+        rows.push({
+          key,
           dateStr: formatDateDisplay(date),
           dateObj: createLocalDate(date),
           taskId: task.Task_Id,
@@ -905,27 +1117,144 @@ const ProjectTaskComparison = () => {
           taskName: task.taskDetails?.Task_Name || task.Task_Name || `Task ${task.Task_Id}`,
           empId: task.Emp_Id,
           empName: task.Emp_Name || "",
-          projectName: task.Project_Name || task.taskDetails?.Project_Name || "",
+          projectName: task.Project_Name || "",
           taskTypeId: task.Task_Type_Id || task.taskDetails?.Task_Type_Id || null,
           taskTypeName: task.Task_Type || task.taskDetails?.Task_Type || "",
           projectId: task.Project_Id || task.taskDetails?.Project_Id || null,
-          
-          assignedStartTime: "-",
-          assignedEndTime: "-",
-          assignedStatus: "-",
-          assignedStatusClass: "",
-          
-          executedStartTime: start,
-          executedEndTime: end,
-          executedDuration: calculateDuration(start, end),
-          executedStatus: stat.label,
-          executedStatusClass: stat.class,
-          workDetails: details
+
+          assignedStartTime: formatTime(startTimeRaw),
+          assignedEndTime: formatTime(endTimeRaw),
+          assignedDuration: assignedDuration,
+          assignedStatus: stat.label,
+          assignedStatusClass: stat.class,
+
+          executedStartTime: "-",
+          executedEndTime: "-",
+          executedDuration: "-",
+          executedStatus: "-",
+          executedStatusClass: "",
+          workDetails: "-",
+          rawStartTime: null,
+          rawEndTime: null,
+          rawWorkDate: date,
+          rawAssignedStartTime: startTimeRaw || null,
+          rawAssignedEndTime: endTimeRaw || null,
+          rawAssignedDate: date,
+        });
+      } else {
+        execs.sort((a, b) => {
+          const aRawStart = a.Start_Time || a.Sch_Est_Start_Time || "";
+          const bRawStart = b.Start_Time || b.Sch_Est_Start_Time || "";
+          return aRawStart.localeCompare(bRawStart);
+        });
+
+        execs.forEach((exTask, exIdx) => {
+          const exStat = getExecutedBadge(exTask.Work_Status);
+          const rawStart = exTask.Start_Time || exTask.Sch_Est_Start_Time;
+          const isTimerRunning =
+            !exTask.End_Time &&
+            (exTask.Work_Status === "In Progress" ||
+              String(exTask.Work_Status) === "2" ||
+              Boolean(exTask.Start_Time));
+          const rawEnd = isTimerRunning ? null : (exTask.End_Time || exTask.Sch_Est_End_Time || null);
+          const start = formatTime(rawStart);
+          const end = rawEnd ? formatTime(rawEnd) : "-";
+          const details = parseWorkDone(exTask.Work_Done);
+          const duration = calculateDuration(rawStart, rawEnd);
+
+          const key = `assign_exec_${date}_${taskId}_${schId}_${empId}_${exTask.Work_Id || exIdx}`;
+          rows.push({
+            key,
+            dateStr: formatDateDisplay(date),
+            dateObj: createLocalDate(date),
+            taskId: task.Task_Id,
+            schId: task.Sch_Id,
+            taskName: task.taskDetails?.Task_Name || task.Task_Name || `Task ${task.Task_Id}`,
+            empId: task.Emp_Id,
+            empName: task.Emp_Name || "",
+            projectName: task.Project_Name || exTask.Project_Name || "",
+            taskTypeId: task.Task_Type_Id || task.taskDetails?.Task_Type_Id || exTask.Task_Type_Id || exTask.taskDetails?.Task_Type_Id || null,
+            taskTypeName: task.Task_Type || task.taskDetails?.Task_Type || exTask.Task_Type || exTask.taskDetails?.Task_Type || "",
+            projectId: task.Project_Id || task.taskDetails?.Project_Id || exTask.Project_Id || exTask.taskDetails?.Project_Id || null,
+
+            assignedStartTime: formatTime(startTimeRaw),
+            assignedEndTime: formatTime(endTimeRaw),
+            assignedDuration: assignedDuration,
+            assignedStatus: stat.label,
+            assignedStatusClass: stat.class,
+
+            executedStartTime: start,
+            executedEndTime: end,
+            executedDuration: duration,
+            executedStatus: exStat.label,
+            executedStatusClass: exStat.class,
+            workDetails: details,
+            rawStartTime: rawStart,
+            rawEndTime: rawEnd,
+            rawWorkDate: date,
+            rawAssignedStartTime: startTimeRaw || null,
+            rawAssignedEndTime: endTimeRaw || null,
+            rawAssignedDate: date,
+          });
         });
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => {
+    // 2. Process unassigned executed tasks
+    activeExecutedTasks.forEach((exTask, uIdx) => {
+      if (matchedExecutedSet.has(exTask)) return;
+      const date = getDateOnly(exTask.Work_Dt || exTask.workDate || exTask.Work_Date);
+      if (!date) return;
+      const exStat = getExecutedBadge(exTask.Work_Status);
+      const rawStart = exTask.Start_Time || exTask.Sch_Est_Start_Time;
+      const isTimerRunning =
+        !exTask.End_Time &&
+        (exTask.Work_Status === "In Progress" ||
+          String(exTask.Work_Status) === "2" ||
+          Boolean(exTask.Start_Time));
+      const rawEnd = isTimerRunning ? null : (exTask.End_Time || exTask.Sch_Est_End_Time || null);
+      const start = formatTime(rawStart);
+      const end = rawEnd ? formatTime(rawEnd) : "-";
+      const details = parseWorkDone(exTask.Work_Done);
+      const duration = calculateDuration(rawStart, rawEnd);
+
+      const exKey = `exec_only_${date}_${exTask.Task_Id}_${exTask.Sch_Id}_${exTask.Emp_Id}_${exTask.Work_Id || uIdx}`;
+      rows.push({
+        key: exKey,
+        dateStr: formatDateDisplay(date),
+        dateObj: createLocalDate(date),
+        taskId: exTask.Task_Id,
+        schId: exTask.Sch_Id,
+        taskName: exTask.taskDetails?.Task_Name || exTask.Task_Name || `Task ${exTask.Task_Id}`,
+        empId: exTask.Emp_Id,
+        empName: exTask.Emp_Name || "",
+        projectName: exTask.Project_Name || exTask.taskDetails?.Project_Name || "",
+        taskTypeId: exTask.Task_Type_Id || exTask.taskDetails?.Task_Type_Id || null,
+        taskTypeName: exTask.Task_Type || exTask.taskDetails?.Task_Type || "",
+        projectId: exTask.Project_Id || exTask.taskDetails?.Project_Id || null,
+
+        assignedStartTime: "-",
+        assignedEndTime: "-",
+        assignedDuration: "-",
+        assignedStatus: "-",
+        assignedStatusClass: "",
+
+        executedStartTime: start,
+        executedEndTime: end,
+        executedDuration: duration,
+        executedStatus: exStat.label,
+        executedStatusClass: exStat.class,
+        workDetails: details,
+        rawStartTime: rawStart,
+        rawEndTime: rawEnd,
+        rawWorkDate: date,
+        rawAssignedStartTime: null,
+        rawAssignedEndTime: null,
+        rawAssignedDate: null,
+      });
+    });
+
+    return rows.sort((a, b) => {
       const dateDiff = b.dateObj.getTime() - a.dateObj.getTime();
       if (dateDiff !== 0) return dateDiff;
       
@@ -947,7 +1276,7 @@ const ProjectTaskComparison = () => {
       
       return 0;
     });
-  }, [assignedTasks, executedTasks, scheduleData]);
+  }, [assignedTasks, executedTasks, scheduleData, isProjectActive, appliedViewFilter, appliedFromDateFilter, appliedToDateFilter]);
 
   const uniqueProjects = useMemo(() => {
     const projs = new Set<string>();
@@ -1093,7 +1422,7 @@ const ProjectTaskComparison = () => {
         if (toStr && rowDateStr > toStr) showDate = false;
       } else if (appliedViewFilter === 'List') {
         const fromStr = getDateOnly(appliedFromDateFilter);
-        const toStr = getDateOnly(appliedToDateFilter);
+        const toStr = getDateOnly(appliedToDateFilter) || fromStr;
         if (fromStr && rowDateStr < fromStr) showDate = false;
         if (toStr && rowDateStr > toStr) showDate = false;
       } else if (appliedViewFilter === 'Week') {
@@ -1163,20 +1492,141 @@ const ProjectTaskComparison = () => {
     };
   }, [scheduleData, appliedProjectFilter]);
 
-  const totalDurationStr = useMemo(() => {
-    let totalMinutes = 0;
+  const assignedStats = useMemo(() => {
+    const seenAssigned = new Set<string>();
+    const intervalsByDayEmp = new Map<string, { start: number; end: number }[]>();
+    const uniqueDates = new Set<string>();
+    let count = 0;
+
     filteredRows.forEach((row) => {
-      const start = timeToMinutes(row.executedStartTime);
-      const end = timeToMinutes(row.executedEndTime);
-      if (start !== 9999 && end !== 9999 && end >= start) {
-        totalMinutes += (end - start);
+      if (row.assignedStartTime === "-" && row.assignedEndTime === "-") return;
+      const assignKey = `${row.dateStr}_${row.taskId}_${row.schId || ""}_${row.empId}`;
+      if (seenAssigned.has(assignKey)) return;
+      seenAssigned.add(assignKey);
+
+      count++;
+
+      const ymd = getDateOnly(row.rawAssignedDate || row.dateObj) || row.dateStr;
+      if (ymd) {
+        uniqueDates.add(ymd);
+      }
+
+      const interval = getTimeInterval(
+        row.rawAssignedStartTime || row.assignedStartTime,
+        row.rawAssignedEndTime || row.assignedEndTime
+      );
+      if (interval) {
+        const groupKey = `${ymd}_${row.empId || row.empName || "default"}`;
+        if (!intervalsByDayEmp.has(groupKey)) {
+          intervalsByDayEmp.set(groupKey, []);
+        }
+        intervalsByDayEmp.get(groupKey)!.push(interval);
       }
     });
-    if (totalMinutes === 0) return "0m";
+
+    let totalMinutes = 0;
+    intervalsByDayEmp.forEach((intervals) => {
+      const merged = mergeTimeIntervals(intervals);
+      merged.forEach((item) => {
+        totalMinutes += item.end - item.start;
+      });
+    });
+
+    const daysCount = uniqueDates.size || 1;
+    const avgMinutes = Math.round(totalMinutes / daysCount);
+    let avgDurationStr = "0m";
+    const avgH = Math.floor(avgMinutes / 60);
+    const avgM = avgMinutes % 60;
+    if (avgH > 0) {
+      avgDurationStr = `${avgH}h ${avgM > 0 ? `${avgM}m` : ""}`.trim();
+    } else if (avgM > 0) {
+      avgDurationStr = `${avgM}m`;
+    }
+
+    let totalDurationStr = "0m";
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
-    if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
-    return `${m}m`;
+    if (h > 0) {
+      totalDurationStr = `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
+    } else if (m > 0) {
+      totalDurationStr = `${m}m`;
+    }
+
+    return {
+      records: count,
+      totalMinutes,
+      totalDurationStr,
+      avgDurationStr,
+      daysCount,
+    };
+  }, [filteredRows]);
+
+  const executedStats = useMemo(() => {
+    const seenExecuted = new Set<string>();
+    const intervalsByDayEmp = new Map<string, { start: number; end: number }[]>();
+    const uniqueDates = new Set<string>();
+    let count = 0;
+
+    filteredRows.forEach((row) => {
+      if (row.executedStartTime === "-" && row.executedEndTime === "-") return;
+      if (row.key && seenExecuted.has(row.key)) return;
+      if (row.key) seenExecuted.add(row.key);
+
+      count++;
+
+      const ymd = getDateOnly(row.rawWorkDate || row.dateObj) || row.dateStr;
+      if (ymd) {
+        uniqueDates.add(ymd);
+      }
+
+      const interval = getTimeInterval(
+        row.rawStartTime || row.executedStartTime,
+        row.rawEndTime || row.executedEndTime
+      );
+      if (interval) {
+        const groupKey = `${ymd}_${row.empId || row.empName || "default"}`;
+        if (!intervalsByDayEmp.has(groupKey)) {
+          intervalsByDayEmp.set(groupKey, []);
+        }
+        intervalsByDayEmp.get(groupKey)!.push(interval);
+      }
+    });
+
+    let totalMinutes = 0;
+    intervalsByDayEmp.forEach((intervals) => {
+      const merged = mergeTimeIntervals(intervals);
+      merged.forEach((item) => {
+        totalMinutes += item.end - item.start;
+      });
+    });
+
+    const daysCount = uniqueDates.size || 1;
+    const avgMinutes = Math.round(totalMinutes / daysCount);
+    let avgDurationStr = "0m";
+    const avgH = Math.floor(avgMinutes / 60);
+    const avgM = avgMinutes % 60;
+    if (avgH > 0) {
+      avgDurationStr = `${avgH}h ${avgM > 0 ? `${avgM}m` : ""}`.trim();
+    } else if (avgM > 0) {
+      avgDurationStr = `${avgM}m`;
+    }
+
+    let totalDurationStr = "0m";
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h > 0) {
+      totalDurationStr = `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
+    } else if (m > 0) {
+      totalDurationStr = `${m}m`;
+    }
+
+    return {
+      records: count,
+      totalMinutes,
+      totalDurationStr,
+      avgDurationStr,
+      daysCount,
+    };
   }, [filteredRows]);
 
   const openGroupModal = (dateStr: string, rows: CombinedTaskRow[]) => {
@@ -1184,6 +1634,721 @@ const ProjectTaskComparison = () => {
     setModalRows(rows);
     setModalOpen(true);
   };
+
+  const appliedFilterDetails = useMemo(() => {
+    const { fromDate, toDate } = getDateRangeForView(
+      appliedViewFilter,
+      appliedFromDateFilter,
+      appliedToDateFilter
+    );
+    const projectLabel = appliedProjectFilter || "All Projects";
+
+    let taskTypeLabel = "All Task Types";
+    if (appliedTaskTypeFilter !== "") {
+      const matchedType = taskTypes.find(
+        (t: any) =>
+          String(t.Task_Type_Id) === String(appliedTaskTypeFilter) ||
+          String(t.Task_Type).toLowerCase() === String(appliedTaskTypeFilter).toLowerCase()
+      );
+      const rowType = combinedRows.find(
+        (r) =>
+          numEq(r.taskTypeId, appliedTaskTypeFilter) ||
+          String(r.taskTypeName).toLowerCase() === String(appliedTaskTypeFilter).toLowerCase()
+      );
+      taskTypeLabel = matchedType?.Task_Type || rowType?.taskTypeName || appliedTaskTypeFilter;
+    }
+
+    let taskLabel = "All Tasks";
+    if (appliedTaskFilter !== "") {
+      const matchedTask = combinedRows.find((r) => String(r.taskId) === String(appliedTaskFilter));
+      taskLabel = matchedTask?.taskName || appliedTaskFilter;
+    }
+
+    let employeeLabel = "All Employees";
+    if (appliedEmployeeFilter !== "") {
+      const matchedEmp = employees.find((e: any) => String(e.Emp_Id) === String(appliedEmployeeFilter));
+      const rowEmp = combinedRows.find((r) => String(r.empId) === String(appliedEmployeeFilter));
+      employeeLabel = matchedEmp?.Emp_Name || rowEmp?.empName || appliedEmployeeFilter;
+    }
+
+    return {
+      displayFormatLabel: displayFormat === "table" ? "Table View" : "Calendar View",
+      viewLabel: appliedViewFilter,
+      projectLabel,
+      taskTypeLabel,
+      taskLabel,
+      employeeLabel,
+      fromDateLabel: fromDate ? formatDateDisplay(fromDate) : "All",
+      toDateLabel: toDate ? formatDateDisplay(toDate) : "All",
+    };
+  }, [
+    appliedViewFilter,
+    appliedFromDateFilter,
+    appliedToDateFilter,
+    appliedProjectFilter,
+    appliedTaskTypeFilter,
+    appliedTaskFilter,
+    appliedEmployeeFilter,
+    displayFormat,
+    taskTypes,
+    employees,
+    combinedRows,
+    getDateRangeForView,
+  ]);
+
+  const dateGroupSummaries = useMemo(() => {
+    const groupsByDate = new Map<string, CombinedTaskRow[]>();
+    filteredRows.forEach((row) => {
+      if (!groupsByDate.has(row.dateStr)) groupsByDate.set(row.dateStr, []);
+      groupsByDate.get(row.dateStr)!.push(row);
+    });
+
+    return Array.from(groupsByDate.entries()).map(([dateStr, groupRows]) => {
+      let grpCompleted = 0,
+        grpInprocess = 0,
+        grpPending = 0;
+      groupRows.forEach((row) => {
+        let status = row.executedStatus;
+        if (status === "-" || status === "--" || status === "") status = row.assignedStatus;
+        status = status.toLowerCase();
+
+        if (status.includes("completed")) grpCompleted++;
+        else if (status.includes("in progress")) grpInprocess++;
+        else if (status.includes("pending")) grpPending++;
+      });
+
+      const totalGrp = grpCompleted + grpPending + grpInprocess;
+      const pctGrp = totalGrp === 0 ? 0 : Math.round((grpCompleted / totalGrp) * 100);
+
+      return {
+        dateStr,
+        totalTasks: groupRows.length,
+        completed: grpCompleted,
+        pending: grpPending,
+        inProgress: grpInprocess,
+        progressPct: pctGrp,
+        rows: groupRows,
+      };
+    });
+  }, [filteredRows]);
+
+  const handleDownloadExcel = useCallback(() => {
+    if (filteredRows.length === 0) return;
+
+    const sheetRows: any[][] = [
+      ["Project Task Comparison Report"],
+      [
+        "View",
+        appliedFilterDetails.viewLabel,
+        "Display Format",
+        appliedFilterDetails.displayFormatLabel,
+        "From Date",
+        appliedFilterDetails.fromDateLabel,
+        "To Date",
+        appliedFilterDetails.toDateLabel,
+      ],
+      [
+        "Project",
+        appliedFilterDetails.projectLabel,
+        "Task Type",
+        appliedFilterDetails.taskTypeLabel,
+        "Task",
+        appliedFilterDetails.taskLabel,
+        "Employee",
+        appliedFilterDetails.employeeLabel,
+      ],
+      [
+        "Assigned Records",
+        assignedStats.records,
+        "Assigned Duration",
+        assignedStats.totalDurationStr,
+        "Assigned Avg Duration/Day",
+        assignedStats.avgDurationStr,
+        "Executed Records",
+        executedStats.records,
+        "Executed Duration",
+        executedStats.totalDurationStr,
+        "Executed Avg Duration/Day",
+        executedStats.avgDurationStr,
+        "Project Completed",
+        `${stats.completed}%`,
+        "Project Inprocess",
+        `${stats.inprocess}%`,
+        "Project Pending",
+        `${stats.pending}%`,
+      ],
+      [],
+    ];
+
+    if (appliedViewFilter !== "Day") {
+      sheetRows.push([`${appliedViewFilter} View - Date Summary`]);
+      sheetRows.push(["Date", "Total Tasks", "Completed", "Pending", "In Progress", "Progress (%)"]);
+      dateGroupSummaries.forEach((grp) => {
+        sheetRows.push([
+          grp.dateStr,
+          grp.totalTasks,
+          grp.completed,
+          grp.pending,
+          grp.inProgress,
+          `${grp.progressPct}%`,
+        ]);
+      });
+      sheetRows.push([]);
+    }
+
+    sheetRows.push([
+      "S.No",
+      "Date",
+      "Project",
+      "Task Type",
+      "Task Name",
+      "Employee",
+      "Assigned Start Time",
+      "Assigned End Time",
+      "Assigned Duration",
+      "Assigned Status",
+      "Executed Start Time",
+      "Executed End Time",
+      "Executed Duration",
+      "Executed Status",
+      "Work Details",
+    ]);
+
+    filteredRows.forEach((row, index) => {
+      sheetRows.push([
+        index + 1,
+        row.dateStr,
+        row.projectName || "-",
+        row.taskTypeName || "-",
+        row.taskName,
+        row.empName || "-",
+        row.assignedStartTime,
+        row.assignedEndTime,
+        row.assignedDuration,
+        row.assignedStatus,
+        row.executedStartTime,
+        row.executedEndTime,
+        row.executedDuration,
+        row.executedStatus,
+        row.workDetails,
+      ]);
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    worksheet["!cols"] = [
+      { wch: 8 },
+      { wch: 14 },
+      { wch: 24 },
+      { wch: 20 },
+      { wch: 32 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 40 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `${appliedViewFilter}_Comparison`);
+    XLSX.writeFile(
+      workbook,
+      `Project_Task_Comparison_${appliedViewFilter}_${appliedFilterDetails.fromDateLabel}_to_${appliedFilterDetails.toDateLabel}.xlsx`
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filteredRows,
+    appliedFilterDetails,
+    stats,
+    appliedEmployeeFilter,
+    assignedStats,
+    executedStats,
+    appliedViewFilter,
+    dateGroupSummaries,
+  ]);
+
+  const getStatusChipColors = (statusText: string, statusClass?: string) => {
+    const cls = statusClass || "";
+    const lower = (statusText || "").toLowerCase();
+    if (cls === "chip-completed" || lower.includes("completed")) {
+      return { bg: [76, 175, 80] as [number, number, number], text: [255, 255, 255] as [number, number, number] };
+    }
+    if (cls === "chip-progress" || lower.includes("in progress")) {
+      return { bg: [25, 118, 210] as [number, number, number], text: [255, 255, 255] as [number, number, number] };
+    }
+    if (cls === "chip-pending" || lower.includes("pending")) {
+      return { bg: [255, 152, 0] as [number, number, number], text: [255, 255, 255] as [number, number, number] };
+    }
+    if (cls === "chip-new" || lower.includes("new")) {
+      return { bg: [255, 193, 7] as [number, number, number], text: [0, 0, 0] as [number, number, number] };
+    }
+    return null;
+  };
+
+  const renderTaskAutoTable = (
+    doc: jsPDF,
+    rows: CombinedTaskRow[],
+    startY: number,
+    marginX: number = 10
+  ) => {
+    autoTable(doc, {
+      head: [
+        [
+          { content: "Date", styles: { fillColor: [245, 245, 245], textColor: [33, 33, 33] } },
+          { content: "Task Name", styles: { fillColor: [245, 245, 245], textColor: [33, 33, 33] } },
+          { content: "Employee", styles: { fillColor: [245, 245, 245], textColor: [33, 33, 33] } },
+          {
+            content: "Assigned Details",
+            colSpan: 4,
+            styles: { halign: "center", fillColor: [227, 242, 253], textColor: [33, 33, 33] },
+          },
+          {
+            content: "Executed Details",
+            colSpan: 5,
+            styles: { halign: "center", fillColor: [232, 245, 233], textColor: [33, 33, 33] },
+          },
+        ],
+        [
+          { content: "", styles: { fillColor: [245, 245, 245], textColor: [33, 33, 33] } },
+          { content: "", styles: { fillColor: [245, 245, 245], textColor: [33, 33, 33] } },
+          { content: "", styles: { fillColor: [245, 245, 245], textColor: [33, 33, 33] } },
+          { content: "Start Time", styles: { fillColor: [227, 242, 253], textColor: [33, 33, 33] } },
+          { content: "End Time", styles: { fillColor: [227, 242, 253], textColor: [33, 33, 33] } },
+          { content: "Duration", styles: { fillColor: [227, 242, 253], textColor: [33, 33, 33] } },
+          { content: "Status", styles: { fillColor: [227, 242, 253], textColor: [33, 33, 33] } },
+          { content: "Start Time", styles: { fillColor: [232, 245, 233], textColor: [33, 33, 33] } },
+          { content: "End Time", styles: { fillColor: [232, 245, 233], textColor: [33, 33, 33] } },
+          { content: "Duration", styles: { fillColor: [232, 245, 233], textColor: [33, 33, 33] } },
+          { content: "Status", styles: { fillColor: [232, 245, 233], textColor: [33, 33, 33] } },
+          { content: "Work Details", styles: { fillColor: [232, 245, 233], textColor: [33, 33, 33] } },
+        ],
+      ],
+      body: rows.map((row) => [
+        row.dateStr,
+        row.taskName,
+        row.empName || "-",
+        row.assignedStartTime,
+        row.assignedEndTime,
+        row.assignedDuration,
+        row.assignedStatus !== "-" && row.assignedStatus !== "--" ? row.assignedStatus : "-",
+        row.executedStartTime,
+        row.executedEndTime,
+        row.executedDuration,
+        row.executedStatus !== "-" ? row.executedStatus : "-",
+        row.workDetails,
+      ]),
+      startY,
+      theme: "grid",
+      styles: {
+        fontSize: 8,
+        cellPadding: 2.2,
+        overflow: "linebreak",
+        fillColor: [255, 255, 255],
+        textColor: [33, 33, 33],
+        lineColor: [224, 224, 224],
+        lineWidth: 0.25,
+        valign: "middle",
+      },
+      headStyles: {
+        fontStyle: "bold",
+        lineColor: [204, 204, 204],
+        lineWidth: 0.3,
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },  // Date
+        1: { cellWidth: 38 },  // Task Name
+        2: { cellWidth: 26 },  // Employee
+        3: { cellWidth: 15 },  // Assigned Start Time
+        4: { cellWidth: 15 },  // Assigned End Time
+        5: { cellWidth: 16 },  // Assigned Duration
+        6: { cellWidth: 20 },  // Assigned Status
+        7: { cellWidth: 15 },  // Executed Start Time
+        8: { cellWidth: 15 },  // Executed End Time
+        9: { cellWidth: 16 },  // Executed Duration
+        10: { cellWidth: 20 }, // Executed Status
+        11: { cellWidth: 61 }, // Work Details
+      },
+      didDrawCell: (data) => {
+        if (data.section === "body" && (data.column.index === 6 || data.column.index === 10)) {
+          const row = rows[data.row.index];
+          if (!row) return;
+          const isAssigned = data.column.index === 6;
+          const statusVal = isAssigned ? row.assignedStatus : row.executedStatus;
+          const statusCls = isAssigned ? row.assignedStatusClass : row.executedStatusClass;
+          if (!statusVal || statusVal === "-" || statusVal === "--") return;
+
+          const chipColors = getStatusChipColors(statusVal, statusCls);
+          if (!chipColors) return;
+
+          const cell = data.cell;
+          doc.setFillColor(255, 255, 255);
+          doc.rect(cell.x + 0.3, cell.y + 0.3, cell.width - 0.6, cell.height - 0.6, "F");
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(7);
+          const textW = doc.getTextWidth(statusVal);
+          const chipW = Math.min(cell.width - 2, textW + 5);
+          const chipH = 4.8;
+          const cx = cell.x + (cell.width - chipW) / 2;
+          const cy = cell.y + (cell.height - chipH) / 2;
+
+          doc.setFillColor(chipColors.bg[0], chipColors.bg[1], chipColors.bg[2]);
+          doc.roundedRect(cx, cy, chipW, chipH, 2, 2, "F");
+          doc.setTextColor(chipColors.text[0], chipColors.text[1], chipColors.text[2]);
+          doc.text(statusVal, cx + chipW / 2, cy + 3.3, { align: "center" });
+        }
+      },
+      margin: { left: marginX, right: marginX, bottom: 12 },
+    });
+  };
+
+  const handleDownloadPDF = useCallback(() => {
+    if (filteredRows.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "landscape" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 10;
+    const contentWidth = pageWidth - marginX * 2;
+
+    const drawHeaderSection = () => {
+      // Title matching .header-title
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(25, 118, 210);
+      doc.text("Project Task Comparison", marginX, 12);
+
+      // Filter Details Card matching screen UI
+      const filterCardY = 16;
+      const filterCardH = 14;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(224, 224, 224);
+      doc.roundedRect(marginX, filterCardY, contentWidth, filterCardH, 2, 2, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(25, 118, 210);
+      doc.text("Filter Details:", marginX + 3, filterCardY + 5.5);
+
+      const drawFilterPill = (
+        label: string,
+        x: number,
+        y: number,
+        bg: [number, number, number],
+        fg: [number, number, number]
+      ) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        const w = doc.getTextWidth(label) + 5;
+        doc.setFillColor(bg[0], bg[1], bg[2]);
+        doc.roundedRect(x, y, w, 4.8, 1.8, 1.8, "F");
+        doc.setTextColor(fg[0], fg[1], fg[2]);
+        doc.text(label, x + 2.5, y + 3.4);
+        return x + w + 2.5;
+      };
+
+      let px = marginX + 26;
+      const row1Y = filterCardY + 2;
+      px = drawFilterPill(`Format: ${appliedFilterDetails.displayFormatLabel}`, px, row1Y, [245, 245, 245], [33, 33, 33]);
+      px = drawFilterPill(`View: ${appliedFilterDetails.viewLabel}`, px, row1Y, [227, 242, 253], [21, 101, 192]);
+      px = drawFilterPill(`Project: ${appliedFilterDetails.projectLabel}`, px, row1Y, [245, 245, 245], [33, 33, 33]);
+      px = drawFilterPill(`Task Type: ${appliedFilterDetails.taskTypeLabel}`, px, row1Y, [245, 245, 245], [33, 33, 33]);
+      drawFilterPill(`Task: ${appliedFilterDetails.taskLabel}`, px, row1Y, [245, 245, 245], [33, 33, 33]);
+
+      let px2 = marginX + 26;
+      const row2Y = filterCardY + 7.8;
+      px2 = drawFilterPill(`Employee: ${appliedFilterDetails.employeeLabel}`, px2, row2Y, [245, 245, 245], [33, 33, 33]);
+      px2 = drawFilterPill(`From Date: ${appliedFilterDetails.fromDateLabel}`, px2, row2Y, [232, 245, 233], [46, 125, 50]);
+      drawFilterPill(`To Date: ${appliedFilterDetails.toDateLabel}`, px2, row2Y, [232, 245, 233], [46, 125, 50]);
+
+      // Summary Stat Cards matching .summary-stats
+      const statCards: { title: string; value: string; color: [number, number, number] }[] = [
+        { title: "Assigned Records", value: String(assignedStats.records), color: [25, 118, 210] },
+        { title: "Assigned Duration", value: assignedStats.totalDurationStr, color: [25, 118, 210] as [number, number, number] },
+        { title: "Assigned Avg/Day", value: assignedStats.avgDurationStr, color: [25, 118, 210] as [number, number, number] },
+        { title: "Executed Records", value: String(executedStats.records), color: [46, 125, 50] },
+        { title: "Executed Duration", value: executedStats.totalDurationStr, color: [46, 125, 50] as [number, number, number] },
+        { title: "Executed Avg/Day", value: executedStats.avgDurationStr, color: [46, 125, 50] as [number, number, number] },
+        { title: "Project Completed", value: `${stats.completed}%`, color: [25, 118, 210] },
+        { title: "Project Inprocess", value: `${stats.inprocess}%`, color: [76, 175, 80] },
+        { title: "Project Pending", value: `${stats.pending}%`, color: [255, 152, 0] },
+      ];
+
+      const statY = filterCardY + filterCardH + 3;
+      const statH = 16;
+      const gap = 3;
+      const boxW = (contentWidth - gap * (statCards.length - 1)) / statCards.length;
+
+      statCards.forEach((sc, idx) => {
+        const bx = marginX + idx * (boxW + gap);
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(224, 224, 224);
+        doc.roundedRect(bx, statY, boxW, statH, 2.5, 2.5, "FD");
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(110, 110, 110);
+        doc.text(sc.title, bx + boxW / 2, statY + 5.5, { align: "center" });
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(sc.color[0], sc.color[1], sc.color[2]);
+        doc.text(sc.value, bx + boxW / 2, statY + 12.8, { align: "center" });
+      });
+
+      return statY + statH + 4;
+    };
+
+    let startY = drawHeaderSection();
+
+    if (appliedViewFilter !== "Day") {
+      autoTable(doc, {
+        head: [["Date", `${appliedViewFilter} View Summary (Click to View All)`]],
+        body: dateGroupSummaries.map((grp) => [
+          grp.dateStr,
+          `Total Tasks: ${grp.totalTasks}     |     Completed (${grp.completed})     Pending (${grp.pending})     In Progress (${grp.inProgress})     |     Progress: ${grp.progressPct}%`,
+        ]),
+        startY,
+        theme: "grid",
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 3,
+          fillColor: [240, 248, 255],
+          textColor: [33, 33, 33],
+          fontStyle: "bold",
+          lineColor: [224, 224, 224],
+          lineWidth: 0.25,
+        },
+        headStyles: {
+          fillColor: [245, 245, 245],
+          textColor: [33, 33, 33],
+          fontStyle: "bold",
+        },
+        columnStyles: {
+          0: { cellWidth: 32 },
+        },
+        didDrawCell: (data) => {
+          if (data.section === "body" && data.column.index === 1) {
+            const grp = dateGroupSummaries[data.row.index];
+            if (!grp) return;
+            const cell = data.cell;
+            // Clear default text and draw the exact group row UI (chips + progress bar)
+            doc.setFillColor(240, 248, 255);
+            doc.rect(cell.x + 0.3, cell.y + 0.3, cell.width - 0.6, cell.height - 0.6, "F");
+
+            const cy = cell.y + cell.height / 2;
+            let cx = cell.x + 6;
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(33, 33, 33);
+            const totalTxt = `Total Tasks: ${grp.totalTasks}`;
+            doc.text(totalTxt, cx, cy + 1);
+            cx += doc.getTextWidth(totalTxt) + 8;
+
+            const drawGrpChip = (label: string, bg: [number, number, number]) => {
+              doc.setFont("helvetica", "bold");
+              doc.setFontSize(7.5);
+              const w = doc.getTextWidth(label) + 5;
+              doc.setFillColor(bg[0], bg[1], bg[2]);
+              doc.roundedRect(cx, cy - 2.4, w, 4.8, 2, 2, "F");
+              doc.setTextColor(255, 255, 255);
+              doc.text(label, cx + 2.5, cy + 0.9);
+              cx += w + 3;
+            };
+
+            drawGrpChip(`Completed (${grp.completed})`, [46, 125, 50]);
+            drawGrpChip(`Pending (${grp.pending})`, [237, 108, 2]);
+            drawGrpChip(`In Progress (${grp.inProgress})`, [2, 136, 209]);
+
+            cx += 6;
+            // Progress percentage & bar matching LinearProgress
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7);
+            doc.setTextColor(33, 33, 33);
+            doc.text(`${grp.progressPct}%`, cx, cy - 0.8);
+
+            const barW = 35;
+            const barH = 2.2;
+            doc.setFillColor(187, 222, 251);
+            doc.roundedRect(cx, cy + 0.3, barW, barH, 1, 1, "F");
+            if (grp.progressPct > 0) {
+              doc.setFillColor(25, 118, 210);
+              doc.roundedRect(cx, cy + 0.3, (barW * grp.progressPct) / 100, barH, 1, 1, "F");
+            }
+
+            cx += barW + 8;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(25, 118, 210);
+            doc.text("(Click to View All)", cx, cy + 1);
+          }
+        },
+        margin: { left: marginX, right: marginX },
+      });
+      startY = ((doc as any).lastAutoTable?.finalY || startY) + 5;
+    }
+
+    renderTaskAutoTable(doc, filteredRows, startY, marginX);
+
+    doc.save(
+      `Project_Task_Comparison_${appliedViewFilter}_${appliedFilterDetails.fromDateLabel}_to_${appliedFilterDetails.toDateLabel}.pdf`
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filteredRows,
+    appliedFilterDetails,
+    appliedEmployeeFilter,
+    assignedStats,
+    executedStats,
+    stats,
+    appliedViewFilter,
+    dateGroupSummaries,
+  ]);
+
+  const handleDownloadModalExcel = useCallback(() => {
+    if (modalRows.length === 0) return;
+
+    const sheetRows: any[][] = [
+      [`Tasks for ${modalDate} - Employee: ${appliedFilterDetails.employeeLabel}`],
+      [
+        "Date",
+        modalDate,
+        "Employee",
+        appliedFilterDetails.employeeLabel,
+        "Project",
+        appliedFilterDetails.projectLabel,
+        "Task Type",
+        appliedFilterDetails.taskTypeLabel,
+        "Task",
+        appliedFilterDetails.taskLabel,
+        "Total Tasks",
+        modalRows.length,
+      ],
+      [],
+      [
+        "S.No",
+        "Date",
+        "Task Name",
+        "Employee",
+        "Assigned Start Time",
+        "Assigned End Time",
+        "Assigned Duration",
+        "Assigned Status",
+        "Executed Start Time",
+        "Executed End Time",
+        "Executed Duration",
+        "Executed Status",
+        "Work Details",
+      ],
+    ];
+
+    modalRows.forEach((row, index) => {
+      sheetRows.push([
+        index + 1,
+        row.dateStr,
+        row.taskName,
+        row.empName || "-",
+        row.assignedStartTime,
+        row.assignedEndTime,
+        row.assignedDuration,
+        row.assignedStatus,
+        row.executedStartTime,
+        row.executedEndTime,
+        row.executedDuration,
+        row.executedStatus,
+        row.workDetails,
+      ]);
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    worksheet["!cols"] = [
+      { wch: 8 },
+      { wch: 14 },
+      { wch: 32 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 40 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `Tasks_${modalDate}`);
+    XLSX.writeFile(workbook, `Tasks_for_${modalDate}_${appliedFilterDetails.employeeLabel}.xlsx`);
+  }, [modalRows, modalDate, appliedFilterDetails]);
+
+  const handleDownloadModalPDF = useCallback(() => {
+    if (modalRows.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "landscape" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 10;
+    const maxX = pageWidth - marginX;
+
+    // Dialog Header: Tasks for {modalDate} + filter chips cleanly matching dialogue preview
+    const headerY = 12;
+    let curX = marginX;
+    let curY = headerY;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(33, 33, 33);
+    const titleStr = `Tasks for ${modalDate}`;
+    doc.text(titleStr, curX, curY + 5.5);
+    curX += doc.getTextWidth(titleStr) + 6;
+
+    const drawHeaderChip = (label: string) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      const textW = doc.getTextWidth(label);
+      const pillW = textW + 8;
+      const pillH = 6;
+      if (curX + pillW > maxX) {
+        curX = marginX;
+        curY += 8;
+      }
+      doc.setFillColor(227, 242, 253); // #e3f2fd
+      doc.roundedRect(curX, curY, pillW, pillH, 2, 2, "F");
+      doc.setTextColor(21, 101, 192); // #1565c0
+      doc.text(label, curX + 4, curY + 4.2);
+      curX += pillW + 4;
+    };
+
+    if (appliedProjectFilter !== "") {
+      drawHeaderChip(`Project: ${appliedFilterDetails.projectLabel}`);
+    }
+    if (appliedTaskTypeFilter !== "") {
+      drawHeaderChip(`Task Type: ${appliedFilterDetails.taskTypeLabel}`);
+    }
+    if (appliedTaskFilter !== "") {
+      drawHeaderChip(`Task: ${appliedFilterDetails.taskLabel}`);
+    }
+    drawHeaderChip(`Employee: ${appliedFilterDetails.employeeLabel}`);
+
+    const startY = Math.max(curY + 10, 22);
+
+    // Render using exact same table methods as Day View PDF download
+    renderTaskAutoTable(doc, modalRows, startY, marginX);
+
+    doc.save(`Tasks_for_${modalDate}_${appliedFilterDetails.employeeLabel}.pdf`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    modalRows,
+    modalDate,
+    appliedFilterDetails,
+    appliedProjectFilter,
+    appliedTaskTypeFilter,
+    appliedTaskFilter,
+  ]);
 
   const renderCalendar = () => {
     const { startOfWeek, startOfMonth } = getFilterBoundaries();
@@ -1378,6 +2543,7 @@ const ProjectTaskComparison = () => {
       
       <td className="border-left">{row.assignedStartTime}</td>
       <td>{row.assignedEndTime}</td>
+      <td>{row.assignedDuration}</td>
       <td>
         {row.assignedStatus !== '-' && row.assignedStatus !== '--' ? (
           <span className={`chip ${row.assignedStatusClass}`}>{row.assignedStatus}</span>
@@ -1661,6 +2827,42 @@ const ProjectTaskComparison = () => {
           </div>
 
           <div className="header-actions">
+            <Button
+              variant="contained"
+              startIcon={<TableViewIcon />}
+              onClick={handleDownloadExcel}
+              disabled={loading || filteredRows.length === 0}
+              size="small"
+              sx={{
+                borderRadius: "20px",
+                textTransform: "none",
+                backgroundColor: "#28a745",
+                flex: "none",
+                height: "36px",
+                "&:hover": { backgroundColor: "#218838" },
+              }}
+            >
+              Excel
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleDownloadPDF}
+              disabled={loading || filteredRows.length === 0}
+              size="small"
+              sx={{
+                borderRadius: "20px",
+                textTransform: "none",
+                backgroundColor: "#dc3545",
+                flex: "none",
+                height: "36px",
+                "&:hover": { backgroundColor: "#bb2d3b" },
+              }}
+            >
+              PDF
+            </Button>
+
             <DashboardTopFilterBar
               dialogOpen={filterDialogOpen}
               onOpenDialog={() => setFilterDialogOpen(true)}
@@ -1695,17 +2897,95 @@ const ProjectTaskComparison = () => {
           </div>
         </div>
 
-        <div className="summary-stats">
-          <div className="stat-box purple">
-            <div className="stat-title">Total Records</div>
-            <div className="stat-value">{filteredRows.length}</div>
+        <Box
+          sx={{
+            background: "var(--card-bg)",
+            borderRadius: "8px",
+            p: "12px 16px",
+            mb: 2,
+            boxShadow:
+              "0px 2px 1px -1px rgba(0,0,0,0.2), 0px 1px 1px 0px rgba(0,0,0,0.14), 0px 1px 3px 0px rgba(0,0,0,0.12)",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 1.5,
+          }}
+        >
+          <Typography
+            variant="subtitle2"
+            sx={{ fontWeight: 700, color: "var(--primary-color)", mr: 1 }}
+          >
+            Filter Details:
+          </Typography>
+          <Chip
+            size="small"
+            label={`Format: ${appliedFilterDetails.displayFormatLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#f5f5f5" }}
+          />
+          <Chip
+            size="small"
+            label={`View: ${appliedFilterDetails.viewLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#e3f2fd", color: "#1565c0" }}
+          />
+          <Chip
+            size="small"
+            label={`Project: ${appliedFilterDetails.projectLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#f5f5f5" }}
+          />
+          <Chip
+            size="small"
+            label={`Task Type: ${appliedFilterDetails.taskTypeLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#f5f5f5" }}
+          />
+          <Chip
+            size="small"
+            label={`Task: ${appliedFilterDetails.taskLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#f5f5f5" }}
+          />
+          <Chip
+            size="small"
+            label={`Employee: ${appliedFilterDetails.employeeLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#f5f5f5" }}
+          />
+          <Chip
+            size="small"
+            label={`From Date: ${appliedFilterDetails.fromDateLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#e8f5e9", color: "#2e7d32" }}
+          />
+          <Chip
+            size="small"
+            label={`To Date: ${appliedFilterDetails.toDateLabel}`}
+            sx={{ fontWeight: 600, bgcolor: "#e8f5e9", color: "#2e7d32" }}
+          />
+        </Box>
+
+        <div className="summary-stats" style={{ flexWrap: "wrap" }}>
+          <div className="stat-box" style={{ borderLeft: "4px solid #1976d2", background: "#f4f9fd" }}>
+            <div className="stat-title" style={{ color: "#1565c0", fontWeight: 700 }}>Assigned Records</div>
+            <div className="stat-value" style={{ color: "#1976d2" }}>{assignedStats.records}</div>
           </div>
-          {appliedEmployeeFilter !== "" && (
-            <div className="stat-box teal">
-              <div className="stat-title">Total Duration</div>
-              <div className="stat-value" style={{ fontSize: totalDurationStr.length > 8 ? '2.1rem' : '2.5rem' }}>{totalDurationStr}</div>
-            </div>
-          )}
+          <div className="stat-box" style={{ borderLeft: "4px solid #1976d2", background: "#f4f9fd" }}>
+            <div className="stat-title" style={{ color: "#1565c0", fontWeight: 700 }}>Assigned Duration</div>
+            <div className="stat-value" style={{ color: "#1976d2", fontSize: assignedStats.totalDurationStr.length > 8 ? '2.1rem' : '2.5rem' }}>{assignedStats.totalDurationStr}</div>
+          </div>
+          <div className="stat-box" style={{ borderLeft: "4px solid #1976d2", background: "#f4f9fd" }}>
+            <div className="stat-title" style={{ color: "#1565c0", fontWeight: 700 }}>Assigned Avg Duration/Day</div>
+            <div className="stat-value" style={{ color: "#1976d2", fontSize: assignedStats.avgDurationStr.length > 8 ? '2.1rem' : '2.5rem' }}>{assignedStats.avgDurationStr}</div>
+          </div>
+
+          <div className="stat-box" style={{ borderLeft: "4px solid #2e7d32", background: "#f4fbf5" }}>
+            <div className="stat-title" style={{ color: "#2e7d32", fontWeight: 700 }}>Executed Records</div>
+            <div className="stat-value" style={{ color: "#2e7d32" }}>{executedStats.records}</div>
+          </div>
+          <div className="stat-box" style={{ borderLeft: "4px solid #2e7d32", background: "#f4fbf5" }}>
+            <div className="stat-title" style={{ color: "#2e7d32", fontWeight: 700 }}>Executed Duration</div>
+            <div className="stat-value" style={{ color: "#2e7d32", fontSize: executedStats.totalDurationStr.length > 8 ? '2.1rem' : '2.5rem' }}>{executedStats.totalDurationStr}</div>
+          </div>
+          <div className="stat-box" style={{ borderLeft: "4px solid #2e7d32", background: "#f4fbf5" }}>
+            <div className="stat-title" style={{ color: "#2e7d32", fontWeight: 700 }}>Executed Avg Duration/Day</div>
+            <div className="stat-value" style={{ color: "#2e7d32", fontSize: executedStats.avgDurationStr.length > 8 ? '2.1rem' : '2.5rem' }}>{executedStats.avgDurationStr}</div>
+          </div>
+
           <div className="stat-box blue">
             <div className="stat-title">project Completed</div>
             <div className="stat-value">{stats.completed}%</div>
@@ -1731,7 +3011,7 @@ const ProjectTaskComparison = () => {
                     <th className="bg-default">Date</th>
                     <th className="bg-default">Task Name</th>
                     <th className="bg-default">Employee</th>
-                    <th className="bg-assigned text-center" colSpan={3}>Assigned Details</th>
+                    <th className="bg-assigned text-center" colSpan={4}>Assigned Details</th>
                     <th className="bg-executed text-center" colSpan={5}>Executed Details</th>
                   </tr>
                   <tr>
@@ -1741,6 +3021,7 @@ const ProjectTaskComparison = () => {
                     
                     <th className="bg-assigned border-left">Start Time</th>
                     <th className="bg-assigned">End Time</th>
+                    <th className="bg-assigned">Duration</th>
                     <th className="bg-assigned">Status</th>
                     
                     <th className="bg-executed border-left">Start Time</th>
@@ -1768,7 +3049,101 @@ const ProjectTaskComparison = () => {
           <div className="modal open" onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}>
             <div className="modal-content">
               <span className="close-btn" onClick={() => setModalOpen(false)}>&times;</span>
-              <h2 style={{ marginTop: 0 }}>Tasks for {modalDate}</h2>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                  marginBottom: "12px",
+                }}
+              >
+                <h2 style={{ margin: 0, fontSize: "1.5rem" }}>Tasks for {modalDate}</h2>
+                {appliedProjectFilter !== "" && (
+                  <Chip
+                    label={`Project: ${appliedFilterDetails.projectLabel}`}
+                    sx={{
+                      fontSize: "1.5rem",
+                      fontWeight: 700,
+                      height: "auto",
+                      py: 0.25,
+                      bgcolor: "#e3f2fd",
+                      color: "#1565c0",
+                    }}
+                  />
+                )}
+                {appliedTaskTypeFilter !== "" && (
+                  <Chip
+                    label={`Task Type: ${appliedFilterDetails.taskTypeLabel}`}
+                    sx={{
+                      fontSize: "1.5rem",
+                      fontWeight: 700,
+                      height: "auto",
+                      py: 0.25,
+                      bgcolor: "#e3f2fd",
+                      color: "#1565c0",
+                    }}
+                  />
+                )}
+                {appliedTaskFilter !== "" && (
+                  <Chip
+                    label={`Task: ${appliedFilterDetails.taskLabel}`}
+                    sx={{
+                      fontSize: "1.5rem",
+                      fontWeight: 700,
+                      height: "auto",
+                      py: 0.25,
+                      bgcolor: "#e3f2fd",
+                      color: "#1565c0",
+                    }}
+                  />
+                )}
+                <Chip
+                  label={`Employee: ${appliedFilterDetails.employeeLabel}`}
+                  sx={{
+                    fontSize: "1.5rem",
+                    fontWeight: 700,
+                    height: "auto",
+                    py: 0.25,
+                    bgcolor: "#e3f2fd",
+                    color: "#1565c0",
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<TableViewIcon />}
+                  onClick={handleDownloadModalExcel}
+                  disabled={modalRows.length === 0}
+                  size="small"
+                  sx={{
+                    borderRadius: "20px",
+                    textTransform: "none",
+                    backgroundColor: "#28a745",
+                    flex: "none",
+                    height: "36px",
+                    "&:hover": { backgroundColor: "#218838" },
+                  }}
+                >
+                  Excel
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={handleDownloadModalPDF}
+                  disabled={modalRows.length === 0}
+                  size="small"
+                  sx={{
+                    borderRadius: "20px",
+                    textTransform: "none",
+                    backgroundColor: "#dc3545",
+                    flex: "none",
+                    height: "36px",
+                    "&:hover": { backgroundColor: "#bb2d3b" },
+                  }}
+                >
+                  PDF
+                </Button>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="modal-table">
                   <thead>
@@ -1776,7 +3151,7 @@ const ProjectTaskComparison = () => {
                       <th className="bg-default">Date</th>
                       <th className="bg-default">Task Name</th>
                       <th className="bg-default">Employee</th>
-                      <th className="bg-assigned text-center" colSpan={3}>Assigned Details</th>
+                      <th className="bg-assigned text-center" colSpan={4}>Assigned Details</th>
                       <th className="bg-executed text-center" colSpan={5}>Executed Details</th>
                     </tr>
                     <tr>
@@ -1786,6 +3161,7 @@ const ProjectTaskComparison = () => {
                       
                       <th className="bg-assigned border-left">Start Time</th>
                       <th className="bg-assigned">End Time</th>
+                      <th className="bg-assigned">Duration</th>
                       <th className="bg-assigned">Status</th>
                       
                       <th className="bg-executed border-left">Start Time</th>
@@ -1808,4 +3184,4 @@ const ProjectTaskComparison = () => {
   );
 };
 
-export default ProjectTaskComparison;
+export default MyList;
