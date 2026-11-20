@@ -25,14 +25,16 @@ import {
   createTaskType, 
   updateTaskType, 
   deleteTaskType,
-  getProjectDropdown
+  getProjectDropdown,
+  getProjectStageDropdown
 } from "./TaskType.api";
 import { getProjectMaster } from "../Projects/Projects.api";
 import type { 
   tasktypeData, 
   tasktypeCreateInput, 
   tasktypeUpdateInput,
-  ProjectDropdown
+  ProjectDropdown,
+  ProjectStageDropdown
 } from "./variables";
 import { emptyTaskType } from "./variables";
 import type { PageProps } from "../../../routes/indexRouter";
@@ -46,6 +48,7 @@ const numEq = (a: any, b: any) => {
 const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   const [taskTypes, setTaskTypes] = useState<tasktypeData[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectDropdown[]>([]);
+  const [stageOptions, setStageOptions] = useState<ProjectStageDropdown[]>([]);
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [taskTypeObj, setTaskTypeObj] = useState<tasktypeCreateInput>(emptyTaskType);
@@ -95,13 +98,15 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
       setIsLoadingDropdowns(true);
       if (loadingOn) loadingOn();
       
-      const [projects, projsMaster] = await Promise.all([
+      const [projects, projsMaster, stages] = await Promise.all([
         getProjectDropdown(loadingOn, loadingOff).catch(() => []),
         getProjectMaster(loadingOn, loadingOff).catch(() => []),
+        getProjectStageDropdown(loadingOn, loadingOff).catch(() => []),
       ]);
       
       setProjectOptions(projects);
       setProjectsList(projsMaster);
+      setStageOptions(stages);
     } catch (error) {
       console.error("Error fetching dropdowns:", error);
       toast.error("Failed to load dropdown options");
@@ -126,10 +131,33 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
   /** Edit */
   const handleEdit = (row: tasktypeData) => {
     setSelectedId(row.Task_Type_Id);
+
+    let savedStageId: number | null = row.Stage_Id ?? null;
+    if (savedStageId === null) {
+      try {
+        const rawMap = localStorage.getItem("TASK_TYPE_STAGE_MAP");
+        const parsedMap = rawMap ? JSON.parse(rawMap) : {};
+        const keyById = `id_${row.Task_Type_Id}`;
+        const keyByName = `proj_${row.Project_Id}_${(row.Task_Type || "").trim().toLowerCase()}`;
+        if (parsedMap[keyById] !== undefined) savedStageId = Number(parsedMap[keyById]);
+        else if (parsedMap[keyByName] !== undefined) savedStageId = Number(parsedMap[keyByName]);
+      } catch {
+        // Ignore storage error
+      }
+    }
+    if (savedStageId === null && row.Project_Id !== null && row.Project_Id !== undefined) {
+      const matchedStage = stageOptions.find(
+        (s) => s.Project_Id != null && Number(s.Project_Id) === Number(row.Project_Id)
+      );
+      if (matchedStage) {
+        savedStageId = Number(matchedStage.value ?? matchedStage.Id);
+      }
+    }
     
     const editData: tasktypeCreateInput = {
       Task_Type: row.Task_Type || "",
       Project_Id: row.Project_Id || null,
+      Stage_Id: savedStageId,
       Status: row.Status !== undefined && row.Status !== null ? row.Status : 1
     };
     
@@ -162,6 +190,7 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         Task_Type_Id: selectedId,
         Task_Type: taskTypeObj.Task_Type.trim(),
         Project_Id: taskTypeObj.Project_Id,
+        Stage_Id: taskTypeObj.Stage_Id ?? null,
         Status: taskTypeObj.Status
       };
       
@@ -170,6 +199,7 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
       const createPayload: tasktypeCreateInput = {
         Task_Type: taskTypeObj.Task_Type.trim(),
         Project_Id: taskTypeObj.Project_Id,
+        Stage_Id: taskTypeObj.Stage_Id ?? null,
         Status: taskTypeObj.Status !== undefined ? taskTypeObj.Status : 1
       };
       
@@ -177,6 +207,20 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     }
 
     if (success) {
+      if (taskTypeObj.Stage_Id) {
+        try {
+          const rawMap = localStorage.getItem("TASK_TYPE_STAGE_MAP");
+          const parsedMap = rawMap ? JSON.parse(rawMap) : {};
+          if (selectedId) {
+            parsedMap[`id_${selectedId}`] = taskTypeObj.Stage_Id;
+          }
+          parsedMap[`proj_${taskTypeObj.Project_Id}_${taskTypeObj.Task_Type.trim().toLowerCase()}`] =
+            taskTypeObj.Stage_Id;
+          localStorage.setItem("TASK_TYPE_STAGE_MAP", JSON.stringify(parsedMap));
+        } catch {
+          // Ignore storage error
+        }
+      }
       closeDialog();
       fetchTaskTypeList();
     }
@@ -221,6 +265,51 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
     
     return "Not Assigned";
   }, [projectOptions, projectsList]);
+
+  /** Get stage display name mapped by Stage_Id or Project_Id */
+  const getStageDisplayName = useCallback((row: tasktypeData): string => {
+    if (row.Stage_Name && row.Stage_Name.trim() !== "") {
+      return row.Stage_Name;
+    }
+
+    let targetStageId: number | null = row.Stage_Id ?? (row as any).stageId ?? null;
+    if (targetStageId === null) {
+      try {
+        const rawMap = localStorage.getItem("TASK_TYPE_STAGE_MAP");
+        if (rawMap) {
+          const parsedMap = JSON.parse(rawMap);
+          const keyById = `id_${row.Task_Type_Id}`;
+          const keyByName = `proj_${row.Project_Id}_${(row.Task_Type || "").trim().toLowerCase()}`;
+          if (parsedMap[keyById] !== undefined) targetStageId = Number(parsedMap[keyById]);
+          else if (parsedMap[keyByName] !== undefined) targetStageId = Number(parsedMap[keyByName]);
+        }
+      } catch {
+        // Ignore storage error
+      }
+    }
+
+    if (targetStageId !== null && !Number.isNaN(Number(targetStageId))) {
+      const byStageId = stageOptions.find(
+        (s) => Number(s.value ?? s.Id) === Number(targetStageId)
+      );
+      if (byStageId && (byStageId.label || byStageId.Stage_Name)) {
+        return byStageId.label || byStageId.Stage_Name || "Not Assigned";
+      }
+    }
+
+    if (row.Project_Id !== null && row.Project_Id !== undefined) {
+      const projectId = Number(row.Project_Id);
+      const matchingStages = stageOptions.filter(
+        (s) => s.Project_Id !== null && s.Project_Id !== undefined && Number(s.Project_Id) === projectId
+      );
+      if (matchingStages.length > 0) {
+        const stage = matchingStages[matchingStages.length - 1];
+        return stage.label || stage.Stage_Name || "Not Assigned";
+      }
+    }
+
+    return "Not Assigned";
+  }, [stageOptions]);
 
   /** Helper to check if project associated with task type is active */
   const isProjectActive = useCallback((item: tasktypeData) => {
@@ -537,9 +626,30 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
                     fontWeight: 500,
                     color: 'text.primary'
                   }}
-                  title={taskTypeRow.Project_Id ? `Project ID: ${taskTypeRow.Project_Id}` : "Not Assigned"}
                 >
                   {displayName}
+                </Typography>
+              );
+            },
+          },
+          {
+            isVisible: 1,
+            ColumnHeader: "Stage",
+            align: "left" as const,
+            isCustomCell: true,
+            Cell: ({ row }: { row: Record<string, unknown> }) => {
+              const taskTypeRow = row as unknown as tasktypeData;
+              const stageName = getStageDisplayName(taskTypeRow);
+
+              return (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontWeight: 500,
+                    color: "text.primary",
+                  }}
+                >
+                  {stageName}
                 </Typography>
               );
             },
@@ -643,6 +753,7 @@ const TaskTypeMainPage: React.FC<PageProps> = ({ loadingOn, loadingOff }) => {
         taskTypeObj={taskTypeObj}
         setTaskTypeObj={setTaskTypeObj}
         projectOptions={projectOptions}
+        stageOptions={stageOptions}
         selectedId={selectedId}
         isLoading={isLoadingDropdowns}
       />

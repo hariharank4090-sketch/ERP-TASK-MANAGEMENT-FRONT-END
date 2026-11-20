@@ -40,7 +40,6 @@ import {
   Info as InfoIcon,
   Delete as DeleteIcon,
   DoneAll as DoneAllIcon,
-  Done as DoneIcon,
 } from "@mui/icons-material";
 import { cleanNotificationId, getReadNotificationIds, markNotificationsAsRead } from "./notificationStorage";
 import {
@@ -946,27 +945,6 @@ const NotificationScreen: React.FC = () => {
     }
   };
 
-  const markAsRead = async (id: string) => {
-    setNotifications((prev) =>
-      prev.map((notif) => (notif.id === id ? { ...notif, isRead: true } : notif))
-    );
-    const userId = currentUserId || user?.Global_User_ID || user?.id || "";
-    const compId = companyId || user?.Company_Id || "";
-    if (userId) {
-      markNotificationsAsRead([id], compId, userId);
-      if (isCompanyAdmin && selectedUserId !== "self") {
-        markNotificationsAsRead([id], compId, selectedUserId);
-      }
-      try {
-        await fetchLink({
-          address: "notifications/read",
-          method: "POST",
-          bodyData: { notificationId: id, userId },
-        }).catch(() => {});
-      } catch {}
-    }
-  };
-
   const deleteNotification = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this notification?")) return;
     setNotifications((prev) => prev.filter((notif) => notif.id !== id));
@@ -1305,24 +1283,7 @@ const NotificationScreen: React.FC = () => {
                     }}
                     secondaryAction={
                       <Box display="flex" gap={0.5}>
-                        {!notif.isRead ? (
-                          <Tooltip title="Mark as read">
-                            <IconButton
-                              edge="end"
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                markAsRead(notif.id);
-                              }}
-                              sx={{
-                                color: "#b9925f",
-                                "&:hover": { bgcolor: "rgba(185, 146, 95, 0.08)" },
-                              }}
-                            >
-                              <DoneIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        ) : (
+                        {notif.isRead && (
                           <Tooltip title="Delete">
                             <IconButton
                               edge="end"

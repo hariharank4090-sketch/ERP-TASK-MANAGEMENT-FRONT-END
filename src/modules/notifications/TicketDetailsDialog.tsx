@@ -18,6 +18,7 @@ import CloseIcon from "@mui/icons-material/Close";
 
 export interface TicketDetailsData {
   id: string;
+  isRead?: boolean;
   ticketCode?: string;
   subject?: string;
   customer?: string;
@@ -440,7 +441,7 @@ const TicketDetailsDialog: React.FC<TicketDetailsDialogProps> = ({
     <AppDialog
       open={open}
       onClose={onClose}
-      onSubmit={handleConfirm}
+      onSubmit={ticket?.isRead ? undefined : handleConfirm}
       submitText={confirmLoading ? "Confirming..." : "Confirm"}
       closeText="Cancel"
       maxWidth="sm"

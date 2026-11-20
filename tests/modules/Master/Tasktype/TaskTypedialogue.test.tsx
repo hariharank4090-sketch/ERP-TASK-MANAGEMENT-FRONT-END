@@ -16,11 +16,22 @@ describe('TaskTypeDialog Component', () => {
         type="create"
         taskTypeObj={{
           Task_Type: 'Architecture Design',
-          Project_Id: 1,
+          Project_Id: 20,
+          Stage_Id: 8,
         }}
+        stageOptions={[
+          {
+            value: 8,
+            label: 'Stage',
+            Id: 8,
+            Project_Id: 20,
+            Stage_Name: 'Stage',
+          },
+        ]}
       />
     );
 
     expect(screen.getByDisplayValue('Architecture Design')).toBeInTheDocument();
+    expect(screen.getByLabelText('Stage')).toBeInTheDocument();
   });
 });

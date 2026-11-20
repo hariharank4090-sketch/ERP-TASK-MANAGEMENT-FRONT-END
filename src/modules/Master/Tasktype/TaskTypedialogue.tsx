@@ -11,9 +11,11 @@ import AppDialog from "../../../Components/appDialog";
 import SearchableSelect from "../../../Components/SearchableSelect";
 import type { 
   tasktypeCreateInput, 
-  ProjectDropdown 
+  ProjectDropdown,
+  ProjectStageDropdown
 } from "./variables";
 import { statusOptions } from "./variables";
+import { getProjectStageDropdown } from "./TaskType.api";
 
 interface TaskTypeDialogProps {
   open: boolean;
@@ -23,6 +25,7 @@ interface TaskTypeDialogProps {
   taskTypeObj?: tasktypeCreateInput;
   setTaskTypeObj?: (obj: tasktypeCreateInput) => void;
   projectOptions?: ProjectDropdown[];
+  stageOptions?: ProjectStageDropdown[];
   selectedId?: number | null;
   isLoading?: boolean;
   disableProjectSelect?: boolean;
@@ -36,28 +39,62 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
   taskTypeObj = {
     Task_Type: "",
     Project_Id: null,
+    Stage_Id: null,
     Status: 1
   },
   setTaskTypeObj,
   projectOptions = [],
+  stageOptions = [],
   selectedId = null,
   isLoading = false,
   disableProjectSelect = false,
 }) => {
   const [submitted, setSubmitted] = React.useState(false);
+  const [internalStages, setInternalStages] = React.useState<ProjectStageDropdown[]>([]);
 
   React.useEffect(() => {
     if (!open) {
       setSubmitted(false);
+      return;
     }
-  }, [open]);
+    if ((type === "create" || type === "edit") && stageOptions.length === 0) {
+      let active = true;
+      getProjectStageDropdown()
+        .then((list) => {
+          if (active && Array.isArray(list)) {
+            setInternalStages(list);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }
+  }, [open, type, stageOptions.length]);
+
+  const effectiveStages = stageOptions.length > 0 ? stageOptions : internalStages;
 
   // Handle Project_Id change
   const handleProjectChange = (e: SelectChangeEvent<string>) => {
     const value = e.target.value === "" ? null : Number(e.target.value);
     setTaskTypeObj?.({ 
       ...taskTypeObj!, 
-      Project_Id: value 
+      Project_Id: value,
+      Stage_Id: null,
+      Stage_Name: ""
+    });
+  };
+
+  // Handle Stage_Id change
+  const handleStageChange = (e: SelectChangeEvent<string>) => {
+    const value = e.target.value === "" ? null : Number(e.target.value);
+    const matchedStage = effectiveStages.find(
+      (s) => Number(s.value ?? s.Id) === value
+    );
+    setTaskTypeObj?.({
+      ...taskTypeObj!,
+      Stage_Id: value,
+      Stage_Name: matchedStage ? (matchedStage.label || matchedStage.Stage_Name || "") : ""
     });
   };
 
@@ -74,6 +111,23 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
   const selectProjectValue = taskTypeObj?.Project_Id === null || taskTypeObj?.Project_Id === undefined 
     ? "" 
     : taskTypeObj.Project_Id.toString();
+
+  // Get the value for Stage Select
+  const selectStageValue = taskTypeObj?.Stage_Id === null || taskTypeObj?.Stage_Id === undefined
+    ? ""
+    : taskTypeObj.Stage_Id.toString();
+
+  // Filter stages strictly by selected Project_Id
+  const validStages = React.useMemo(() => {
+    if (!taskTypeObj?.Project_Id) return [];
+    return effectiveStages.filter(
+      (s) =>
+        ((s.value !== null && s.value !== undefined) || (s.Id !== null && s.Id !== undefined)) &&
+        s.Project_Id !== null &&
+        s.Project_Id !== undefined &&
+        Number(s.Project_Id) === Number(taskTypeObj.Project_Id)
+    );
+  }, [effectiveStages, taskTypeObj?.Project_Id]);
 
   // Get the value for Status Select
   const selectStatusValue = taskTypeObj?.Status !== undefined && taskTypeObj?.Status !== null
@@ -140,6 +194,23 @@ export const TaskTypeDialog: React.FC<TaskTypeDialogProps> = ({
             options={validProjects.map((project) => ({
               value: project.Project_Id!.toString(),
               label: project.Project_Name
+            }))}
+          />
+        </FormControl>
+
+        <FormControl fullWidth margin="dense" disabled={isLoading || !taskTypeObj?.Project_Id} sx={{ mt: 1 }}>
+          <InputLabel id="stage-label">Stage</InputLabel>
+          <SearchableSelect
+            labelId="stage-label"
+            label="Stage"
+            value={selectStageValue}
+            onChange={handleStageChange}
+            searchPlaceholder="Search stage..."
+            allOptionLabel="Select Stage"
+            allOptionValue=""
+            options={validStages.map((stage) => ({
+              value: String(stage.value ?? stage.Id),
+              label: stage.label || stage.Stage_Name || ""
             }))}
           />
         </FormControl>

@@ -125,12 +125,14 @@ import {
   updateTaskType,
   deleteTaskType,
   getProjectDropdown as getTaskTypeProjects,
+  getProjectStageDropdown,
 } from "../Master/Tasktype/TaskType.api";
 import type {
   tasktypeData,
   tasktypeCreateInput,
   tasktypeUpdateInput,
   ProjectDropdown as TaskTypeProjectDropdown,
+  ProjectStageDropdown,
 } from "../Master/Tasktype/variables";
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -339,6 +341,8 @@ interface TaskTypeDisplay {
   Task_Type: string;
   Project_Id: number | null;
   Project_Name: string | null;
+  Stage_Id?: number | null;
+  Stage_Name?: string | null;
   tasksCount: number;
   status?: "ACTIVE" | "INACTIVE";
 }
@@ -2218,6 +2222,7 @@ const TaskTypeExpandedComponent: React.FC<{
 }> = ({ projectName, projectId, appliedTaskTypeId = "ALL", appliedTaskId = "ALL", onDataChange, appliedEmployeeId, projectEmpSchedules, projectSchedules, appliedFromDate, appliedToDate, allTaskTypes, allProjects, allTasks }) => {
   const [taskTypes, setTaskTypes] = useState<TaskTypeDisplay[]>([]);
   const [projectOptions, setProjectOptions] = useState<TaskTypeProjectDropdown[]>([]);
+  const [stageOptions, setStageOptions] = useState<ProjectStageDropdown[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedTaskTypes, setExpandedTaskTypes] = useState<Record<number, boolean>>({});
@@ -2252,15 +2257,17 @@ const TaskTypeExpandedComponent: React.FC<{
       setLoading(true);
       setError(null);
 
-      const [typesData, projectsData, tasksData] = await Promise.all([
+      const [typesData, projectsData, tasksData, stagesData] = await Promise.all([
         allTaskTypes && allTaskTypes.length > 0 ? Promise.resolve(allTaskTypes) : gettasktype(),
         allProjects && allProjects.length > 0 ? Promise.resolve(allProjects) : getTaskTypeProjects(),
         allTasks && allTasks.length > 0 ? Promise.resolve(allTasks) : getTask().catch(() => []),
+        getProjectStageDropdown().catch(() => []),
       ]);
 
       if (!isMounted.current) return;
 
       setProjectOptions(projectsData);
+      setStageOptions(stagesData);
 
       const projectMap = new Map<number, string>(
         (projectsData || []).map((p: TaskTypeProjectDropdown) => [
@@ -2334,6 +2341,52 @@ const TaskTypeExpandedComponent: React.FC<{
         }
       }
 
+      const resolveStageForType = (type: tasktypeData): { stageId: number | null; stageName: string } => {
+        if (type.Stage_Name && type.Stage_Name.trim() !== "") {
+          return { stageId: type.Stage_Id ?? null, stageName: type.Stage_Name };
+        }
+        let targetStageId: number | null = type.Stage_Id ?? (type as any).stageId ?? null;
+        if (targetStageId === null) {
+          try {
+            const rawMap = localStorage.getItem("TASK_TYPE_STAGE_MAP");
+            if (rawMap) {
+              const parsedMap = JSON.parse(rawMap);
+              const keyById = `id_${type.Task_Type_Id}`;
+              const keyByName = `proj_${type.Project_Id ?? projectId}_${(type.Task_Type || "").trim().toLowerCase()}`;
+              if (parsedMap[keyById] !== undefined) targetStageId = Number(parsedMap[keyById]);
+              else if (parsedMap[keyByName] !== undefined) targetStageId = Number(parsedMap[keyByName]);
+            }
+          } catch {
+            // Ignore storage error
+          }
+        }
+        if (targetStageId !== null && !Number.isNaN(Number(targetStageId))) {
+          const byStageId = (stagesData || []).find(
+            (s) => Number(s.value ?? s.Id) === Number(targetStageId)
+          );
+          if (byStageId && (byStageId.label || byStageId.Stage_Name)) {
+            return {
+              stageId: Number(byStageId.value ?? byStageId.Id),
+              stageName: byStageId.label || byStageId.Stage_Name || "Not Assigned",
+            };
+          }
+        }
+        const effProjId = type.Project_Id ?? projectId;
+        if (effProjId !== null && effProjId !== undefined) {
+          const matchingStages = (stagesData || []).filter(
+            (s) => s.Project_Id !== null && s.Project_Id !== undefined && Number(s.Project_Id) === Number(effProjId)
+          );
+          if (matchingStages.length > 0) {
+            const stage = matchingStages[matchingStages.length - 1];
+            return {
+              stageId: Number(stage.value ?? stage.Id),
+              stageName: stage.label || stage.Stage_Name || "Not Assigned",
+            };
+          }
+        }
+        return { stageId: null, stageName: "Not Assigned" };
+      };
+
       const taskTypeDisplays: TaskTypeDisplay[] = filteredTypes.map((type: tasktypeData) => {
         const resolvedProjectName =
           (type.Project_Name && type.Project_Name.trim() !== "")
@@ -2341,12 +2394,15 @@ const TaskTypeExpandedComponent: React.FC<{
             : (type.Project_Id != null ? projectMap.get(Number(type.Project_Id)) || "" : "")
             || projectName
             || null;
+        const { stageId, stageName } = resolveStageForType(type);
 
         return {
           Task_Type_Id: type.Task_Type_Id,
           Task_Type: type.Task_Type || "",
           Project_Id: type.Project_Id != null ? Number(type.Project_Id) : null,
           Project_Name: resolvedProjectName,
+          Stage_Id: stageId,
+          Stage_Name: stageName,
           tasksCount: taskCountMap.get(Number(type.Task_Type_Id)) || 0,
           status: (type as any).Status === 0 || (type as any).Is_Active === 0
             ? "INACTIVE"
@@ -2444,12 +2500,15 @@ const TaskTypeExpandedComponent: React.FC<{
       Task_Type: taskType.Task_Type || "",
       Project_Id: taskType.Project_Id,
       Project_Name: taskType.Project_Name || "",
+      Stage_Id: taskType.Stage_Id ?? null,
+      Stage_Name: taskType.Stage_Name || "",
       Status: taskType.status === "ACTIVE" ? 1 : 0,
     };
     setSelectedTaskType(taskTypeData);
     setTaskTypeObj({
       Task_Type: taskType.Task_Type || "",
       Project_Id: taskType.Project_Id,
+      Stage_Id: taskType.Stage_Id ?? null,
       Status: taskType.status === "ACTIVE" ? 1 : 0,
     });
     setTaskTypeDialogType("edit");
@@ -2487,6 +2546,7 @@ const TaskTypeExpandedComponent: React.FC<{
         Task_Type_Id: selectedTaskType.Task_Type_Id,
         Task_Type: taskTypeObj.Task_Type.trim(),
         Project_Id: taskTypeObj.Project_Id,
+        Stage_Id: taskTypeObj.Stage_Id ?? null,
         Status: taskTypeObj.Status ?? 1,
       };
       success = await updateTaskType(updatePayload);
@@ -2494,12 +2554,27 @@ const TaskTypeExpandedComponent: React.FC<{
       const createPayload: tasktypeCreateInput = {
         Task_Type: taskTypeObj.Task_Type.trim(),
         Project_Id: taskTypeObj.Project_Id,
+        Stage_Id: taskTypeObj.Stage_Id ?? null,
         Status: taskTypeObj.Status ?? 1,
       };
       success = await createTaskType(createPayload);
     }
 
     if (success && isMounted.current) {
+      if (taskTypeObj.Stage_Id) {
+        try {
+          const rawMap = localStorage.getItem("TASK_TYPE_STAGE_MAP");
+          const parsedMap = rawMap ? JSON.parse(rawMap) : {};
+          if (selectedTaskType?.Task_Type_Id) {
+            parsedMap[`id_${selectedTaskType.Task_Type_Id}`] = taskTypeObj.Stage_Id;
+          }
+          parsedMap[`proj_${taskTypeObj.Project_Id}_${taskTypeObj.Task_Type.trim().toLowerCase()}`] =
+            taskTypeObj.Stage_Id;
+          localStorage.setItem("TASK_TYPE_STAGE_MAP", JSON.stringify(parsedMap));
+        } catch {
+          // Ignore storage error
+        }
+      }
       closeAllDialogs();
       await fetchTaskTypes();
       await onDataChange?.();
@@ -2603,6 +2678,7 @@ const TaskTypeExpandedComponent: React.FC<{
               <TableCell sx={{ fontWeight: 600, fontSize: "0.875rem", padding: "12px 16px" }} width={50}>
                 Expand
               </TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: "0.875rem", padding: "12px 16px" }}>Stage</TableCell>
               <TableCell sx={{ fontWeight: 600, fontSize: "0.875rem", padding: "12px 16px" }}>Task Type</TableCell>
               <TableCell sx={{ fontWeight: 600, fontSize: "0.875rem", padding: "12px 16px" }} align="center">Tasks</TableCell>
               <TableCell sx={{ fontWeight: 600, fontSize: "0.875rem", padding: "12px 16px" }} align="center">Status</TableCell>
@@ -2612,7 +2688,7 @@ const TaskTypeExpandedComponent: React.FC<{
           <TableBody>
             {filteredTaskTypesList.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 3, color: "#666" }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 3, color: "#666" }}>
                   {taskTypeStatusFilter !== "ALL"
                     ? `No ${taskTypeStatusFilter.toLowerCase()} task types found. Try a different filter.`
                     : `No task types found. Click "Add Task Type" to create one.`}
@@ -2626,6 +2702,11 @@ const TaskTypeExpandedComponent: React.FC<{
                       <IconButton size="small" onClick={() => toggleTaskTypeExpand(row.Task_Type_Id)}>
                         {expandedTaskTypes[row.Task_Type_Id] ? <KeyboardArrowDown /> : <KeyboardArrowRight />}
                       </IconButton>
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.875rem", padding: "12px 16px" }}>
+                      <Typography variant="body2" fontWeight={500}>
+                        {row.Stage_Name || "Not Assigned"}
+                      </Typography>
                     </TableCell>
                     <TableCell sx={{ fontSize: "0.875rem", padding: "12px 16px" }}>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -2670,7 +2751,7 @@ const TaskTypeExpandedComponent: React.FC<{
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={5} sx={{ p: 0, borderBottom: expandedTaskTypes[row.Task_Type_Id] ? "1px solid #e0e0e0" : "none" }}>
+                    <TableCell colSpan={6} sx={{ p: 0, borderBottom: expandedTaskTypes[row.Task_Type_Id] ? "1px solid #e0e0e0" : "none" }}>
                       <Collapse in={expandedTaskTypes[row.Task_Type_Id]} timeout="auto" unmountOnExit>
                         <Box sx={{ px: 0, py: 1, backgroundColor: "#fafafa" }}>
                           <TaskExpandedComponent
@@ -2712,6 +2793,7 @@ const TaskTypeExpandedComponent: React.FC<{
           taskTypeObj={taskTypeObj}
           setTaskTypeObj={setTaskTypeObj}
           projectOptions={projectOptions}
+          stageOptions={stageOptions}
           selectedId={selectedTaskType?.Task_Type_Id || null}
           isLoading={loading}
           disableProjectSelect={taskTypeDialogType === "create"}

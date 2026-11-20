@@ -4,12 +4,14 @@ import type {
   tasktypeData,
   tasktypeCreateInput,
   tasktypeUpdateInput,
-  BasicApiResponse
+  BasicApiResponse,
+  ProjectDropdown,
+  ProjectStageDropdown
 } from "./variables";
-import type { ProjectDropdown } from "./variables";
 
 const tasktypeAPI = "masters/taskType/";
 const projectAPI = "masters/project/dropdown/";
+const projectStagesAPI = "masters/project/stages/dropdown?activeOnly=true";
 
 // Get all task types
 export const gettasktype = async (
@@ -77,6 +79,33 @@ export const getprojectDropdown = async (
 // Alias for getprojectDropdown with different name
 export const getProjectDropdown = getprojectDropdown;
 
+// Get project stage dropdown
+export const getProjectStageDropdown = async (
+  loadingOn?: () => void,
+  loadingOff?: () => void
+): Promise<ProjectStageDropdown[]> => {
+  try {
+    const res = await fetchLink<BasicApiResponse>({
+      address: projectStagesAPI,
+      method: "GET",
+      loadingOn: typeof loadingOn === "function" ? loadingOn : undefined,
+      loadingOff: typeof loadingOff === "function" ? loadingOff : undefined,
+    });
+
+    if (res && res.success) {
+      const stageData = (res.data as unknown as ProjectStageDropdown[]) || [];
+      if (stageData.length > 0 && Array.isArray(stageData[0])) {
+        return (stageData as unknown as ProjectStageDropdown[][]).flat();
+      }
+      return Array.isArray(stageData) ? stageData : [];
+    }
+    return [];
+  } catch (e: unknown) {
+    console.error("getProjectStageDropdown Error:", e);
+    return [];
+  }
+};
+
 // Get task types by project
 export const getTaskTypesByProject = async (
   projectId: number,
@@ -115,11 +144,15 @@ export const createTaskType = async (
   loadingOff?: () => void
 ): Promise<boolean> => {
   try {
-    const cleanBody = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cleanBody: any = {
       Task_Type: body.Task_Type.trim(),
       Project_Id: body.Project_Id,
       Status: body.Status !== undefined ? body.Status : 1  // Default to Active
     };
+    if (body.Stage_Id !== undefined && body.Stage_Id !== null) {
+      cleanBody.Stage_Id = body.Stage_Id;
+    }
 
     const res = await fetchLink<BasicApiResponse>({
       address: tasktypeAPI,
@@ -163,6 +196,9 @@ export const updateTaskType = async (
       Task_Type: body.Task_Type.trim(),
       Project_Id: body.Project_Id
     };
+    if (body.Stage_Id !== undefined && body.Stage_Id !== null) {
+      cleanBody.Stage_Id = body.Stage_Id;
+    }
 
     // Only include Status if it's provided
     if (body.Status !== undefined && body.Status !== null) {
